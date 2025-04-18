@@ -34,7 +34,10 @@ export default function ProfileScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView style={styles.content}>
+      <ScrollView 
+        style={styles.content}
+        contentContainerStyle={{ flexGrow: 1 }}
+      >
         <View style={styles.header}>
           <View style={styles.profileImageContainer}>
             <Image source={{ uri: profileImage }} style={styles.profileImage} />
@@ -63,14 +66,9 @@ export default function ProfileScreen() {
         </View>
 
         <View style={styles.menuSection}>
-          <Pressable style={styles.menuItem}>
-            <Car size={20} color="#00F0FF" />
-            <Text style={styles.menuText}>Vehicle Management</Text>
-            <ChevronRight size={20} color="#7A89FF" />
-          </Pressable>
           <Pressable 
             style={styles.menuItem}
-            onPress={() => router.push('/(customer)/profile/service-schedule')}
+            onPress={() => router.push('./service-schedule')}
           >
             <Clock size={20} color="#00F0FF" />
             <Text style={styles.menuText}>Service Schedule</Text>
@@ -78,7 +76,7 @@ export default function ProfileScreen() {
           </Pressable>
           <Pressable 
             style={styles.menuItem} 
-            onPress={() => router.push('/(customer)/profile/privacy-security')}
+            onPress={() => router.push('./privacy-security')}
           >
             <Shield size={20} color="#00F0FF" />
             <Text style={styles.menuText}>Privacy & Security</Text>
@@ -88,6 +86,13 @@ export default function ProfileScreen() {
             <Settings size={20} color="#00F0FF" />
             <Text style={styles.menuText}>Settings</Text>
             <ChevronRight size={20} color="#7A89FF" />
+          </Pressable>
+          <Pressable 
+            style={styles.menuItem}
+            onPress={() => router.push('/(customer)/vehicles/')}
+          >
+            <Car size={20} color="#00F0FF" />
+            <Text style={styles.menuText}>Vehicle Management</Text>
           </Pressable>
         </View>
 
@@ -217,4 +222,4 @@ const styles = StyleSheet.create({
     color: '#FF3D71',
     letterSpacing: 2,
   },
-});
+}); 

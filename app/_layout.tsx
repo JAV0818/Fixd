@@ -50,7 +50,6 @@ export default function RootLayout() {
           name="(customer)"
           options={{
             headerShown: false,
-            presentation: 'transparentModal'
           }}
         />
         <Stack.Screen name="(provider)" />

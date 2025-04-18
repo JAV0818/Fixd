@@ -1,6 +1,6 @@
 import { Tabs } from 'expo-router';
 import { Platform } from 'react-native';
-import { Chrome as Home, Search, Car, MessageSquare, User } from 'lucide-react-native';
+import { Chrome as Home, Car, MessageSquare, User } from 'lucide-react-native';
 
 export default function CustomerTabLayout() {
   return (
@@ -29,13 +29,6 @@ export default function CustomerTabLayout() {
         options={{
           title: 'Vehicles',
           tabBarIcon: ({ color, size }) => <Car size={size} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="search"
-        options={{
-          title: 'Find',
-          tabBarIcon: ({ color, size }) => <Search size={size} color={color} />,
         }}
       />
       <Tabs.Screen

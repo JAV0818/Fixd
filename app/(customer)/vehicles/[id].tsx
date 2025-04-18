@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, Image } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { ArrowLeft, Activity, Clock, PenTool as Tool, Plus, ChevronRight, TriangleAlert as AlertTriangle } from 'lucide-react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 const serviceHistory = [
   {
@@ -30,9 +31,14 @@ const serviceHistory = [
   },
 ];
 
+type VehicleStatus = 'optimal' | 'attention' | 'critical';
+
 export default function VehicleServiceDetails() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
+
+  console.log("--- Vehicle Details Screen Rendered ---");
+  console.log("Received ID:", id);
 
   // In a real app, fetch vehicle details using the ID
   const vehicle = {
@@ -41,7 +47,7 @@ export default function VehicleServiceDetails() {
     make: 'Toyota',
     model: 'Camry',
     image: 'https://images.unsplash.com/photo-1550355291-bbee04a92027?w=800&auto=format&fit=crop&q=60',
-    status: 'attention',
+    status: 'attention' as VehicleStatus,
     lastService: 'March 15, 2025',
     nextService: 'September 15, 2025',
     currentMileage: 100000,
@@ -74,7 +80,7 @@ export default function VehicleServiceDetails() {
         }} 
       />
       
-      <View style={styles.container}>
+      <SafeAreaView style={styles.container}>
         <View style={styles.header}>
           <Pressable onPress={() => router.back()} style={styles.backButton}>
             <ArrowLeft size={24} color="#00F0FF" />
@@ -180,7 +186,7 @@ export default function VehicleServiceDetails() {
             <Text style={styles.updateButtonText}>UPDATE MILEAGE</Text>
           </Pressable>
         </View>
-      </View>
+      </SafeAreaView>
     </>
   );
 }
