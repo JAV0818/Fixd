@@ -68,7 +68,7 @@ export default function ProfileScreen() {
         <View style={styles.menuSection}>
           <Pressable 
             style={styles.menuItem}
-            onPress={() => router.push('./service-schedule')}
+            onPress={() => router.push('/profile/service-schedule')}
           >
             <Clock size={20} color="#00F0FF" />
             <Text style={styles.menuText}>Service Schedule</Text>
@@ -76,15 +76,10 @@ export default function ProfileScreen() {
           </Pressable>
           <Pressable 
             style={styles.menuItem} 
-            onPress={() => router.push('./privacy-security')}
+            onPress={() => router.push('./privacy-settings')}
           >
             <Shield size={20} color="#00F0FF" />
-            <Text style={styles.menuText}>Privacy & Security</Text>
-            <ChevronRight size={20} color="#7A89FF" />
-          </Pressable>
-          <Pressable style={styles.menuItem}>
-            <Settings size={20} color="#00F0FF" />
-            <Text style={styles.menuText}>Settings</Text>
+            <Text style={styles.menuText}>Privacy and Settings</Text>
             <ChevronRight size={20} color="#7A89FF" />
           </Pressable>
           <Pressable 

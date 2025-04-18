@@ -10,8 +10,20 @@ export default function ProfileLayout() {
           headerShown: false
         }} 
       />
-      <Stack.Screen name="privacy-security" options={{ title: 'Privacy & Security' }} />
-      <Stack.Screen name="service-schedule" options={{ title: 'Service Schedule' }} />
+      <Stack.Screen 
+        name="privacy-settings"
+        options={{ 
+          title: 'Privacy and Settings',
+          headerShown: false
+        }} 
+      />
+      <Stack.Screen 
+        name="service-schedule" 
+        options={{ 
+          title: 'Service Schedule',
+          headerShown: false
+        }} 
+      />
     </Stack>
   );
 } 
