@@ -1,6 +1,6 @@
-import { View, Text, ScrollView, StyleSheet, Image, Pressable } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Image, Pressable, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Search, Bell, Star, PenTool as Tool, Clock, MapPin, Zap, Car } from 'lucide-react-native';
+import { Search, Bell, Star, PenTool as Tool, Clock, MapPin, Zap, Car, Navigation } from 'lucide-react-native';
 import { useState } from 'react';
 import NotificationPanel from '../../components/NotificationPanel';
 
@@ -8,21 +8,21 @@ const emergencyServices = [
   {
     id: 1,
     title: 'Battery Jump Start',
-    image: 'https://images.unsplash.com/photo-1563483783356-1f12fb4a9b7c?w=800&auto=format&fit=crop&q=60',
+    image: require('../../img_assets/battery jump.jpeg'),
     price: 'From $50',
     eta: '20-30 min',
   },
   {
     id: 2,
     title: 'Flat Tire Change',
-    image: 'https://images.unsplash.com/photo-1578844251758-2f71da64c96f?w=800&auto=format&fit=crop&q=60',
+    image: require('../../img_assets/flat tire change.jpeg'),
     price: 'From $45',
     eta: '15-25 min',
   },
   {
     id: 3,
     title: 'Fuel Delivery',
-    image: 'https://images.unsplash.com/photo-1581781870027-04212e231e96?w=800&auto=format&fit=crop&q=60',
+    image: require('../../img_assets/fuel delievery.png'),
     price: 'From $40',
     eta: '25-35 min',
   },
@@ -36,95 +36,22 @@ const serviceCategories = [
         id: 'oil-change',
         name: 'Oil Change Service',
         description: 'Complete oil & filter change with fluid check',
-        image: 'https://images.unsplash.com/photo-1635764751197-0d0497aa1879?w=800&auto=format&fit=crop&q=60',
+        image: require('../../img_assets/Oil.png'),
         price: 'From $40',
       },
       {
-        id: 'tire-service',
-        name: 'Tire Services',
-        description: 'Rotation, balancing, repairs & replacement',
-        image: 'https://images.unsplash.com/photo-1578844251758-2f71da64c96f?w=800&auto=format&fit=crop&q=60',
-        price: 'From $30',
-      },
-      {
-        id: 'battery-service',
-        name: 'Battery Services',
-        description: 'Testing, replacement & terminal cleaning',
-        image: 'https://images.unsplash.com/photo-1563483783356-1f12fb4a9b7c?w=800&auto=format&fit=crop&q=60',
-        price: 'From $45',
+        id: 'diagnostics',
+        name: 'Diagnostics',
+        description: 'Full vehicle health diagnostics check',
+        image: require('../../img_assets/diagnostics.png'),
+        price: 'From $70',
       },
       {
         id: 'brake-inspection',
-        name: 'Brake Inspection',
-        description: 'Complete brake system inspection',
-        image: 'https://images.unsplash.com/photo-1486262715619-67b85e0b08d3?w=800&auto=format&fit=crop&q=60',
-        price: 'From $50',
-      },
-    ],
-  },
-  {
-    title: 'Repair Services',
-    services: [
-      {
-        id: 'brake-repair',
         name: 'Brake Repairs',
-        description: 'Pad, rotor & caliper repairs',
-        image: 'https://images.unsplash.com/photo-1486262715619-67b85e0b08d3?w=800&auto=format&fit=crop&q=60',
-        price: 'From $150',
-      },
-      {
-        id: 'engine-diagnostic',
-        name: 'Engine Diagnostics',
-        description: 'Check engine light & sensor diagnostics',
-        image: 'https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?w=800&auto=format&fit=crop&q=60',
-        price: 'From $80',
-      },
-      {
-        id: 'cooling-system',
-        name: 'Cooling System',
-        description: 'Radiator & water pump repairs',
-        image: 'https://images.unsplash.com/photo-1487754180451-c456f719a1fc?w=800&auto=format&fit=crop&q=60',
-        price: 'From $200',
-      },
-      {
-        id: 'suspension',
-        name: 'Suspension & Steering',
-        description: 'Shocks, struts & alignment',
-        image: 'https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?w=800&auto=format&fit=crop&q=60',
-        price: 'From $250',
-      },
-    ],
-  },
-  {
-    title: 'Additional Services',
-    services: [
-      {
-        id: 'fluid-service',
-        name: 'Fluid Services',
-        description: 'All fluid checks & top-offs',
-        image: 'https://images.unsplash.com/photo-1635764751197-0d0497aa1879?w=800&auto=format&fit=crop&q=60',
-        price: 'From $30',
-      },
-      {
-        id: 'filter-replacement',
-        name: 'Filter Replacements',
-        description: 'Air & cabin filter replacement',
-        image: 'https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?w=800&auto=format&fit=crop&q=60',
-        price: 'From $25',
-      },
-      {
-        id: 'electrical',
-        name: 'Electrical Repairs',
-        description: 'Lighting & electrical system repairs',
-        image: 'https://images.unsplash.com/photo-1621905251918-48416bd8575a?w=800&auto=format&fit=crop&q=60',
-        price: 'From $60',
-      },
-      {
-        id: 'exhaust',
-        name: 'Exhaust System',
-        description: 'Muffler & exhaust repairs',
-        image: 'https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?w=800&auto=format&fit=crop&q=60',
-        price: 'From $150',
+        description: 'Complete brake system inspection',
+        image: require('../../img_assets/Brake.png'),
+        price: 'From $50',
       },
     ],
   },
@@ -132,6 +59,7 @@ const serviceCategories = [
 
 export default function HomeScreen() {
   const [showNotifications, setShowNotifications] = useState(false);
+  const [manualAddress, setManualAddress] = useState('');
 
   return (
     <SafeAreaView style={styles.container}>
@@ -149,10 +77,19 @@ export default function HomeScreen() {
             <View style={styles.notificationDot} />
           </Pressable>
         </View>
-        <Pressable style={styles.searchBar}>
-          <Search size={20} color="#7A89FF" />
-          <Text style={styles.searchText}>Search services...</Text>
-        </Pressable>
+        <View style={styles.locationContainer}>
+          <TextInput
+            style={styles.addressInput}
+            placeholder="Or enter address manually..."
+            placeholderTextColor="#7A89FF"
+            value={manualAddress}
+            onChangeText={setManualAddress}
+          />
+          <Pressable style={styles.locationButton}>
+            <Navigation size={20} color="#00F0FF" />
+            <Text style={styles.locationButtonText}>Use Current Location</Text>
+          </Pressable>
+        </View>
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
@@ -164,8 +101,7 @@ export default function HomeScreen() {
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.servicesScroll}>
             {emergencyServices.map((service) => (
               <Pressable key={service.id} style={styles.emergencyCard}>
-                <Image source={{ uri: service.image }} style={styles.serviceImage} />
-                <View style={styles.cardOverlay} />
+                <Image source={service.image} style={styles.serviceImage} />
                 <View style={styles.serviceContent}>
                   <Text style={styles.serviceTitle}>{service.title.toUpperCase()}</Text>
                   <View style={styles.serviceDetails}>
@@ -193,8 +129,7 @@ export default function HomeScreen() {
             <View style={styles.servicesGrid}>
               {category.services.map((service) => (
                 <Pressable key={service.id} style={styles.serviceCard}>
-                  <Image source={{ uri: service.image }} style={styles.serviceGridImage} />
-                  <View style={styles.cardOverlay} />
+                  <Image source={service.image} style={styles.serviceGridImage} />
                   <View style={styles.serviceGridContent}>
                     <Text style={styles.serviceGridTitle}>{service.name}</Text>
                     <Text style={styles.serviceGridDescription}>{service.description}</Text>
@@ -284,20 +219,36 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     backgroundColor: '#FF3D71',
   },
-  searchBar: {
+  locationContainer: {
+    marginTop: 16,
+    gap: 12,
+  },
+  locationButton: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: 'rgba(0, 240, 255, 0.1)',
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#00F0FF',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  locationButtonText: {
+    color: '#00F0FF',
+    fontSize: 16,
+    fontFamily: 'Inter_500Medium',
+  },
+  addressInput: {
     backgroundColor: 'rgba(122, 137, 255, 0.1)',
     padding: 12,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: '#2A3555',
-  },
-  searchText: {
-    marginLeft: 8,
-    color: '#7A89FF',
+    color: '#FFFFFF',
     fontSize: 16,
     fontFamily: 'Inter_400Regular',
+    height: 48,
   },
   content: {
     flex: 1,
