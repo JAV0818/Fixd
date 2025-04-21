@@ -1,6 +1,6 @@
 import { View, Text, ScrollView, StyleSheet, Image, Pressable, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Search, Bell, Star, PenTool as Tool, Clock, MapPin, Zap, Car, Navigation } from 'lucide-react-native';
+import { Search, Bell, Star, PenTool as Tool, Clock, MapPin, Zap, Car, Navigation, ShoppingCart } from 'lucide-react-native';
 import { useState } from 'react';
 import NotificationPanel from '../../components/NotificationPanel';
 
@@ -61,6 +61,11 @@ export default function HomeScreen() {
   const [showNotifications, setShowNotifications] = useState(false);
   const [manualAddress, setManualAddress] = useState('');
 
+  const handleCartPress = () => {
+    console.log("Cart icon pressed!");
+    // TODO: Navigate to Cart screen (e.g., router.push('/cart'))
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
@@ -69,13 +74,21 @@ export default function HomeScreen() {
             <Text style={styles.greeting}>WELCOME BACK</Text>
             <Text style={styles.name}>JULIAN</Text>
           </View>
-          <Pressable 
-            style={styles.iconButton}
-            onPress={() => setShowNotifications(!showNotifications)}
-          >
-            <Bell size={24} color="#00F0FF" />
-            <View style={styles.notificationDot} />
-          </Pressable>
+          <View style={styles.headerIconsContainer}>
+            <Pressable 
+              style={styles.iconButton}
+              onPress={handleCartPress}
+            >
+              <ShoppingCart size={24} color="#00F0FF" />
+            </Pressable>
+            <Pressable 
+              style={styles.iconButton}
+              onPress={() => setShowNotifications(!showNotifications)}
+            >
+              <Bell size={24} color="#00F0FF" />
+              <View style={styles.notificationDot} />
+            </Pressable>
+          </View>
         </View>
         <View style={styles.locationContainer}>
           <TextInput
@@ -96,7 +109,7 @@ export default function HomeScreen() {
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>EMERGENCY SERVICES</Text>
-            <Zap size={20} color="#00F0FF" />
+            <Tool size={24} color="#00F0FF" />
           </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.servicesScroll}>
             {emergencyServices.map((service) => (
@@ -124,7 +137,7 @@ export default function HomeScreen() {
           <View key={index} style={styles.section}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>{category.title}</Text>
-              <Tool size={20} color="#00F0FF" />
+              <Tool size={24} color="#00F0FF" />
             </View>
             <View style={styles.servicesGrid}>
               {category.services.map((service) => (
@@ -205,6 +218,10 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_700Bold',
     color: '#00F0FF',
     letterSpacing: 2,
+  },
+  headerIconsContainer: {
+    flexDirection: 'row',
+    gap: 8,
   },
   iconButton: {
     padding: 8,

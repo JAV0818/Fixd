@@ -89,6 +89,9 @@ export default function MechanicDashboard() {
           <View style={styles.statusContent}>
             <Activity size={32} color="#00F0FF" />
             <Text style={styles.statusText}>WEEKLY DATA</Text>
+            <Pressable onPress={() => console.log('View Details Pressed')}> 
+              <Text style={styles.viewDetailsText}>View Details</Text>
+            </Pressable>
           </View>
         </View>
       </View>
@@ -249,22 +252,31 @@ const styles = StyleSheet.create({
     backgroundColor: '#FF3D71',
   },
   statusBar: {
-    backgroundColor: 'rgba(122, 137, 255, 0.1)',
-    padding: 16,
-    borderRadius: 8,
+    backgroundColor: 'rgba(0, 240, 255, 0.1)',
+    padding: 12,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#2A3555',
+    borderColor: '#00F0FF',
+    marginTop: 16,
   },
   statusContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    justifyContent: 'space-between',
   },
   statusText: {
-    fontSize: 20,
-    fontFamily: 'Inter_700Bold',
+    fontSize: 18,
+    fontFamily: 'Inter_600SemiBold',
     color: '#00F0FF',
     letterSpacing: 2,
+    marginLeft: 12,
+    flex: 1,
+  },
+  viewDetailsText: {
+    fontSize: 14,
+    fontFamily: 'Inter_500Medium',
+    color: '#00F0FF',
+    textDecorationLine: 'underline',
   },
   content: {
     flex: 1,
