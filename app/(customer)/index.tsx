@@ -3,24 +3,25 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Search, Bell, Star, PenTool as Tool, Clock, MapPin, Zap, Car, Navigation, ShoppingCart } from 'lucide-react-native';
 import { useState } from 'react';
 import NotificationPanel from '../../components/NotificationPanel';
+import { useRouter } from 'expo-router';
 
 const emergencyServices = [
   {
-    id: 1,
+    id: 'battery-jump-start',
     title: 'Battery Jump Start',
     image: require('../../img_assets/battery jump.jpeg'),
     price: 'From $50',
     eta: '20-30 min',
   },
   {
-    id: 2,
+    id: 'flat-tire-change',
     title: 'Flat Tire Change',
     image: require('../../img_assets/flat tire change.jpeg'),
     price: 'From $45',
     eta: '15-25 min',
   },
   {
-    id: 3,
+    id: 'fuel-delivery',
     title: 'Fuel Delivery',
     image: require('../../img_assets/fuel delievery.png'),
     price: 'From $40',
@@ -58,12 +59,19 @@ const serviceCategories = [
 ];
 
 export default function HomeScreen() {
+  const router = useRouter();
   const [showNotifications, setShowNotifications] = useState(false);
-  const [manualAddress, setManualAddress] = useState('');
 
   const handleCartPress = () => {
     console.log("Cart icon pressed!");
     // TODO: Navigate to Cart screen (e.g., router.push('/cart'))
+  };
+
+  const handleServicePress = (serviceId: string) => {
+    console.log(`Service selected: ${serviceId}`);
+    // Temporarily disabling navigation until proper route exists
+    // Uncomment once service route is implemented
+    // router.push('/service/' + serviceId);
   };
 
   return (
@@ -91,16 +99,8 @@ export default function HomeScreen() {
           </View>
         </View>
         <View style={styles.locationContainer}>
-          <TextInput
-            style={styles.addressInput}
-            placeholder="Or enter address manually..."
-            placeholderTextColor="#7A89FF"
-            value={manualAddress}
-            onChangeText={setManualAddress}
-          />
           <Pressable style={styles.locationButton}>
-            <Navigation size={20} color="#00F0FF" />
-            <Text style={styles.locationButtonText}>Use Current Location</Text>
+            <MapPin size={24} color="#00F0FF" />
           </Pressable>
         </View>
       </View>
@@ -113,7 +113,11 @@ export default function HomeScreen() {
           </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.servicesScroll}>
             {emergencyServices.map((service) => (
-              <Pressable key={service.id} style={styles.emergencyCard}>
+              <Pressable 
+                key={service.id} 
+                style={styles.emergencyCard}
+                onPress={() => handleServicePress(service.id)}
+              >
                 <Image source={service.image} style={styles.serviceImage} />
                 <View style={styles.serviceContent}>
                   <Text style={styles.serviceTitle}>{service.title.toUpperCase()}</Text>
@@ -141,7 +145,11 @@ export default function HomeScreen() {
             </View>
             <View style={styles.servicesGrid}>
               {category.services.map((service) => (
-                <Pressable key={service.id} style={styles.serviceCard}>
+                <Pressable 
+                  key={service.id} 
+                  style={styles.serviceCard}
+                  onPress={() => handleServicePress(service.id)}
+                >
                   <Image source={service.image} style={styles.serviceGridImage} />
                   <View style={styles.serviceGridContent}>
                     <Text style={styles.serviceGridTitle}>{service.name}</Text>
@@ -238,34 +246,23 @@ const styles = StyleSheet.create({
   },
   locationContainer: {
     marginTop: 16,
-    gap: 12,
+    alignItems: 'center',
   },
   locationButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
     backgroundColor: 'rgba(0, 240, 255, 0.1)',
     padding: 12,
-    borderRadius: 12,
+    borderRadius: 30,
     borderWidth: 1,
     borderColor: '#00F0FF',
     justifyContent: 'center',
-    gap: 8,
+    alignItems: 'center',
+    width: 50,
+    height: 50,
   },
   locationButtonText: {
     color: '#00F0FF',
     fontSize: 16,
     fontFamily: 'Inter_500Medium',
-  },
-  addressInput: {
-    backgroundColor: 'rgba(122, 137, 255, 0.1)',
-    padding: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#2A3555',
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontFamily: 'Inter_400Regular',
-    height: 48,
   },
   content: {
     flex: 1,

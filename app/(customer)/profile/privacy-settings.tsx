@@ -13,6 +13,7 @@ import {
   Mail,
   Share2 as Share
 } from 'lucide-react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function PrivacySecurityScreen() {
   const router = useRouter();
@@ -33,9 +34,7 @@ export default function PrivacySecurityScreen() {
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={{ color: 'red', fontSize: 30, marginTop: 100 }}>DEBUG: RENDERED!</Text>
-      
+    <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} style={styles.backButton}>
           <ArrowLeft size={24} color="#00F0FF" />
@@ -212,7 +211,7 @@ export default function PrivacySecurityScreen() {
           </Pressable>
         </View>
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 }
 

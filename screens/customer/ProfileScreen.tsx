@@ -1,14 +1,18 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Camera, Briefcase, Clock, Shield, Settings, ChevronRight, LogOut, Award } from 'lucide-react-native';
+import { Camera, Car, PenTool as Tool, Clock, Shield, Settings, ChevronRight, LogOut } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { useRouter } from 'expo-router';
 import { logout } from '@/lib/auth';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '@/navigation/AppNavigator';
+import { LinearGradient } from 'expo-linear-gradient';
 
-export default function TechnicianProfileScreen() {
-  const router = useRouter();
-  const [profileImage, setProfileImage] = useState('https://images.unsplash.com/photo-1600486913747-55e5470d6f40?w=800&auto=format&fit=crop&q=60');
+export default function ProfileScreen() {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const [hasCustomImage, setHasCustomImage] = useState(false);
+  const [profileImage, setProfileImage] = useState('');
 
   const handleImagePick = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -20,72 +24,92 @@ export default function TechnicianProfileScreen() {
 
     if (!result.canceled && result.assets[0]) {
       setProfileImage(result.assets[0].uri);
+      setHasCustomImage(true);
     }
   };
 
   const handleLogout = async () => {
     try {
       await logout();
-      router.replace('/');
     } catch (error) {
       console.error('Error logging out:', error);
     }
   };
 
+  // Profile data (would come from API/database in a real app)
+  const customerInfo = {
+    name: 'JULIAN VAZQUEZ',
+    initials: 'JV',
+    memberSinceMonth: 'JUN',
+    memberSinceYear: '2021',
+    orders: 156,
+    rating: 4.9
+  };
+
+  const renderProfileAvatar = () => {
+    if (hasCustomImage && profileImage) {
+      return <Image source={{ uri: profileImage }} style={styles.profileImage} />;
+    }
+    
+    return (
+      <LinearGradient
+        colors={['#00C2FF', '#0080FF']}
+        style={styles.profileImage}
+      >
+        <Text style={styles.profileInitials}>{customerInfo.initials}</Text>
+      </LinearGradient>
+    );
+  };
+
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView style={styles.content}>
+      <ScrollView 
+        style={styles.content}
+        contentContainerStyle={{ flexGrow: 1 }}
+      >
         <View style={styles.header}>
           <View style={styles.profileImageContainer}>
-            <Image source={{ uri: profileImage }} style={styles.profileImage} />
+            {renderProfileAvatar()}
             <Pressable style={styles.editImageButton} onPress={handleImagePick}>
               <Camera size={20} color="#00F0FF" />
             </Pressable>
           </View>
-          <Text style={styles.name}>AAREN JOHNSON</Text>
-          <Text style={styles.membershipLevel}>MASTER TECHNICIAN</Text>
+          <Text style={styles.name}>{customerInfo.name}</Text>
+          <Text style={styles.membershipLevel}>FIXD CUSTOMER</Text>
           <View style={styles.statsContainer}>
             <View style={styles.statItem}>
-              <Text style={styles.statValue}>156</Text>
-              <Text style={styles.statLabel}>JOBS</Text>
+              <Text style={styles.statValue}>{customerInfo.orders}</Text>
+              <Text style={styles.statLabel}>ORDERS</Text>
             </View>
             <View style={styles.statDivider} />
             <View style={styles.statItem}>
-              <Text style={styles.statValue}>4.9</Text>
+              <Text style={styles.statValue}>{customerInfo.rating}</Text>
               <Text style={styles.statLabel}>RATING</Text>
             </View>
             <View style={styles.statDivider} />
             <View style={styles.statItem}>
-              <Text style={styles.statValue}>15</Text>
-              <Text style={styles.statLabel}>YEARS</Text>
+              <Text style={styles.statValue}>{customerInfo.memberSinceMonth}</Text>
+              <Text style={styles.memberYear}>{customerInfo.memberSinceYear}</Text>
+              <Text style={styles.statLabel}>CUSTOMER SINCE</Text>
             </View>
           </View>
         </View>
 
         <View style={styles.menuSection}>
-          <Pressable style={styles.menuItem}>
-            <Briefcase size={20} color="#00F0FF" />
-            <Text style={styles.menuText}>Job History</Text>
-            <ChevronRight size={20} color="#7A89FF" />
-          </Pressable>
-          <Pressable style={styles.menuItem}>
+          <Pressable 
+            style={styles.menuItem}
+            onPress={() => navigation.navigate('ServiceSchedule')}
+          >
             <Clock size={20} color="#00F0FF" />
-            <Text style={styles.menuText}>Availability</Text>
+            <Text style={styles.menuText}>Service Schedule</Text>
             <ChevronRight size={20} color="#7A89FF" />
           </Pressable>
-          <Pressable style={styles.menuItem}>
-            <Award size={20} color="#00F0FF" />
-            <Text style={styles.menuText}>Certifications</Text>
-            <ChevronRight size={20} color="#7A89FF" />
-          </Pressable>
-          <Pressable style={styles.menuItem}>
+          <Pressable 
+            style={styles.menuItem} 
+            onPress={() => navigation.navigate('PrivacySettings')}
+          >
             <Shield size={20} color="#00F0FF" />
-            <Text style={styles.menuText}>Privacy & Security</Text>
-            <ChevronRight size={20} color="#7A89FF" />
-          </Pressable>
-          <Pressable style={styles.menuItem}>
-            <Settings size={20} color="#00F0FF" />
-            <Text style={styles.menuText}>Settings</Text>
+            <Text style={styles.menuText}>Privacy and Settings</Text>
             <ChevronRight size={20} color="#7A89FF" />
           </Pressable>
         </View>
@@ -123,6 +147,14 @@ const styles = StyleSheet.create({
     borderRadius: 60,
     borderWidth: 3,
     borderColor: '#00F0FF',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  profileInitials: {
+    fontSize: 42,
+    fontFamily: 'Inter_700Bold',
+    color: '#FFFFFF',
+    letterSpacing: 2,
   },
   editImageButton: {
     position: 'absolute',
@@ -162,16 +194,26 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   statValue: {
-    fontSize: 24,
+    fontSize: 18,
     fontFamily: 'Inter_700Bold',
     color: '#00F0FF',
     marginBottom: 4,
+    textAlign: 'center',
+  },
+  memberYear: {
+    fontSize: 14,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#00F0FF',
+    marginBottom: 4,
+    textAlign: 'center',
+    lineHeight: 14,
   },
   statLabel: {
-    fontSize: 12,
+    fontSize: 10,
     fontFamily: 'Inter_500Medium',
     color: '#7A89FF',
     letterSpacing: 1,
+    textAlign: 'center',
   },
   statDivider: {
     width: 1,
@@ -216,4 +258,4 @@ const styles = StyleSheet.create({
     color: '#FF3D71',
     letterSpacing: 2,
   },
-});
+}); 

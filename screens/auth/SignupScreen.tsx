@@ -1,13 +1,17 @@
 import { View, Text, StyleSheet, TextInput, Pressable, ImageBackground, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
-import { useRouter } from 'expo-router';
+// import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 import { auth, firestore } from '@/lib/firebase';
 import { ArrowLeft, Mail, Lock, User, Phone } from 'lucide-react-native';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { AuthStackParamList } from '@/navigation/AuthNavigator'; // Adjust path if needed
 
 export default function SignupScreen() {
-  const router = useRouter();
+  // const router = useRouter();
+  const navigation = useNavigation<NativeStackNavigationProp<AuthStackParamList>>();
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -57,7 +61,8 @@ export default function SignupScreen() {
       });
 
       // Redirect to customer dashboard
-      router.replace('/(customer)');
+      // TODO: Replace with React Navigation
+      // router.replace('/(customer)');
     } catch (err: any) {
       if (err.code === 'auth/email-already-in-use') {
         setError('Email is already registered');
@@ -84,7 +89,7 @@ export default function SignupScreen() {
         <ScrollView showsVerticalScrollIndicator={false}>
           <Pressable 
             style={styles.backButton}
-            onPress={() => router.back()}
+            onPress={() => navigation.goBack()}
           >
             <ArrowLeft size={24} color="#00F0FF" />
           </Pressable>
@@ -275,6 +280,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1,
     borderColor: '#00F0FF',
+    marginTop: 8, // Add some margin
   },
   buttonDisabled: {
     opacity: 0.5,
@@ -285,4 +291,4 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_600SemiBold',
     letterSpacing: 2,
   },
-});
+}); 

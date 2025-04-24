@@ -1,13 +1,17 @@
 import { View, Text, StyleSheet, TextInput, Pressable, ImageBackground, KeyboardAvoidingView, Platform } from 'react-native';
-import { useRouter } from 'expo-router';
+// import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { auth, firestore } from '@/lib/firebase';
 import { Lock, Mail } from 'lucide-react-native';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { AuthStackParamList } from '@/navigation/AuthNavigator'; // Import the specific stack param list
 
 export default function LoginScreen() {
-  const router = useRouter();
+  // const router = useRouter();
+  const navigation = useNavigation<NativeStackNavigationProp<AuthStackParamList>>();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -30,11 +34,14 @@ export default function LoginScreen() {
       const userDoc = await getDoc(doc(firestore, 'users', user.uid));
       const userData = userDoc.data();
       
-      if (userData?.isAdmin) {
-        router.replace('/(provider)');
-      } else {
-        router.replace('/(customer)');
-      }
+      // NOTE: No navigation needed here. AppNavigator handles redirection on auth state change.
+      // if (userData?.isAdmin) {
+        // // TODO: Replace with React Navigation
+        // // router.replace('/(provider)');
+      // } else {
+        // // TODO: Replace with React Navigation
+        // // router.replace('/(customer)');
+      // }
     } catch (err) {
       setError('Invalid email or password');
       console.error(err);
@@ -104,7 +111,7 @@ export default function LoginScreen() {
 
           <Pressable 
             style={styles.signupButton}
-            onPress={() => router.push('/signup')}
+            onPress={() => navigation.navigate('Signup')}
           >
             <Text style={styles.signupText}>Don't have an account? Sign Up</Text>
           </Pressable>
@@ -221,4 +228,4 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: 'Inter_500Medium',
   },
-});
+}); 

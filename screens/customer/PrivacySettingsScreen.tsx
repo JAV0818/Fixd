@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, Switch, TextInput } from 'react-native';
-import { useRouter } from 'expo-router';
+// import { useRouter } from 'expo-router';
 import { 
   ArrowLeft, 
   Shield, 
@@ -13,9 +13,15 @@ import {
   Mail,
   Share2 as Share
 } from 'lucide-react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '@/navigation/AppNavigator';
 
-export default function PrivacySecurityScreen() {
-  const router = useRouter();
+// Note: Renamed component slightly to avoid conflict if imported alongside ProfileScreen
+export default function PrivacySettingsScreen() { 
+  // const router = useRouter();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [showPassword, setShowPassword] = useState(false);
   const [settings, setSettings] = useState({
     locationTracking: true,
@@ -33,9 +39,12 @@ export default function PrivacySecurityScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.backButton}>
+        <Pressable 
+          onPress={() => navigation.goBack()}
+          style={styles.backButton}
+        >
           <ArrowLeft size={24} color="#00F0FF" />
         </Pressable>
         <Text style={styles.title}>PRIVACY & SECURITY</Text>
@@ -210,7 +219,7 @@ export default function PrivacySecurityScreen() {
           </Pressable>
         </View>
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -353,4 +362,4 @@ const styles = StyleSheet.create({
     color: '#FF3D71',
     letterSpacing: 2,
   },
-});
+}); 

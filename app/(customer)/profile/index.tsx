@@ -76,7 +76,7 @@ export default function ProfileScreen() {
           </Pressable>
           <Pressable 
             style={styles.menuItem} 
-            onPress={() => router.push('./privacy-settings')}
+            onPress={() => router.push('/profile/privacy-settings')}
           >
             <Shield size={20} color="#00F0FF" />
             <Text style={styles.menuText}>Privacy and Settings</Text>
