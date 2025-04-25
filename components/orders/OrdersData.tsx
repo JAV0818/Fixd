@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { OrderItem } from './OrderCard';
+import { OrderItem, OrderStatus } from './OrderCard';
 import ServiceOrderList from './ServiceOrderList';
+import { auth, firestore } from '@/lib/firebase';
+import { collection, query, where, getDocs, orderBy, Timestamp } from 'firebase/firestore';
 
 // Types for the component props
 interface OrdersDataProps {
@@ -19,62 +21,56 @@ const OrdersData: React.FC<OrdersDataProps> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
 
-  // Mock data - this would be fetched from an API in production
-  const createOrderItems = useCallback((): OrderItem[] => {
-    return [
-      {
-        id: '1',
-        service: 'Battery Jump Start',
-        date: '2023-05-15',
-        time: '14:30',
-        status: 'in-progress',
-        location: '123 Main St, Anytown',
-        estimatedArrival: '15 mins',
-      },
-      {
-        id: '2',
-        service: 'Tire Change',
-        date: '2023-05-10',
-        time: '09:45',
-        status: 'completed',
-        location: '456 Oak St, Somewhere',
-        provider: 'John Mechanic',
-      },
-      {
-        id: '3',
-        service: 'Fuel Delivery',
-        date: '2023-05-05',
-        time: '16:20',
-        status: 'completed',
-        location: '789 Pine St, Anywhere',
-        provider: 'Sarah Technician',
-      },
-    ];
-  }, []);
-
-  // Fetch order data
+  // Fetch order data from Firestore
   const fetchOrders = useCallback(async () => {
     setIsLoading(true);
     setError('');
-    
+    const user = auth.currentUser;
+
+    if (!user) {
+      setError('Please log in to view your orders.');
+      setIsLoading(false);
+      setOrders([]);
+      return;
+    }
+
     try {
-      // Simulate network request delay
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Query Firestore for orders belonging to the current user
+      // Assuming orders are stored in 'repairOrders' collection
+      const ordersRef = collection(firestore, 'repairOrders');
+      const q = query(
+        ordersRef, 
+        where('customerId', '==', user.uid),
+        orderBy('scheduledDateTime', 'desc') // Order by date descending
+      );
       
-      // Here you would typically fetch from an API:
-      // const response = await fetch('/api/orders');
-      // const data = await response.json();
-      // setOrders(data);
+      const querySnapshot = await getDocs(q);
       
-      // For now, we're using mock data
-      setOrders(createOrderItems());
+      const fetchedOrders: OrderItem[] = [];
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+        // Map Firestore data to OrderItem type
+        fetchedOrders.push({
+          id: doc.id,
+          serviceType: data.serviceType || 'Unknown Service',
+          scheduledDateTime: data.scheduledDateTime, // Keep as Timestamp for now
+          status: data.status || 'Pending', // Default status if missing
+          location: data.address, // Map address to location if needed
+          providerName: data.providerName,
+          // Add other fields as needed from your Firestore doc
+        });
+      });
+
+      setOrders(fetchedOrders);
+
     } catch (err) {
       console.error('Error fetching orders:', err);
       setError('Failed to load your orders. Please try again.');
+      setOrders([]); // Clear orders on error
     } finally {
       setIsLoading(false);
     }
-  }, [createOrderItems]);
+  }, []); // Dependency array is empty as it relies on currentUser from auth context
 
   // Initial data load
   useEffect(() => {
@@ -90,14 +86,14 @@ const OrdersData: React.FC<OrdersDataProps> = ({
     <ServiceOrderList
       title={title}
       showTitle={showTitle}
-      initialOrders={orders}
+      initialOrders={orders} // Pass fetched orders
       isLoading={isLoading}
       error={error}
       onRefresh={handleRefresh}
       emptyStateMessage="You don't have any orders yet. Book a service to get started!"
       loadingStateMessage="Loading your service orders..."
       errorStateMessage={error || "Something went wrong. Pull down to try again."}
-      limit={limit}
+      // limit={limit} // limit might not be relevant with grouping
     />
   );
 };

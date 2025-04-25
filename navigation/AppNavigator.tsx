@@ -26,6 +26,7 @@ import CheckoutScreen from '@/screens/customer/CheckoutScreen'; // Import the ch
 import OrderDetailScreen from '@/screens/customer/OrderDetailScreen'; // Import the order detail screen
 import MechanicChatScreen from '@/screens/customer/MechanicChatScreen'; // Import the mechanic chat screen
 import PastChatsScreen from '@/screens/customer/PastChatsScreen'; // Import the past chats screen
+import AddVehicleScreen from '@/screens/customer/AddVehicleScreen'; // Import AddVehicleScreen
 
 // Combine all param lists for the root navigator
 // Use NavigatorScreenParams to type nested navigator params
@@ -46,6 +47,7 @@ export type RootStackParamList = {
   OrderDetail: { orderId: string }; // Add order detail screen
   MechanicChat: { orderId: string; mechanicName?: string }; // Add chat screen
   PastChats: undefined; // Add past chats screen
+  AddVehicle: undefined; // Add the new vehicle screen
   // Provider screens
   RequestDetail: { requestId: string };
   RequestStart: { requestId: string };
@@ -63,19 +65,27 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 function useAuthNavigation() {
   const [user, setUser] = useState<User | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true); // Start loading
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      setUser(currentUser);
+      setUser(currentUser); 
       if (currentUser) {
-        // Check user role
-        const userDoc = await getDoc(doc(firestore, 'users', currentUser.uid));
-        setIsAdmin(userDoc.data()?.isAdmin || false);
+        try {
+          // Keep loading until role is fetched
+          const userDoc = await getDoc(doc(firestore, 'users', currentUser.uid));
+          setIsAdmin(userDoc.data()?.isAdmin || false);
+        } catch (error) {
+          console.error("Error fetching user role:", error);
+          setIsAdmin(false); // Default to non-admin on error
+        } finally {
+          setLoading(false); // Stop loading ONLY after role check
+        }
       } else {
+        // No user, clear admin state and stop loading
         setIsAdmin(false);
+        setLoading(false); 
       }
-      setLoading(false);
     });
 
     return () => unsubscribe(); // Cleanup on unmount
@@ -122,6 +132,7 @@ export default function AppNavigator() {
             <Stack.Screen name="OrderDetail" component={OrderDetailScreen} />
             <Stack.Screen name="MechanicChat" component={MechanicChatScreen} />
             <Stack.Screen name="PastChats" component={PastChatsScreen} />
+            <Stack.Screen name="AddVehicle" component={AddVehicleScreen} />
           </>
         )
       ) : (

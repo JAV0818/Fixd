@@ -29,9 +29,6 @@ export const logout = async () => {
   try {
     await signOut(auth);
     // Force clear any cached navigation state
-    if (typeof window !== 'undefined') {
-      window.location.href = '/';
-    }
     return true;
   } catch (error) {
     console.error('Error signing out:', error);

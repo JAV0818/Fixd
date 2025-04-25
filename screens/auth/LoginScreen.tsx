@@ -44,7 +44,6 @@ export default function LoginScreen() {
       // }
     } catch (err) {
       setError('Invalid email or password');
-      console.error(err);
     } finally {
       setLoading(false);
     }

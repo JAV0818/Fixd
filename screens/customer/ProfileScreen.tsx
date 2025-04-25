@@ -1,32 +1,55 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, Image } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, Pressable, Image, ActivityIndicator, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Camera, Car, PenTool as Tool, Clock, Shield, Settings, ChevronRight, LogOut } from 'lucide-react-native';
-import * as ImagePicker from 'expo-image-picker';
+import { Car, PenTool as Tool, Clock, Shield, Settings, ChevronRight, LogOut, User } from 'lucide-react-native';
 import { logout } from '@/lib/auth';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '@/navigation/AppNavigator';
 import { LinearGradient } from 'expo-linear-gradient';
+import { auth, firestore } from '@/lib/firebase'; // Import Firebase
+import { doc, getDoc, Timestamp } from 'firebase/firestore'; // Import Firestore functions
+
+// Interface for Customer Profile Data
+interface CustomerProfile {
+  firstName?: string;
+  lastName?: string;
+  createdAt?: Timestamp; // Use Firestore Timestamp
+  ordersPlaced?: number;
+  // averageRating?: number; // Decide if needed
+}
 
 export default function ProfileScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const [hasCustomImage, setHasCustomImage] = useState(false);
-  const [profileImage, setProfileImage] = useState('');
+  const [profileData, setProfileData] = useState<CustomerProfile>({});
+  const [loadingProfile, setLoadingProfile] = useState(true);
 
-  const handleImagePick = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 1,
-    });
+  // Fetch profile data
+  useEffect(() => {
+    const fetchProfileData = async () => {
+      setLoadingProfile(true);
+      const user = auth.currentUser;
+      if (user) {
+        const userDocRef = doc(firestore, 'users', user.uid);
+        try {
+          const userDoc = await getDoc(userDocRef);
+          if (userDoc.exists()) {
+            const data = userDoc.data() as CustomerProfile;
+            setProfileData(data);
+          } else {
+            console.error("No such user document!");
+            setProfileData({}); // Reset data on error
+          }
+        } catch (error) {
+          console.error("Error fetching user data:", error);
+          setProfileData({});
+        }
+      }
+      setLoadingProfile(false);
+    };
 
-    if (!result.canceled && result.assets[0]) {
-      setProfileImage(result.assets[0].uri);
-      setHasCustomImage(true);
-    }
-  };
+    fetchProfileData();
+  }, []);
 
   const handleLogout = async () => {
     try {
@@ -36,30 +59,44 @@ export default function ProfileScreen() {
     }
   };
 
-  // Profile data (would come from API/database in a real app)
-  const customerInfo = {
-    name: 'JULIAN VAZQUEZ',
-    initials: 'JV',
-    memberSinceMonth: 'JUN',
-    memberSinceYear: '2021',
-    orders: 156,
-    rating: 4.9
-  };
+  // Format display data
+  const firstName = profileData.firstName || '';
+  const lastName = profileData.lastName || '';
+  const displayName = `${firstName} ${lastName}`.trim() || 'CUSTOMER NAME';
+  const initials = `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
+  const orders = profileData.ordersPlaced || 0;
+  // const rating = profileData.averageRating?.toFixed(1) || 'N/A'; // Decide on rating display
+  const memberSinceDate = profileData.createdAt?.toDate();
+  const memberSinceMonth = memberSinceDate?.toLocaleDateString('en-US', { month: 'short' }).toUpperCase() || 'N/A';
+  const memberSinceYear = memberSinceDate?.getFullYear().toString() || '';
 
   const renderProfileAvatar = () => {
-    if (hasCustomImage && profileImage) {
-      return <Image source={{ uri: profileImage }} style={styles.profileImage} />;
+    // Simplified: Only show initials or fallback
+    if (initials) {
+      return (
+        <LinearGradient
+          colors={['#00C2FF', '#0080FF']}
+          style={styles.profileImage}
+        >
+          <Text style={styles.profileInitials}>{initials}</Text>
+        </LinearGradient>
+      );
     }
-    
+    // Fallback if no initials
     return (
-      <LinearGradient
-        colors={['#00C2FF', '#0080FF']}
-        style={styles.profileImage}
-      >
-        <Text style={styles.profileInitials}>{customerInfo.initials}</Text>
-      </LinearGradient>
+      <View style={[styles.profileImage, styles.placeholderAvatar]}>
+        <User size={60} color="#7A89FF" /> 
+      </View>
     );
   };
+
+  if (loadingProfile) {
+    return (
+      <SafeAreaView style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#00F0FF" />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -70,26 +107,23 @@ export default function ProfileScreen() {
         <View style={styles.header}>
           <View style={styles.profileImageContainer}>
             {renderProfileAvatar()}
-            <Pressable style={styles.editImageButton} onPress={handleImagePick}>
-              <Camera size={20} color="#00F0FF" />
-            </Pressable>
           </View>
-          <Text style={styles.name}>{customerInfo.name}</Text>
+          <Text style={styles.name}>{displayName.toUpperCase()}</Text>
           <Text style={styles.membershipLevel}>FIXD CUSTOMER</Text>
           <View style={styles.statsContainer}>
             <View style={styles.statItem}>
-              <Text style={styles.statValue}>{customerInfo.orders}</Text>
+              <Text style={styles.statValue}>{orders}</Text>
               <Text style={styles.statLabel}>ORDERS</Text>
             </View>
             <View style={styles.statDivider} />
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>{customerInfo.rating}</Text>
-              <Text style={styles.statLabel}>RATING</Text>
+            {/* <View style={styles.statItem}>
+              <Text style={styles.statValue}>{rating}</Text>
+              <Text style={styles.statLabel}>RATING</Text> 
             </View>
-            <View style={styles.statDivider} />
+            <View style={styles.statDivider} /> */}
             <View style={styles.statItem}>
-              <Text style={styles.statValue}>{customerInfo.memberSinceMonth}</Text>
-              <Text style={styles.memberYear}>{customerInfo.memberSinceYear}</Text>
+              <Text style={styles.statValue}>{memberSinceMonth}</Text>
+              <Text style={styles.memberYear}>{memberSinceYear}</Text>
               <Text style={styles.statLabel}>CUSTOMER SINCE</Text>
             </View>
           </View>
@@ -155,16 +189,6 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_700Bold',
     color: '#FFFFFF',
     letterSpacing: 2,
-  },
-  editImageButton: {
-    position: 'absolute',
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0, 240, 255, 0.2)',
-    padding: 8,
-    borderRadius: 20,
-    borderWidth: 2,
-    borderColor: '#00F0FF',
   },
   name: {
     fontSize: 24,
@@ -257,5 +281,15 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_600SemiBold',
     color: '#FF3D71',
     letterSpacing: 2,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#0A0F1E',
+  },
+  placeholderAvatar: {
+     backgroundColor: 'rgba(122, 137, 255, 0.1)', // Use a placeholder background
+     borderColor: '#7A89FF',
   },
 }); 

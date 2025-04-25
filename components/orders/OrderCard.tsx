@@ -1,24 +1,31 @@
 import React from 'react';
 import { View, Text, StyleSheet, Pressable, Animated, Easing } from 'react-native';
-import { MapPin, Clock, Check, ChevronRight, MessageCircle } from 'lucide-react-native';
+import { MapPin, Clock, Check, ChevronRight, MessageCircle, AlertCircle } from 'lucide-react-native';
 import ProgressBar from '@/components/ui/ProgressBar';
 
-// Define the type for order items
+// Define the type for order items - align with Firestore data
+export type OrderStatus = 'Pending' | 'Scheduled' | 'Waiting' | 'In Progress' | 'Completed' | 'Cancelled';
+
 export type OrderItem = {
-  id: string;
-  service: string;
-  date: string;
-  time: string;
-  status: 'in-progress' | 'completed';
-  location: string;
-  estimatedArrival?: string;
-  provider?: string;
+  id: string; // Document ID from Firestore
+  serviceType: string;
+  scheduledDateTime: any; // Firestore Timestamp (or convert to Date)
+  status: OrderStatus;
+  location?: string; // May not always be present
+  // Provider details (might be null if pending/cancelled)
+  providerName?: string;
+  providerAvatar?: string; // URL
+  // Customer details (usually fetched separately or passed if needed)
+  customerName?: string; 
+  // Other potential fields
+  estimatedArrival?: string; // Keep if used for UI
+  notes?: string;
 };
 
 interface OrderCardProps {
   order: OrderItem;
   onViewDetails: (orderId: string) => void;
-  onChatPress: (orderId: string) => void;
+  onChatPress: (orderId: string, providerName?: string) => void; // Pass provider name for chat
 }
 
 // Glowing border component
@@ -68,8 +75,35 @@ const GlowingBorder = () => {
 };
 
 const OrderCard: React.FC<OrderCardProps> = ({ order, onViewDetails, onChatPress }) => {
-  const isActive = order.status === 'in-progress';
-  
+  const isActive = order.status === 'In Progress';
+  const isPending = order.status === 'Pending' || order.status === 'Scheduled' || order.status === 'Waiting';
+  const isCompleted = order.status === 'Completed';
+  const isCancelled = order.status === 'Cancelled';
+
+  // Format Date/Time from Timestamp
+  const scheduledDate = order.scheduledDateTime?.toDate();
+  const formattedDate = scheduledDate?.toLocaleDateString() || 'N/A';
+  const formattedTime = scheduledDate?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) || 'N/A';
+
+  // Determine status badge style and text
+  const getStatusStyle = () => {
+    switch (order.status) {
+      case 'In Progress':
+        return { badge: styles.activeStatusBadge, text: styles.activeStatusText, label: 'In Progress' };
+      case 'Pending':
+      case 'Scheduled':
+      case 'Waiting':
+        return { badge: styles.pendingStatusBadge, text: styles.pendingStatusText, label: order.status };
+      case 'Completed':
+        return { badge: styles.completedStatusBadge, text: styles.completedStatusText, label: 'Completed' };
+      case 'Cancelled':
+        return { badge: styles.cancelledStatusBadge, text: styles.cancelledStatusText, label: 'Cancelled' };
+      default:
+        return { badge: {}, text: {}, label: order.status };
+    }
+  };
+  const statusStyle = getStatusStyle();
+
   // Calculate progress based on estimated arrival time
   const getEstimatedProgress = (estimatedArrival: string) => {
     // Parse the estimated time (e.g., "15 mins" -> 15)
@@ -85,23 +119,27 @@ const OrderCard: React.FC<OrderCardProps> = ({ order, onViewDetails, onChatPress
     return 1 - (remainingTime / MAX_WAIT_TIME);
   };
 
+  // Determine chat button availability and text
+  const canChat = isActive || isCompleted; // Allow chat for active and completed
+  const chatButtonText = isActive ? 'Chat With Mechanic' : (isCompleted ? 'View Chat' : 'Chat');
+
   return (
     <View style={styles.cardContainer}>
       {isActive && <GlowingBorder />}
       <Pressable 
         style={[
           styles.orderCard,
-          isActive && styles.activeOrderCard
+          isActive && styles.activeOrderCard,
+          isCancelled && styles.cancelledOrderCard
         ]}
+        // Optionally disable press based on status
+        // disabled={isCancelled}
       >
         <View style={styles.orderHeader}>
-          <Text style={styles.orderService}>{order.service}</Text>
-          <View style={[
-            styles.statusBadge,
-            isActive ? styles.activeStatusBadge : styles.completedStatusBadge
-          ]}>
-            <Text style={styles.statusText}>
-              {isActive ? 'In Progress' : 'Completed'}
+          <Text style={styles.orderService}>{order.serviceType}</Text>
+          <View style={[styles.statusBadge, statusStyle.badge]}>
+            <Text style={[styles.statusText, statusStyle.text]}>
+              {statusStyle.label.toUpperCase()}
             </Text>
           </View>
         </View>
@@ -109,18 +147,21 @@ const OrderCard: React.FC<OrderCardProps> = ({ order, onViewDetails, onChatPress
         <View style={styles.orderDetail}>
           <Clock size={16} color="#7A89FF" />
           <Text style={styles.orderDetailText}>
-            {order.date} • {order.time}
+            {formattedDate} • {formattedTime}
           </Text>
         </View>
 
-        <View style={styles.orderDetail}>
-          <MapPin size={16} color="#7A89FF" />
-          <Text style={styles.orderDetailText}>
-            {order.location}
-          </Text>
-        </View>
+        {order.location && (
+          <View style={styles.orderDetail}>
+            <MapPin size={16} color="#7A89FF" />
+            <Text style={styles.orderDetailText}>
+              {order.location}
+            </Text>
+          </View>
+        )}
 
-        {isActive ? (
+        {/* Show different content based on status */} 
+        {isActive && order.estimatedArrival && (
           <View style={styles.estimatedArrival}>
             <Text style={styles.arrivalLabel}>Estimated arrival:</Text>
             <Text style={styles.arrivalTime}>{order.estimatedArrival}</Text>
@@ -133,13 +174,29 @@ const OrderCard: React.FC<OrderCardProps> = ({ order, onViewDetails, onChatPress
               containerStyle={styles.progressBarContainer}
             />
           </View>
-        ) : (
-          <View style={styles.providerInfo}>
-            <Text style={styles.providerLabel}>Serviced by:</Text>
-            <Text style={styles.providerName}>{order.provider}</Text>
-          </View>
         )}
 
+        {(isCompleted || isActive) && order.providerName && (
+           <View style={styles.providerInfo}>
+             <Text style={styles.providerLabel}>Serviced by:</Text>
+             <Text style={styles.providerName}>{order.providerName}</Text>
+           </View>
+        )}
+
+        {isPending && (
+          <View style={styles.pendingInfo}>
+             <AlertCircle size={14} color="#FFB800" />
+             <Text style={styles.pendingText}>Waiting for provider assignment / scheduling</Text>
+           </View>
+        )}
+
+        {isCancelled && (
+           <View style={styles.cancelledInfo}>
+             <Text style={styles.cancelledText}>This order was cancelled.</Text>
+           </View>
+        )}
+
+        {/* Buttons Section */} 
         <View style={styles.buttonContainer}>
           <Pressable 
             style={styles.viewDetailsButton}
@@ -149,15 +206,18 @@ const OrderCard: React.FC<OrderCardProps> = ({ order, onViewDetails, onChatPress
             <ChevronRight size={18} color="#00F0FF" />
           </Pressable>
           
-          <Pressable 
-            style={styles.chatButton}
-            onPress={() => onChatPress(order.id)}
-          >
-            <MessageCircle size={18} color="#00F0FF" />
-            <Text style={styles.chatButtonText}>
-              {isActive ? 'Chat With Mechanic' : 'Chat'}
-            </Text>
-          </Pressable>
+          {/* Only show chat if applicable */} 
+          {canChat && (
+            <Pressable 
+              style={styles.chatButton}
+              onPress={() => onChatPress(order.id, order.providerName)}
+            >
+              <MessageCircle size={18} color="#00F0FF" />
+              <Text style={styles.chatButtonText}>
+                {chatButtonText}
+              </Text>
+            </Pressable>
+          )}
         </View>
       </Pressable>
     </View>
@@ -185,16 +245,22 @@ const styles = StyleSheet.create({
     zIndex: 0,
   },
   orderCard: {
-    backgroundColor: 'rgba(10, 15, 30, 0.8)',
+    backgroundColor: 'rgba(26, 33, 56, 1)', // Updated background
     borderRadius: 12,
     padding: 16,
     borderWidth: 1,
     borderColor: '#2A3555',
     zIndex: 1,
+    overflow: 'hidden', // Ensure glow doesn't overlap content badly
   },
   activeOrderCard: {
     borderColor: '#00F0FF',
-    borderWidth: 2,
+    borderWidth: 1, // Keep subtle border even when active
+  },
+  cancelledOrderCard: {
+     borderColor: '#4B5563', // Grey border for cancelled
+     backgroundColor: 'rgba(42, 53, 85, 0.6)', // Dimmed background
+     opacity: 0.7,
   },
   orderHeader: {
     flexDirection: 'row',
@@ -212,17 +278,19 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 20,
   },
-  activeStatusBadge: {
-    backgroundColor: 'rgba(122, 137, 255, 0.2)',
-  },
-  completedStatusBadge: {
-    backgroundColor: 'rgba(56, 229, 77, 0.2)',
-  },
+  activeStatusBadge: { backgroundColor: 'rgba(0, 240, 255, 0.2)' }, // Cyan
+  pendingStatusBadge: { backgroundColor: 'rgba(255, 184, 0, 0.2)' }, // Yellow/Orange
+  completedStatusBadge: { backgroundColor: 'rgba(56, 229, 77, 0.2)' }, // Green
+  cancelledStatusBadge: { backgroundColor: 'rgba(107, 114, 128, 0.2)' }, // Grey
   statusText: {
-    color: '#00F0FF',
-    fontSize: 12,
-    fontFamily: 'Inter_500Medium',
+    fontSize: 10, // Smaller status text
+    fontFamily: 'Inter_600SemiBold',
+    letterSpacing: 0.5,
   },
+  activeStatusText: { color: '#00F0FF' },
+  pendingStatusText: { color: '#FFB800' },
+  completedStatusText: { color: '#38E54D' },
+  cancelledStatusText: { color: '#9CA3AF' },
   orderDetail: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -256,20 +324,9 @@ const styles = StyleSheet.create({
     marginTop: 5,
     marginBottom: 0,
   },
-  providerInfo: {
-    marginVertical: 12,
-  },
-  providerLabel: {
-    color: '#7A89FF',
-    fontSize: 14,
-    fontFamily: 'Inter_400Regular',
-    marginBottom: 4,
-  },
-  providerName: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontFamily: 'Inter_500Medium',
-  },
+  providerInfo: { marginVertical: 12, },
+  providerLabel: { color: '#7A89FF', fontSize: 12, marginBottom: 2 },
+  providerName: { color: '#FFFFFF', fontSize: 14, fontFamily: 'Inter_500Medium' },
   buttonContainer: {
     gap: 10,
     marginTop: 8,
@@ -306,6 +363,22 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_500Medium',
     marginLeft: 8,
   },
+  pendingInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 184, 0, 0.1)',
+    padding: 10,
+    borderRadius: 8,
+    marginVertical: 12,
+  },
+  pendingText: {
+    color: '#FFB800',
+    fontSize: 13,
+    marginLeft: 8,
+    fontFamily: 'Inter_400Regular',
+  },
+  cancelledInfo: { marginVertical: 12, },
+  cancelledText: { color: '#9CA3AF', fontSize: 13, fontStyle: 'italic' },
 });
 
 export default OrderCard; 

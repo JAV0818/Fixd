@@ -2,7 +2,7 @@ import { View, Text, StyleSheet, TextInput, Pressable, ImageBackground, Keyboard
 // import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, firestore } from '@/lib/firebase';
 import { ArrowLeft, Mail, Lock, User, Phone } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
@@ -50,14 +50,14 @@ export default function SignupScreen() {
         formData.password
       );
 
-      // Create user profile in Firestore with isAdmin field
+      // Create user profile in Firestore with isAdmin field and server timestamp
       await setDoc(doc(firestore, 'users', userCredential.user.uid), {
         firstName: formData.firstName,
         lastName: formData.lastName,
         email: formData.email,
         phone: formData.phone,
         isAdmin: false, // Default to customer
-        createdAt: new Date().toISOString(),
+        createdAt: serverTimestamp(), // Use server timestamp
       });
 
       // Redirect to customer dashboard

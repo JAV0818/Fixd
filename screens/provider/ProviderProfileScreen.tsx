@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, Image, TextInput } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, Pressable, Image, TextInput, ActivityIndicator, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Camera, PenTool as Tool, Clock, Settings, ChevronRight, LogOut, Star, CheckCircle, Users, DollarSign, Activity, Info } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
@@ -9,6 +9,21 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { ProviderStackParamList } from '@/navigation/ProviderNavigator';
 import { RootStackParamList } from '@/navigation/AppNavigator';
 import { NavigationProp } from '@react-navigation/native';
+import { auth, firestore, storage } from '@/lib/firebase'; // Import auth, firestore, and storage
+import { doc, updateDoc, getDoc } from 'firebase/firestore'; // Import firestore functions
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'; // Import storage functions
+
+// Define an interface for the user profile data
+interface ProviderProfile {
+  firstName?: string;
+  lastName?: string;
+  level?: number;
+  rating?: number;
+  jobsCompleted?: number;
+  yearsExperience?: number;
+  bio?: string;
+  profileImageUrl?: string;
+}
 
 // Performance metrics data
 const performanceMetrics = [
@@ -45,20 +60,118 @@ const performanceMetrics = [
 export default function ProviderProfileScreen() {
   const stackNavigation = useNavigation<NativeStackNavigationProp<ProviderStackParamList>>();
   const rootNavigation = useNavigation<NavigationProp<RootStackParamList>>();
-  const [profileImage, setProfileImage] = useState('https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=800&auto=format&fit=crop&q=60');
-  const [bio, setBio] = useState('Dedicated Quantum Mechanic with 15 years of experience specializing in temporal distortion alignment and neural network calibration.');
+  const [profileData, setProfileData] = useState<ProviderProfile>({});
+  const [profileImage, setProfileImage] = useState<string | null>(null);
+  const [bio, setBio] = useState('');
+  const [originalBio, setOriginalBio] = useState('');
   const [isEditingBio, setIsEditingBio] = useState(false);
+  const [isEditingYears, setIsEditingYears] = useState(false);
+  const [yearsInput, setYearsInput] = useState('');
+  const [loadingProfile, setLoadingProfile] = useState(true);
+  const [savingBio, setSavingBio] = useState(false);
+  const [savingYears, setSavingYears] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
+
+  // Fetch profile data on component mount
+  useEffect(() => {
+    const fetchProfileData = async () => {
+      setLoadingProfile(true);
+      const user = auth.currentUser;
+      if (user) {
+        const userDocRef = doc(firestore, 'users', user.uid);
+        try {
+          const userDoc = await getDoc(userDocRef);
+          if (userDoc.exists()) {
+            const data = userDoc.data() as ProviderProfile;
+            setProfileData(data);
+            setBio(data.bio || 'No bio set yet.');
+            setOriginalBio(data.bio || 'No bio set yet.');
+            setProfileImage(data.profileImageUrl || 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=800&auto=format&fit=crop&q=60'); // Default image
+            setYearsInput((data.yearsExperience || 0).toString()); // Initialize yearsInput
+          } else {
+            console.error("No such user document!");
+            setBio('Could not load profile.');
+            setOriginalBio('Could not load profile.');
+            setProfileImage('https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=800&auto=format&fit=crop&q=60'); // Default image
+            setYearsInput('0');
+          }
+        } catch (error) {
+          console.error("Error fetching user data:", error);
+          setBio('Error loading profile.');
+          setOriginalBio('Error loading profile.');
+          setProfileImage('https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=800&auto=format&fit=crop&q=60'); // Default image
+          setYearsInput('0');
+        }
+      }
+      setLoadingProfile(false);
+    };
+
+    fetchProfileData();
+  }, []);
 
   const handleImagePick = async () => {
+    setUploadingImage(true);
+    // Ask for permission (might be needed on standalone builds)
+    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (permissionResult.granted === false) {
+      Alert.alert("Permission Denied", "Permission to access camera roll is required!");
+      setUploadingImage(false);
+      return;
+    }
+
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       aspect: [1, 1],
-      quality: 1,
+      quality: 0.7, // Lower quality slightly for faster uploads
     });
 
-    if (!result.canceled && result.assets[0]) {
-      setProfileImage(result.assets[0].uri);
+    if (result.canceled) {
+      setUploadingImage(false);
+      return;
+    }
+
+    const imageUri = result.assets[0].uri;
+    setProfileImage(imageUri); // Show local image immediately
+
+    const user = auth.currentUser;
+    if (!user) {
+      Alert.alert("Error", "You must be logged in to upload images.");
+      setUploadingImage(false);
+      return;
+    }
+
+    try {
+      // Convert URI to Blob
+      const response = await fetch(imageUri);
+      const blob = await response.blob();
+
+      // Create a storage reference
+      const storageRef = ref(storage, `profileImages/${user.uid}.jpg`);
+
+      // Upload the file
+      await uploadBytes(storageRef, blob);
+
+      // Get the download URL
+      const downloadURL = await getDownloadURL(storageRef);
+
+      // Update Firestore
+      const userDocRef = doc(firestore, 'users', user.uid);
+      await updateDoc(userDocRef, {
+        profileImageUrl: downloadURL
+      });
+
+      // Update state with the final URL (optional, as fetchProfileData might re-run)
+      setProfileImage(downloadURL); 
+      Alert.alert("Success", "Profile image updated.");
+
+    } catch (error) {
+      console.error("Error uploading image: ", error);
+      Alert.alert("Upload Error", "Failed to upload profile image.");
+      // Optionally revert local state if upload fails
+      // setProfileImage(profileData.profileImageUrl || 'DEFAULT_URL');
+    } finally {
+      setUploadingImage(false);
     }
   };
 
@@ -71,14 +184,95 @@ export default function ProviderProfileScreen() {
     }
   };
 
-  const handleSaveBio = () => {
-    // TODO: Add API call to save bio
-    setIsEditingBio(false);
-  }
+  const handleSaveBio = async () => {
+    if (bio === originalBio) {
+      setIsEditingBio(false); // No changes, just close edit mode
+      return;
+    }
+
+    setSavingBio(true);
+    const user = auth.currentUser;
+    if (!user) {
+      Alert.alert("Error", "You must be logged in to save changes.");
+      setSavingBio(false);
+      return;
+    }
+
+    const userDocRef = doc(firestore, 'users', user.uid);
+
+    try {
+      await updateDoc(userDocRef, {
+        bio: bio // Update the bio field
+      });
+      setOriginalBio(bio); // Update original bio after successful save
+      setIsEditingBio(false);
+      Alert.alert("Success", "Bio updated successfully.");
+    } catch (error) {
+      console.error("Error updating bio:", error);
+      Alert.alert("Error", "Could not update bio. Please try again.");
+    } finally {
+      setSavingBio(false);
+    }
+  };
+
+  const handleSaveYears = async () => {
+    const currentYears = (profileData.yearsExperience || 0).toString();
+    if (yearsInput === currentYears) {
+      setIsEditingYears(false);
+      return;
+    }
+    
+    const yearsValue = parseInt(yearsInput, 10);
+    if (isNaN(yearsValue) || yearsValue < 0) {
+      Alert.alert("Invalid Input", "Please enter a valid number for years of experience.");
+      return;
+    }
+
+    setSavingYears(true);
+    const user = auth.currentUser;
+    if (!user) {
+      Alert.alert("Error", "You must be logged in to save changes.");
+      setSavingYears(false);
+      return;
+    }
+
+    const userDocRef = doc(firestore, 'users', user.uid);
+
+    try {
+      await updateDoc(userDocRef, {
+        yearsExperience: yearsValue
+      });
+      setProfileData(prevData => ({ ...prevData, yearsExperience: yearsValue })); // Update local state
+      setIsEditingYears(false);
+      Alert.alert("Success", "Years of experience updated.");
+    } catch (error) {
+      console.error("Error updating years:", error);
+      Alert.alert("Error", "Could not update years of experience.");
+    } finally {
+      setSavingYears(false);
+    }
+  };
 
   const handleMetricsDetailsPress = () => {
     rootNavigation.navigate('PerformanceDetails');
   };
+
+  // Show loading indicator while fetching profile
+  if (loadingProfile) {
+    return (
+      <SafeAreaView style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#00F0FF" />
+      </SafeAreaView>
+    );
+  }
+
+  // Format display name
+  const displayName = `${profileData.firstName || ''} ${profileData.lastName || ''}`.trim() || 'PROVIDER NAME';
+  const level = profileData.level || 'X';
+  const rating = profileData.rating?.toFixed(1) || 'N/A';
+  const jobs = profileData.jobsCompleted || 0;
+  const ratingValue = profileData.rating || 0;
+  const displayYears = profileData.yearsExperience || 0;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -89,28 +283,37 @@ export default function ProviderProfileScreen() {
       >
         <View style={styles.header}>
           <View style={styles.profileImageContainer}>
-            <Image source={{ uri: profileImage }} style={styles.profileImage} />
-            <Pressable style={styles.editImageButton} onPress={handleImagePick}>
+            {uploadingImage && (
+              <View style={styles.imageOverlay}>
+                <ActivityIndicator size="large" color="#FFFFFF" />
+              </View>
+            )}
+            {profileImage && <Image source={{ uri: profileImage }} style={styles.profileImage} />}
+            <Pressable 
+              style={[styles.editImageButton, uploadingImage && styles.buttonDisabled]}
+              onPress={handleImagePick}
+              disabled={uploadingImage}
+            >
               <Camera size={20} color="#00F0FF" />
             </Pressable>
           </View>
-          <Text style={styles.name}>AAREN JOHNSON</Text>
-          <Text style={styles.membershipLevel}>QUANTUM TECHNICIAN - LEVEL 5</Text>
+          <Text style={styles.name}>{displayName.toUpperCase()}</Text>
+          <Text style={styles.membershipLevel}>{`QUANTUM TECHNICIAN - LEVEL ${level}`}</Text>
           <View style={styles.statsContainer}>
             <View style={styles.statItem}>
-              <Text style={styles.statValue}>156</Text>
+              <Text style={styles.statValue}>{jobs}</Text>
               <Text style={styles.statLabel}>JOBS</Text>
             </View>
             <View style={styles.statDivider} />
             <View style={styles.statItem}>
-              <Text style={styles.statValue}>4.9</Text>
+              <Text style={styles.statValue}>{rating}</Text>
               <View style={styles.ratingContainer}>
                 <View style={styles.starsContainer}>
                   {[1, 2, 3, 4, 5].map((star) => (
                     <Star
                       key={star}
                       size={16}
-                      fill={star <= Math.floor(4.9) || (star === Math.ceil(4.9) && (4.9 % 1) >= 0.5) ? "#FFB800" : "none"}
+                      fill={star <= Math.floor(ratingValue) || (star === Math.ceil(ratingValue) && (ratingValue % 1) >= 0.5) ? "#FFB800" : "none"}
                       color="#FFB800"
                       style={{ marginRight: 2 }}
                     />
@@ -119,10 +322,46 @@ export default function ProviderProfileScreen() {
               </View>
             </View>
             <View style={styles.statDivider} />
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>15</Text>
-              <Text style={styles.statLabel}>YEARS</Text>
-            </View>
+            <Pressable 
+              style={styles.statItem}
+              onPress={() => { 
+                  if (!isEditingYears) {
+                    setYearsInput((profileData.yearsExperience || 0).toString()); // Reset input on edit start
+                    setIsEditingYears(true); 
+                  }
+              }}
+              disabled={isEditingYears || savingYears}
+            >
+              {isEditingYears ? (
+                <View style={styles.editStatContainer}>
+                  <TextInput
+                    style={styles.statInput}
+                    value={yearsInput}
+                    onChangeText={setYearsInput}
+                    keyboardType="numeric"
+                    autoFocus
+                    maxLength={2} // Limit years input
+                    editable={!savingYears}
+                  />
+                  <Pressable 
+                    style={[styles.saveStatButton, savingYears && styles.buttonDisabled]}
+                    onPress={handleSaveYears}
+                    disabled={savingYears}
+                  >
+                    {savingYears ? (
+                      <ActivityIndicator size="small" color="#00F0FF"/>
+                    ) : (
+                      <CheckCircle size={18} color="#00F0FF" />
+                    )}
+                  </Pressable>
+                </View>
+              ) : (
+                <>
+                  <Text style={styles.statValue}>{displayYears}</Text>
+                  <Text style={styles.statLabel}>YEARS</Text>
+                </>
+              )}
+            </Pressable>
           </View>
         </View>
 
@@ -136,14 +375,23 @@ export default function ProviderProfileScreen() {
                 onChangeText={setBio}
                 multiline
                 autoFocus
+                editable={!savingBio} // Disable input while saving
               />
-              <Pressable style={styles.saveBioButton} onPress={handleSaveBio}>
-                <CheckCircle size={16} color="#0A0F1E" />
+              <Pressable 
+                style={[styles.saveBioButton, savingBio && styles.buttonDisabled]} 
+                onPress={handleSaveBio} 
+                disabled={savingBio}
+              >
+                {savingBio ? (
+                  <ActivityIndicator size="small" color="#0A0F1E" />
+                ) : (
+                  <CheckCircle size={16} color="#0A0F1E" />
+                )}
                 <Text style={styles.saveBioButtonText}>SAVE BIO</Text>
               </Pressable>
             </View>
           ) : (
-            <Pressable onPress={() => setIsEditingBio(true)}>
+            <Pressable onPress={() => setIsEditingBio(true)} disabled={savingBio}>
               <Text style={styles.bioText}>{bio}</Text>
               <Text style={styles.editBioPrompt}>Tap to edit</Text>
             </Pressable>
@@ -486,5 +734,42 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_600SemiBold',
     color: '#FF3D71',
     letterSpacing: 2,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#0A0F1E',
+  },
+  buttonDisabled: {
+    opacity: 0.5,
+  },
+  imageOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 60, // Match image border radius
+    zIndex: 1, // Ensure overlay is on top
+  },
+  editStatContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%', // Ensure it takes full width within the stat item
+  },
+  statInput: {
+    fontSize: 24,
+    fontFamily: 'Inter_700Bold',
+    color: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#00F0FF',
+    paddingBottom: 0,
+    marginRight: 8,
+    minWidth: 30, // Give some base width
+    textAlign: 'center',
+  },
+  saveStatButton: {
+    padding: 4, 
   },
 }); 

@@ -1,6 +1,6 @@
-import { View, Text, ScrollView, StyleSheet, Image, Pressable, TextInput } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Image, Pressable, TextInput, FlatList, ActivityIndicator } from 'react-native';
 import { Search, Bell, Star, Wrench, Clock, MapPin, Zap, Car, Navigation, ShoppingCart, PlusCircle } from 'lucide-react-native';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import NotificationPanel from '../../components/NotificationPanel';
 // import { useRouter } from 'expo-router';
 import { useNavigation } from '@react-navigation/native';
@@ -8,10 +8,17 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '@/navigation/AppNavigator'; // We need Root here to navigate outside tabs
 import { useSafeAreaInsets } from 'react-native-safe-area-context'; // Import the hook
 import { useCart } from '@/contexts/CartContext'; // Import cart context
-import EmergencyServicesList from '@/components/services/EmergencyServicesList';
-import ServiceCategoryList from '@/components/services/ServiceCategoryList';
-import { EmergencyServiceProps } from '@/components/services/EmergencyServiceCard';
-import { ServiceCategoryProps } from '@/components/services/ServiceCategoryList';
+// Import the individual card components
+import EmergencyServiceCard, { EmergencyServiceProps } from '@/components/services/EmergencyServiceCard';
+import ServiceCard, { ServiceItemProps } from '@/components/services/ServiceCard'; // Assuming ServiceCard uses ServiceItemProps
+import { auth, firestore } from '@/lib/firebase'; // Import Firebase
+import { collection, query, where, onSnapshot } from 'firebase/firestore'; // Import Firestore query functions
+
+// Define Service Category structure locally now
+interface ServiceCategory {
+  title: string;
+  services: ServiceItemProps[];
+}
 
 // Data for emergency services
 const emergencyServicesData: EmergencyServiceProps[] = [
@@ -39,7 +46,7 @@ const emergencyServicesData: EmergencyServiceProps[] = [
 ];
 
 // Data for service categories
-const serviceCategoriesData: ServiceCategoryProps[] = [
+const serviceCategoriesData: ServiceCategory[] = [
   {
     title: 'Maintenance Services',
     services: [
@@ -68,31 +75,77 @@ const serviceCategoriesData: ServiceCategoryProps[] = [
   },
 ];
 
+// Define Vehicle type
+interface Vehicle {
+  id: string; // Firestore document ID
+  make: string;
+  model: string;
+  year: number;
+  // Add other fields like vin, licensePlate, color etc. as needed
+}
+
 export default function HomeScreen() {
   // const router = useRouter();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const insets = useSafeAreaInsets(); // Get safe area insets
   const { state: cartState } = useCart(); // Get cart state
   const [showNotifications, setShowNotifications] = useState(false);
+  const [userVehicles, setUserVehicles] = useState<Vehicle[]>([]);
+  const [loadingVehicles, setLoadingVehicles] = useState(true);
+
+  // Fetch user vehicles (example using onSnapshot for real-time updates)
+  useEffect(() => {
+    const user = auth.currentUser;
+    if (!user) {
+      setLoadingVehicles(false);
+      return; // Not logged in
+    }
+
+    const vehiclesRef = collection(firestore, 'users', user.uid, 'vehicles');
+    const q = query(vehiclesRef); // Can add orderBy later if needed
+
+    setLoadingVehicles(true);
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+      const fetchedVehicles: Vehicle[] = [];
+      querySnapshot.forEach((doc) => {
+        fetchedVehicles.push({ id: doc.id, ...doc.data() } as Vehicle);
+      });
+      setUserVehicles(fetchedVehicles);
+      setLoadingVehicles(false);
+    }, (error) => {
+      console.error("Error fetching vehicles: ", error);
+      setLoadingVehicles(false);
+      // Handle error display if needed
+    });
+
+    // Clean up listener on unmount
+    return () => unsubscribe(); 
+  }, []); // Run once on mount
 
   const handleCartPress = () => {
     navigation.navigate('Cart');
   };
 
   const handleServiceSelect = (serviceId: string) => {
-    // Specific handling for battery jump start
     if (serviceId === 'battery-jump-start') {
       navigation.navigate('BatteryJumpStart');
     } else {
-      // Generic handling for other services
       navigation.navigate('ServiceDetail', { id: serviceId });
     }
   };
 
   const handleAddVehicle = () => {
-    // This will eventually navigate to the add vehicle form
-    alert('Add vehicle functionality coming soon!');
+    navigation.navigate('AddVehicle'); // Navigate to the new screen
   };
+
+  // Render item for vehicle list
+  const renderVehicleItem = ({ item }: { item: Vehicle }) => (
+    <View style={styles.vehicleItem}>
+      <Car size={20} color="#7A89FF" />
+      <Text style={styles.vehicleText}>{`${item.year} ${item.make} ${item.model}`}</Text>
+      {/* Add options like delete or edit later */}
+    </View>
+  );
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -135,6 +188,22 @@ export default function HomeScreen() {
               <Text style={styles.sectionTitle}>YOUR VEHICLES</Text>
               <Car size={24} color="#00F0FF" />
             </View>
+            {/* Display Vehicle List or Loading/Empty State */} 
+            {loadingVehicles ? (
+               <ActivityIndicator color="#00F0FF" style={{ marginVertical: 10 }}/>
+            ) : userVehicles.length > 0 ? (
+              <FlatList 
+                data={userVehicles}
+                renderItem={renderVehicleItem}
+                keyExtractor={item => item.id}
+                horizontal={true} // Display horizontally for now
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.vehicleListContainer}
+              />
+            ) : (
+              <Text style={styles.noVehiclesText}>No vehicles added yet.</Text>
+            )}
+            {/* Add Vehicle Button */} 
             <Pressable 
               style={styles.addVehicleButtonHeader}
               onPress={handleAddVehicle}
@@ -147,24 +216,40 @@ export default function HomeScreen() {
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Emergency Services List Component */}
+        {/* Emergency Services Section */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>EMERGENCY SERVICES</Text>
             <Wrench size={24} color="#00F0FF" />
           </View>
-          <EmergencyServicesList 
-            services={emergencyServicesData}
-            onServiceSelect={handleServiceSelect}
-            title=""
-          />
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalScrollContainer}>
+            {emergencyServicesData.map((service) => (
+              <EmergencyServiceCard
+                key={service.id}
+                service={service}
+                onPress={handleServiceSelect}
+              />
+            ))}
+          </ScrollView>
         </View>
 
-        {/* Service Categories List Component */}
-        <ServiceCategoryList 
-          categories={serviceCategoriesData}
-          onServiceSelect={handleServiceSelect}
-        />
+        {/* Service Categories Section */}
+        {serviceCategoriesData.map((category, index) => (
+          <View key={`category-${index}`} style={styles.section}> 
+            <View style={styles.sectionHeader}> 
+              <Text style={styles.sectionTitle}>{category.title}</Text>
+            </View>
+            <View style={styles.serviceCardsContainer}> 
+              {category.services.map((service: ServiceItemProps) => (
+                <ServiceCard
+                  key={service.id}
+                  service={service}
+                  onPress={handleServiceSelect}
+                />
+              ))}
+            </View>
+          </View>
+        ))}
       </ScrollView>
 
       {showNotifications && (
@@ -253,11 +338,12 @@ const styles = StyleSheet.create({
   addVehicleButtonHeader: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center', // Center the add button text/icon
     backgroundColor: '#2A3555',
     borderRadius: 8,
     paddingVertical: 10,
     paddingHorizontal: 15,
-    marginTop: 10,
+    marginTop: 10, 
   },
   content: {
     flex: 1,
@@ -302,5 +388,38 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_600SemiBold',
     marginLeft: 8,
     letterSpacing: 1,
+  },
+  horizontalScrollContainer: {
+    paddingLeft: 16, // Match section padding
+    paddingRight: 4, // Allow last card margin
+  },
+  serviceCardsContainer: {
+    paddingHorizontal: 16, // Add horizontal padding for vertical cards
+    gap: 16, // Add gap between vertical cards
+  },
+  vehicleListContainer: {
+    paddingVertical: 10, 
+  },
+  vehicleItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(42, 53, 85, 0.7)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginRight: 8,
+  },
+  vehicleText: {
+    color: '#D0DFFF',
+    fontSize: 13,
+    fontFamily: 'Inter_500Medium',
+    marginLeft: 6,
+  },
+  noVehiclesText: {
+    color: '#7A89FF',
+    fontSize: 13,
+    fontFamily: 'Inter_400Regular',
+    textAlign: 'center',
+    marginVertical: 10,
   },
 }); 

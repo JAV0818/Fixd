@@ -3,7 +3,7 @@ import {
   View, 
   Text, 
   StyleSheet, 
-  FlatList, 
+  SectionList,
   ActivityIndicator, 
   RefreshControl, 
   Pressable 
@@ -12,7 +12,7 @@ import { AlertTriangle, Clock, CheckCircle } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '@/navigation/AppNavigator';
-import OrderCard, { OrderItem } from './OrderCard';
+import OrderCard, { OrderItem, OrderStatus } from './OrderCard';
 import ProgressBar from '../ui/ProgressBar';
 
 interface ServiceOrderListProps {
@@ -28,6 +28,13 @@ interface ServiceOrderListProps {
   limit?: number;
 }
 
+// Define structure for SectionList
+interface OrderSection {
+  title: string;
+  data: OrderItem[];
+  status: OrderStatus | 'Active'; // Helper to identify section type
+}
+
 const ServiceOrderList: React.FC<ServiceOrderListProps> = ({
   title = 'Your Orders',
   showTitle = true,
@@ -41,7 +48,7 @@ const ServiceOrderList: React.FC<ServiceOrderListProps> = ({
   limit
 }) => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const [orders, setOrders] = useState<OrderItem[]>(initialOrders);
+  const [groupedOrders, setGroupedOrders] = useState<OrderSection[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingProgress, setLoadingProgress] = useState(0);
 
@@ -65,12 +72,46 @@ const ServiceOrderList: React.FC<ServiceOrderListProps> = ({
     }
   }, [isLoading]);
 
-  // Effect to update orders from props
+  // Effect to group orders whenever initialOrders changes
   useEffect(() => {
-    if (initialOrders.length > 0) {
-      setOrders(limit ? initialOrders.slice(0, limit) : initialOrders);
-    }
-  }, [initialOrders, limit]);
+    const groupOrders = (ordersToGroup: OrderItem[]): OrderSection[] => {
+      const active: OrderItem[] = [];
+      const pending: OrderItem[] = [];
+      const completed: OrderItem[] = [];
+      const cancelled: OrderItem[] = [];
+
+      ordersToGroup.forEach(order => {
+        switch (order.status) {
+          case 'In Progress':
+            active.push(order);
+            break;
+          case 'Pending':
+          case 'Scheduled':
+          case 'Waiting':
+            pending.push(order);
+            break;
+          case 'Completed':
+            completed.push(order);
+            break;
+          case 'Cancelled':
+            cancelled.push(order);
+            break;
+        }
+      });
+
+      const sections: OrderSection[] = [];
+      if (active.length > 0) sections.push({ title: 'Active Orders', data: active, status: 'Active' });
+      if (pending.length > 0) sections.push({ title: 'Pending/Scheduled', data: pending, status: 'Pending' });
+      if (completed.length > 0) sections.push({ title: 'Completed Orders', data: completed, status: 'Completed' });
+      // Optionally add cancelled section
+      // if (cancelled.length > 0) sections.push({ title: 'Cancelled Orders', data: cancelled, status: 'Cancelled' });
+      
+      return sections;
+    };
+
+    setGroupedOrders(groupOrders(initialOrders));
+
+  }, [initialOrders]);
 
   // Handle refreshing the order list
   const handleRefresh = async () => {
@@ -92,13 +133,16 @@ const ServiceOrderList: React.FC<ServiceOrderListProps> = ({
   // Handle chat button press
   const handleChatPress = (orderId: string) => {
     // Get the order to determine if it's active
-    const order = orders.find(o => o.id === orderId);
+    // Find order across all sections
+    const order = groupedOrders.flatMap(section => section.data).find(o => o.id === orderId);
     if (order) {
-      if (order.status === 'in-progress') {
+      // Use 'In Progress' which is the correct status string
+      if (order.status === 'In Progress') { 
         // For active orders, go to mechanic chat
         navigation.navigate('MechanicChat', { 
           orderId, 
-          mechanicName: order.provider || 'Assigned Mechanic'
+          // Use providerName from the OrderItem type
+          mechanicName: order.providerName || 'Assigned Mechanic' 
         });
       } else {
         // For past orders, show chat history
@@ -107,13 +151,18 @@ const ServiceOrderList: React.FC<ServiceOrderListProps> = ({
     }
   };
 
-  // Render each order item
+  // Render each order item using OrderCard
   const renderOrderItem = ({ item }: { item: OrderItem }) => (
     <OrderCard
       order={item}
       onViewDetails={handleViewDetails}
       onChatPress={handleChatPress}
     />
+  );
+
+  // Render section headers
+  const renderSectionHeader = ({ section: { title } }: { section: OrderSection }) => (
+    <Text style={styles.sectionHeader}>{title}</Text>
   );
 
   // Render loading state
@@ -154,27 +203,28 @@ const ServiceOrderList: React.FC<ServiceOrderListProps> = ({
     </View>
   );
 
-  // Determine what to render based on component state
+  // Update renderContent to use SectionList
   const renderContent = () => {
     if (isLoading) {
       return renderLoadingState();
     }
-    
     if (error) {
       return renderErrorState();
     }
-
-    if (orders.length === 0) {
+    // Check if groupedOrders is empty AFTER grouping
+    if (groupedOrders.length === 0) { 
       return renderEmptyState();
     }
 
     return (
-      <FlatList
-        data={orders}
+      <SectionList
+        sections={groupedOrders}
+        keyExtractor={(item, index) => item.id + index}
         renderItem={renderOrderItem}
-        keyExtractor={item => item.id}
+        renderSectionHeader={renderSectionHeader}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
+        stickySectionHeadersEnabled={false} // Optional: makes headers scroll with content
         refreshControl={
           onRefresh ? (
             <RefreshControl
@@ -248,6 +298,16 @@ const styles = StyleSheet.create({
     color: '#00F0FF',
     fontSize: 14,
     fontFamily: 'Inter_500Medium',
+  },
+  sectionHeader: {
+    fontSize: 16,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#7A89FF',
+    marginTop: 24, 
+    marginBottom: 8,
+    paddingHorizontal: 16, // Match list padding
+    textTransform: 'uppercase',
+    letterSpacing: 1,
   },
 });
 

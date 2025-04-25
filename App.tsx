@@ -3,6 +3,7 @@ import { Text, View } from 'react-native'; // Import basic components if needed 
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useFonts, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
+import { NavigationContainer } from '@react-navigation/native'; // Import NavigationContainer
 
 import AppNavigator from './navigation/AppNavigator'; // Check path relative to App.tsx
 import { CartProvider } from './contexts/CartContext'; // Import CartProvider
@@ -40,8 +41,10 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <CartProvider>
-        <AppNavigator />
-        <StatusBar style="light" />
+        <NavigationContainer>
+          <AppNavigator />
+          <StatusBar style="light" />
+        </NavigationContainer>
       </CartProvider>
     </SafeAreaProvider>
   );
