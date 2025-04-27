@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { OrderItem, OrderStatus } from './OrderCard';
+import { Order, OrderStatus } from './OrderCard';
 import ServiceOrderList from './ServiceOrderList';
 import { auth, firestore } from '@/lib/firebase';
-import { collection, query, where, getDocs, orderBy, Timestamp } from 'firebase/firestore';
+import { collection, query, where, getDocs, orderBy, Timestamp, onSnapshot } from 'firebase/firestore';
 
 // Types for the component props
 interface OrdersDataProps {
@@ -17,12 +17,12 @@ const OrdersData: React.FC<OrdersDataProps> = ({
   showTitle = true,
   limit,
 }) => {
-  const [orders, setOrders] = useState<OrderItem[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
 
-  // Fetch order data from Firestore
-  const fetchOrders = useCallback(async () => {
+  // Fetch order data from Firestore using onSnapshot
+  useEffect(() => {
     setIsLoading(true);
     setError('');
     const user = auth.currentUser;
@@ -34,59 +34,58 @@ const OrdersData: React.FC<OrdersDataProps> = ({
       return;
     }
 
-    try {
-      // Query Firestore for orders belonging to the current user
-      // Assuming orders are stored in 'repairOrders' collection
-      const ordersRef = collection(firestore, 'repairOrders');
-      const q = query(
-        ordersRef, 
-        where('customerId', '==', user.uid),
-        orderBy('scheduledDateTime', 'desc') // Order by date descending
-      );
-      
-      const querySnapshot = await getDocs(q);
-      
-      const fetchedOrders: OrderItem[] = [];
+    // Query Firestore for orders belonging to the current user
+    const ordersRef = collection(firestore, 'repairOrders');
+    const q = query(
+      ordersRef,
+      where('customerId', '==', user.uid),
+      orderBy('createdAt', 'desc') // Order by createdAt descending
+    );
+
+    // Use onSnapshot for real-time updates
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+      const fetchedOrders: Order[] = []; // Use the Order type
       querySnapshot.forEach((doc) => {
         const data = doc.data();
-        // Map Firestore data to OrderItem type
+        // Map Firestore data to Order type
         fetchedOrders.push({
           id: doc.id,
-          serviceType: data.serviceType || 'Unknown Service',
-          scheduledDateTime: data.scheduledDateTime, // Keep as Timestamp for now
+          items: data.items || [], // Default to empty array if missing
+          totalPrice: data.totalPrice || 0,
           status: data.status || 'Pending', // Default status if missing
-          location: data.address, // Map address to location if needed
-          providerName: data.providerName,
-          // Add other fields as needed from your Firestore doc
+          createdAt: data.createdAt, // Keep as Firestore Timestamp
+          customerId: data.customerId, // Make sure this exists in Firestore doc
+          shippingDetails: data.shippingDetails || {}, // Default to empty object
+          providerId: data.providerId || null,
         });
       });
 
       setOrders(fetchedOrders);
+      setIsLoading(false);
+      setError(''); // Clear error on successful fetch
 
-    } catch (err) {
-      console.error('Error fetching orders:', err);
+    }, (err) => { // Handle errors from onSnapshot
+      console.error('Error fetching orders with snapshot:', err);
       setError('Failed to load your orders. Please try again.');
       setOrders([]); // Clear orders on error
-    } finally {
       setIsLoading(false);
-    }
-  }, []); // Dependency array is empty as it relies on currentUser from auth context
+    });
 
-  // Initial data load
-  useEffect(() => {
-    fetchOrders();
-  }, [fetchOrders]);
+    // Clean up the listener when the component unmounts
+    return () => unsubscribe();
+
+  }, []); // Re-run only if auth state changes (implicitly via currentUser)
 
   // Handle refresh
   const handleRefresh = async () => {
-    await fetchOrders();
+    // Implement refresh logic
   };
 
   return (
     <ServiceOrderList
       title={title}
       showTitle={showTitle}
-      initialOrders={orders} // Pass fetched orders
+      initialOrders={orders} // Pass fetched orders (now type Order[])
       isLoading={isLoading}
       error={error}
       onRefresh={handleRefresh}

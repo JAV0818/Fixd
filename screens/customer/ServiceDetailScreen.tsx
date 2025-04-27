@@ -7,7 +7,7 @@ import { CheckSquare, Square, ArrowLeft, ShoppingCart, Check } from 'lucide-reac
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useCart } from '@/contexts/CartContext';
+import { useCart, CartItem } from '@/contexts/CartContext';
 
 // --- Types --- (Moved before MOCK_SERVICES)
 type Addon = {
@@ -97,6 +97,15 @@ const MOCK_SERVICES: { [key: string]: Service } = {
       { id: 'brake-pad-measure', name: 'Brake Pad Depth Measurement', price: 10 },
     ],
   },
+  // --- Test Service ---
+  'test-free-service': {
+    id: 'test-free-service',
+    title: 'Free System Checkup',
+    description: 'A complimentary basic system check. Add this to test the order flow.',
+    image: require('../../img_assets/diagnostics.png'), // Re-use an existing image
+    basePrice: 0, // The important part: free!
+    addons: [], // No add-ons for simplicity
+  },
 };
 
 // Define the type for the route prop specific to this screen
@@ -111,7 +120,7 @@ export default function ServiceDetailScreen() {
   const insets = useSafeAreaInsets();
   const { addItem, state: cartState } = useCart();
   
-  const { id: serviceId } = route.params; // Get service ID from navigation params
+  const { id: serviceId, vehicleId } = route.params; // Get service ID AND vehicleId from navigation params
 
   const [service, setService] = useState<Service | null>(null);
   const [selectedAddons, setSelectedAddons] = useState<Set<string>>(new Set());
@@ -171,6 +180,14 @@ export default function ServiceDetailScreen() {
     });
   };
 
+  // Helper function to get vehicle display string (replace with actual logic later)
+  const getVehicleDisplay = (vId: string | null): string | null => {
+    if (!vId) return null;
+    // TODO: Fetch vehicle details from Firestore using vId if needed
+    // For now, just return the ID as a placeholder
+    return `Vehicle ID: ${vId.substring(0, 6)}...`; 
+  };
+
   // Animation sequence for success overlay
   const showSuccessOverlay = () => {
     setShowSuccess(true);
@@ -199,7 +216,7 @@ export default function ServiceDetailScreen() {
   const handleAddToCart = () => {
     if (!service) return;
     
-    // Collect selected add-ons into an array format for the cart
+    // Collect selected add-ons into an array format for the cart (Keep this logic for price calculation)
     const selectedAddonsList = Array.from(selectedAddons).map(addonId => {
       const addon = service.addons?.find(a => a.id === addonId);
       if (!addon) return null;
@@ -210,15 +227,22 @@ export default function ServiceDetailScreen() {
       };
     }).filter(Boolean) as { id: string; name: string; price: number }[];
 
+    // Prepare the CartItem object in the NEW format
+    const cartItemToAdd: CartItem = {
+      id: service.id,            // Use service ID as the item ID
+      name: service.title,       // Service title
+      price: totalPrice,         // Total price including selected addons
+      quantity: 1,               // Default quantity to 1
+      vehicleId: vehicleId,      // Get vehicle ID from route params
+      vehicleDisplay: getVehicleDisplay(vehicleId), // Get display string
+      image: service.image       // Add the service image
+    };
+
+    // Log the item being added
+    console.log("[ServiceDetailScreen] Adding item to cart:", JSON.stringify(cartItemToAdd, null, 2));
+
     // Add to cart using our context
-    addItem({
-      serviceId: service.id,
-      serviceName: service.title,
-      serviceImage: service.image,
-      basePrice: service.basePrice,
-      selectedAddons: selectedAddonsList,
-      totalPrice: totalPrice,
-    });
+    addItem(cartItemToAdd);
 
     // Give visual feedback to user
     setAddedToCart(true);

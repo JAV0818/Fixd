@@ -8,6 +8,8 @@ import ProviderDashboardScreen from '../screens/provider/ProviderDashboardScreen
 import ProviderProfileScreen from '../screens/provider/ProviderProfileScreen';
 import RepairOrdersScreen from '../screens/provider/RepairOrdersScreen';
 import RequestsScreen from '../screens/provider/RequestsScreen';
+// Import the ProviderNavigator stack
+import ProviderNavigator from './ProviderNavigator';
 
 export type ProviderTabParamList = {
   Requests: undefined;
@@ -159,7 +161,7 @@ export default function ProviderTabNavigator() {
         tabBarHideOnKeyboard: true,
       })}
     >
-      <Tab.Screen name="Requests" component={RequestsScreen} options={{ tabBarLabel: 'REQUESTS' }} />
+      <Tab.Screen name="Requests" component={ProviderNavigator} options={{ tabBarLabel: 'REQUESTS' }} />
       <Tab.Screen name="RepairOrders" component={RepairOrdersScreen} options={{ tabBarLabel: 'REPAIR QUEUE' }} />
       <Tab.Screen name="Profile" component={ProviderProfileScreen} />
     </Tab.Navigator>

@@ -8,15 +8,21 @@ import RequestsScreen from '../screens/provider/RequestsScreen';
 import RequestStartScreen from '../screens/provider/RequestStartScreen';
 import RequestCancelScreen from '../screens/provider/RequestCancelScreen';
 import RequestContactScreen from '../screens/provider/RequestContactScreen';
+import UpdateStatusScreen from '../screens/provider/UpdateStatusScreen';
+import PerformanceDetailsScreen from '../screens/provider/PerformanceDetailsScreen';
+import AccountSettingsScreen from '../screens/provider/AccountSettingsScreen';
 
 export type ProviderStackParamList = {
   ProviderDashboard: undefined;
   ProviderProfile: undefined;
-  RequestDetail: { requestId: string };
+  RequestDetail: { orderId: string };
   Requests: undefined;
-  RequestStart: { requestId: string };
-  RequestCancel: { requestId: string };
-  RequestContact: { requestId: string };
+  RequestStart: { orderId: string };
+  RequestCancel: { orderId: string };
+  RequestContact: { orderId: string };
+  UpdateStatus: { orderId: string };
+  PerformanceDetails: undefined;
+  AccountSettings: undefined;
 };
 
 const Stack = createNativeStackNavigator<ProviderStackParamList>();
@@ -24,15 +30,13 @@ const Stack = createNativeStackNavigator<ProviderStackParamList>();
 export default function ProviderNavigator() {
   return (
     <Stack.Navigator 
-      initialRouteName="ProviderDashboard"
+      initialRouteName="Requests"
       screenOptions={{
         headerShown: false, // Can customize header later if needed
       }}
     >
-      <Stack.Screen name="ProviderDashboard" component={ProviderDashboardScreen} />
-      <Stack.Screen name="ProviderProfile" component={ProviderProfileScreen} />
-      <Stack.Screen name="RequestDetail" component={RequestDetailScreen} />
       <Stack.Screen name="Requests" component={RequestsScreen} />
+      <Stack.Screen name="RequestDetail" component={RequestDetailScreen} />
       <Stack.Screen name="RequestStart" component={RequestStartScreen} />
       <Stack.Screen name="RequestCancel" component={RequestCancelScreen} />
       <Stack.Screen name="RequestContact" component={RequestContactScreen} />

@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Pressable, FlatList, ScrollView, TextInput } from 'react-native';
+import { View, Text, StyleSheet, Pressable, FlatList, ScrollView, TextInput, Image, Alert } from 'react-native';
 import { ArrowLeft, ChevronRight, CreditCard, Truck, MapPin, CheckCircle } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '@/navigation/AppNavigator';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useCart, CartItem } from '@/contexts/CartContext';
+import { auth, firestore } from '@/lib/firebase';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 
 type CheckoutScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Checkout'>;
 
@@ -23,14 +25,15 @@ export default function CheckoutScreen() {
   const { state: cartState, clearCart } = useCart();
   const [currentStep, setCurrentStep] = useState<CheckoutStep>(CheckoutStep.SHIPPING);
   
-  // Form state
-  const [shippingDetails, setShippingDetails] = useState({
-    fullName: '',
-    address: '',
+  // Form state - Renamed and added notes
+  const [serviceDetails, setServiceDetails] = useState({
+    // fullName: '', // Removed full name - might not be needed for service location
+    address: '', // Service address
     city: '',
     state: '',
     zipCode: '',
-    phoneNumber: '',
+    phoneNumber: '', // Contact phone number
+    additionalNotes: '', // New field for notes
   });
   
   const [paymentMethod, setPaymentMethod] = useState<'creditCard' | 'paypal' | null>(null);
@@ -41,7 +44,45 @@ export default function CheckoutScreen() {
     cvv: '',
   });
 
+  // State for validation errors - Adjusted type
+  const [serviceErrors, setServiceErrors] = useState<Partial<typeof serviceDetails>>({});
+
+  // --- Validation Logic - Renamed and Adjusted ---
+  const validateServiceLocationStep = (): boolean => {
+    const errors: Partial<typeof serviceDetails> = {};
+    // if (!serviceDetails.fullName.trim()) errors.fullName = 'Full name is required'; // Removed
+    if (!serviceDetails.address.trim()) errors.address = 'Service address is required';
+    if (!serviceDetails.city.trim()) errors.city = 'City is required';
+    if (!serviceDetails.state.trim()) errors.state = 'State is required';
+    // Basic ZIP code validation 
+    if (!serviceDetails.zipCode.trim()) {
+      errors.zipCode = 'ZIP code is required';
+    } else if (!/^\d{5}$/.test(serviceDetails.zipCode)) {
+      errors.zipCode = 'Invalid ZIP code format (must be 5 digits)';
+    }
+    // Basic phone number validation 
+    if (!serviceDetails.phoneNumber.trim()) {
+      errors.phoneNumber = 'Contact phone number is required';
+    } else if (!/^\d{10,}$/.test(serviceDetails.phoneNumber.replace(/\D/g, ''))) { 
+      errors.phoneNumber = 'Invalid phone number format (at least 10 digits)';
+    }
+    // Notes are optional, no validation needed unless specified
+
+    setServiceErrors(errors);
+    return Object.keys(errors).length === 0; // Return true if no errors
+  };
+  // --- End Validation Logic ---
+
   const handleNext = () => {
+    // Validate current step before proceeding
+    if (currentStep === CheckoutStep.SHIPPING) {
+      if (!validateServiceLocationStep()) { // Use updated validation function
+        return; // Stop if validation fails
+      }
+    }
+    // Add validation for PAYMENT step here if needed later
+    // if (currentStep === CheckoutStep.PAYMENT) { ... }
+    
     if (currentStep < CheckoutStep.CONFIRMATION) {
       setCurrentStep(currentStep + 1);
     }
@@ -55,11 +96,45 @@ export default function CheckoutScreen() {
     }
   };
 
-  const handlePlaceOrder = () => {
-    // In a real app, this would handle order submission to backend
-    setCurrentStep(CheckoutStep.CONFIRMATION);
-    // Clear the cart after successful order
-    clearCart();
+  const handlePlaceOrder = async () => {
+    const user = auth.currentUser;
+    if (!user) {
+      Alert.alert("Error", "You must be logged in to place an order.");
+      return;
+    }
+
+    const newOrder = {
+      customerId: user.uid,
+      items: cartState.items.map(item => ({
+        id: item.id,
+        name: item.name,
+        price: item.price,
+        quantity: item.quantity,
+        vehicleId: item.vehicleId,
+        vehicleDisplay: item.vehicleDisplay,
+      })),
+      totalPrice: cartState.totalPrice,
+      locationDetails: serviceDetails,
+      paymentMethod: paymentMethod,
+      status: 'Pending',
+      createdAt: serverTimestamp(),
+      providerId: null,
+    };
+
+    console.log("Placing Order:", JSON.stringify(newOrder, null, 2));
+
+    try {
+      const ordersRef = collection(firestore, 'repairOrders');
+      await addDoc(ordersRef, newOrder);
+      
+      setCurrentStep(CheckoutStep.CONFIRMATION);
+      clearCart();
+      console.log("Order placed successfully!");
+
+    } catch (error) {
+      console.error("Error placing order:", error);
+      Alert.alert("Order Failed", "Could not place your order. Please try again.");
+    }
   };
 
   const handleContinueShopping = () => {
@@ -67,6 +142,9 @@ export default function CheckoutScreen() {
   };
 
   const renderCartSummary = () => {
+    // Log items when rendering summary
+    console.log("[CheckoutScreen] Rendering summary with items:", JSON.stringify(cartState.items, null, 2));
+
     return (
       <View style={styles.summaryContainer}>
         <Text style={styles.summaryTitle}>Order Summary</Text>
@@ -75,8 +153,11 @@ export default function CheckoutScreen() {
           data={cartState.items}
           renderItem={({ item }) => (
             <View style={styles.summaryItem}>
-              <Text style={styles.summaryItemName}>{item.serviceName}</Text>
-              <Text style={styles.summaryItemPrice}>${item.totalPrice.toFixed(2)}</Text>
+              <Image source={item.image} style={styles.summaryItemImage} />
+              <View style={styles.summaryItemDetails}>
+                <Text style={styles.summaryItemName}>{item.name}</Text>
+              </View>
+              <Text style={styles.summaryItemPrice}>${(item.price * item.quantity).toFixed(2)}</Text>
             </View>
           )}
           keyExtractor={item => item.id}
@@ -123,30 +204,20 @@ export default function CheckoutScreen() {
     return (
       <ScrollView style={styles.formContainer} showsVerticalScrollIndicator={false}>
         <View style={styles.stepHeader}>
-          <Truck size={20} color="#7A89FF" />
-          <Text style={styles.stepTitle}>Shipping Information</Text>
+          <MapPin size={20} color="#7A89FF" />
+          <Text style={styles.stepTitle}>Service Location & Notes</Text>
         </View>
         
         <View style={styles.inputGroup}>
-          <Text style={styles.inputLabel}>Full Name</Text>
+          <Text style={styles.inputLabel}>Service Address</Text>
           <TextInput
             style={styles.input}
-            placeholder="Enter your full name"
+            placeholder="Enter the service address"
             placeholderTextColor="#6E7191"
-            value={shippingDetails.fullName}
-            onChangeText={(text) => setShippingDetails({...shippingDetails, fullName: text})}
+            value={serviceDetails.address}
+            onChangeText={(text) => setServiceDetails({...serviceDetails, address: text})}
           />
-        </View>
-        
-        <View style={styles.inputGroup}>
-          <Text style={styles.inputLabel}>Address</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Enter your street address"
-            placeholderTextColor="#6E7191"
-            value={shippingDetails.address}
-            onChangeText={(text) => setShippingDetails({...shippingDetails, address: text})}
-          />
+          {serviceErrors.address && <Text style={styles.errorText}>{serviceErrors.address}</Text>}
         </View>
         
         <View style={styles.rowInputs}>
@@ -156,9 +227,10 @@ export default function CheckoutScreen() {
               style={styles.input}
               placeholder="City"
               placeholderTextColor="#6E7191"
-              value={shippingDetails.city}
-              onChangeText={(text) => setShippingDetails({...shippingDetails, city: text})}
+              value={serviceDetails.city}
+              onChangeText={(text) => setServiceDetails({...serviceDetails, city: text})}
             />
+            {serviceErrors.city && <Text style={styles.errorText}>{serviceErrors.city}</Text>}
           </View>
           
           <View style={[styles.inputGroup, { flex: 1, marginLeft: 8 }]}>
@@ -167,9 +239,10 @@ export default function CheckoutScreen() {
               style={styles.input}
               placeholder="State"
               placeholderTextColor="#6E7191"
-              value={shippingDetails.state}
-              onChangeText={(text) => setShippingDetails({...shippingDetails, state: text})}
+              value={serviceDetails.state}
+              onChangeText={(text) => setServiceDetails({...serviceDetails, state: text})}
             />
+            {serviceErrors.state && <Text style={styles.errorText}>{serviceErrors.state}</Text>}
           </View>
         </View>
         
@@ -181,22 +254,37 @@ export default function CheckoutScreen() {
               placeholder="ZIP Code"
               placeholderTextColor="#6E7191"
               keyboardType="numeric"
-              value={shippingDetails.zipCode}
-              onChangeText={(text) => setShippingDetails({...shippingDetails, zipCode: text})}
+              value={serviceDetails.zipCode}
+              onChangeText={(text) => setServiceDetails({...serviceDetails, zipCode: text})}
             />
+            {serviceErrors.zipCode && <Text style={styles.errorText}>{serviceErrors.zipCode}</Text>}
           </View>
           
           <View style={[styles.inputGroup, { flex: 1, marginLeft: 8 }]}>
-            <Text style={styles.inputLabel}>Phone Number</Text>
+            <Text style={styles.inputLabel}>Contact Phone Number</Text>
             <TextInput
               style={styles.input}
               placeholder="Phone Number"
               placeholderTextColor="#6E7191"
               keyboardType="phone-pad"
-              value={shippingDetails.phoneNumber}
-              onChangeText={(text) => setShippingDetails({...shippingDetails, phoneNumber: text})}
+              value={serviceDetails.phoneNumber}
+              onChangeText={(text) => setServiceDetails({...serviceDetails, phoneNumber: text})}
             />
+            {serviceErrors.phoneNumber && <Text style={styles.errorText}>{serviceErrors.phoneNumber}</Text>}
           </View>
+        </View>
+        
+        <View style={styles.inputGroup}>
+          <Text style={styles.inputLabel}>Additional Notes (Optional)</Text>
+          <TextInput
+            style={[styles.input, styles.textArea]}
+            placeholder="Any specific instructions or details? (e.g., gate code, vehicle location)"
+            placeholderTextColor="#6E7191"
+            value={serviceDetails.additionalNotes}
+            onChangeText={(text) => setServiceDetails({...serviceDetails, additionalNotes: text})}
+            multiline={true}
+            numberOfLines={4}
+          />
         </View>
         
         {renderCartSummary()}
@@ -316,17 +404,22 @@ export default function CheckoutScreen() {
         
         <View style={styles.reviewSection}>
           <View style={styles.reviewSectionHeader}>
-            <Truck size={16} color="#7A89FF" />
-            <Text style={styles.reviewSectionTitle}>Shipping Information</Text>
+            <MapPin size={16} color="#7A89FF" />
+            <Text style={styles.reviewSectionTitle}>Service Location & Contact</Text>
           </View>
           
           <View style={styles.reviewInfo}>
-            <Text style={styles.reviewName}>{shippingDetails.fullName}</Text>
-            <Text style={styles.reviewDetail}>{shippingDetails.address}</Text>
+            <Text style={styles.reviewDetail}>{serviceDetails.address}</Text>
             <Text style={styles.reviewDetail}>
-              {shippingDetails.city}, {shippingDetails.state} {shippingDetails.zipCode}
+              {serviceDetails.city}, {serviceDetails.state} {serviceDetails.zipCode}
             </Text>
-            <Text style={styles.reviewDetail}>{shippingDetails.phoneNumber}</Text>
+            <Text style={styles.reviewDetail}>Contact: {serviceDetails.phoneNumber}</Text>
+            {serviceDetails.additionalNotes && (
+               <View style={styles.notesSection}>
+                 <Text style={styles.notesLabel}>Notes:</Text>
+                 <Text style={styles.reviewDetail}>{serviceDetails.additionalNotes}</Text>
+               </View>
+             )}
           </View>
         </View>
         
@@ -351,6 +444,7 @@ export default function CheckoutScreen() {
   };
 
   const renderConfirmationStep = () => {
+    // Restore actual confirmation JSX 
     return (
       <View style={styles.confirmationContainer}>
         <View style={styles.confirmationIcon}>
@@ -363,10 +457,10 @@ export default function CheckoutScreen() {
         </Text>
         
         <View style={styles.confirmationDetails}>
-          <Text style={styles.confirmationOrderId}>Order #: {Math.floor(Math.random() * 1000000)}</Text>
-          <Text style={styles.confirmationDate}>
-            Date: {new Date().toLocaleDateString()}
-          </Text>
+           <Text style={styles.confirmationOrderId}>Order #: {Math.floor(Math.random() * 1000000)}</Text>
+           <Text style={styles.confirmationDate}>
+             Date: {new Date().toLocaleDateString()}
+           </Text> 
         </View>
         
         <Pressable
@@ -380,6 +474,7 @@ export default function CheckoutScreen() {
   };
 
   return (
+    // Restore actual main component return JSX 
     <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* Header */}
       <View style={styles.header}>
@@ -420,6 +515,7 @@ export default function CheckoutScreen() {
   );
 }
 
+// --- Styles definition --- 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -520,6 +616,10 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: 'Inter_400Regular',
   },
+  textArea: {
+    height: 100,
+    textAlignVertical: 'top',
+  },
   rowInputs: {
     flexDirection: 'row',
     marginBottom: 16,
@@ -578,13 +678,23 @@ const styles = StyleSheet.create({
   summaryItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: 12,
+  },
+  summaryItemImage: {
+    width: 40,
+    height: 40,
+    borderRadius: 4,
+    marginRight: 10,
+  },
+  summaryItemDetails: {
+    flex: 1,
+    marginRight: 10,
   },
   summaryItemName: {
     color: '#D0DFFF',
     fontSize: 14,
     fontFamily: 'Inter_400Regular',
-    flex: 1,
   },
   summaryItemPrice: {
     color: '#FFFFFF',
@@ -663,16 +773,22 @@ const styles = StyleSheet.create({
   reviewInfo: {
     marginLeft: 24,
   },
-  reviewName: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontFamily: 'Inter_500Medium',
-    marginBottom: 4,
-  },
   reviewDetail: {
     color: '#D0DFFF',
     fontSize: 14,
     fontFamily: 'Inter_400Regular',
+    marginBottom: 4,
+  },
+  notesSection: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#2A3555',
+  },
+  notesLabel: {
+    color: '#7A89FF',
+    fontSize: 14,
+    fontFamily: 'Inter_500Medium',
     marginBottom: 4,
   },
   confirmationContainer: {
@@ -706,17 +822,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#2A3555',
   },
-  confirmationOrderId: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontFamily: 'Inter_600SemiBold',
-    marginBottom: 8,
-  },
-  confirmationDate: {
-    color: '#D0DFFF',
-    fontSize: 14,
-    fontFamily: 'Inter_400Regular',
-  },
   continueShoppingButton: {
     backgroundColor: '#00F0FF',
     paddingVertical: 16,
@@ -728,4 +833,21 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: 'Inter_600SemiBold',
   },
-}); 
+  errorText: {
+    color: '#FF3D71',
+    fontSize: 12,
+    fontFamily: 'Inter_400Regular',
+    marginTop: 4,
+  },
+  confirmationOrderId: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontFamily: 'Inter_600SemiBold',
+    marginBottom: 8,
+  },
+  confirmationDate: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontFamily: 'Inter_400Regular',
+  },
+});

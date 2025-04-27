@@ -1,99 +1,106 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, Image } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, Pressable, Image, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Bell, PenTool as Tool, Clock, Activity, Filter, Search } from 'lucide-react-native';
 import NotificationPanel from '../../components/NotificationPanel';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList } from '@/navigation/AppNavigator';
-
-// Mock data for repair orders
-const repairOrdersData = [
-  {
-    id: 'order1',
-    customer: {
-      name: 'Emily Rodriguez',
-      image: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=800&auto=format&fit=crop&q=60',
-      rating: 4.8,
-    },
-    vehicle: '2024 Tesla Model S',
-    service: 'Battery Jump Start',
-    status: 'in-progress',
-    startTime: '10:30 AM',
-    estimatedCompletion: '11:45 AM',
-    location: '123 Main St, San Francisco',
-    urgency: 'high',
-    notes: 'Customer needs vehicle ASAP for work',
-  },
-  {
-    id: 'order2',
-    customer: {
-      name: 'Michael Chen',
-      image: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=800&auto=format&fit=crop&q=60',
-      rating: 4.9,
-    },
-    vehicle: '2023 BMW iX',
-    service: 'Tire Change',
-    status: 'scheduled',
-    startTime: '2:00 PM',
-    estimatedCompletion: '3:00 PM',
-    location: '456 Oak Ave, San Francisco',
-    urgency: 'medium',
-    notes: 'Flat tire on front passenger side',
-  },
-  {
-    id: 'order3',
-    customer: {
-      name: 'James Wilson',
-      image: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=800&auto=format&fit=crop&q=60',
-      rating: 4.7,
-    },
-    vehicle: '2022 Ford Mustang',
-    service: 'Oil Change',
-    status: 'waiting',
-    startTime: '3:30 PM',
-    estimatedCompletion: '4:15 PM',
-    location: '789 Pine St, San Francisco',
-    urgency: 'low',
-    notes: 'Regular maintenance',
-  },
-];
+import { ProviderStackParamList } from '@/navigation/ProviderNavigator';
+import { auth, firestore } from '@/lib/firebase';
+import { collection, query, where, onSnapshot, orderBy, Timestamp } from 'firebase/firestore';
+import { RepairOrder } from '@/types/orders';
 
 export default function RepairOrdersScreen() {
   const [showNotifications, setShowNotifications] = useState(false);
-  const [activeFilter, setActiveFilter] = useState('all');
-  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const [activeFilter, setActiveFilter] = useState<'all' | 'Accepted' | 'InProgress' | 'Completed' | 'Cancelled'>('all');
+  const navigation = useNavigation<NativeStackNavigationProp<ProviderStackParamList>>();
+  const [orders, setOrders] = useState<RepairOrder[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+      setError("User not authenticated.");
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    const ordersRef = collection(firestore, 'repairOrders');
+    const q = query(
+      ordersRef,
+      where('providerId', '==', currentUser.uid),
+      where('status', 'in', ['Accepted', 'InProgress']),
+      orderBy('createdAt', 'desc')
+    );
+
+    const unsubscribe = onSnapshot(q, 
+      (querySnapshot) => {
+        const fetchedOrders = querySnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        } as RepairOrder));
+        setOrders(fetchedOrders);
+        setLoading(false);
+      },
+      (err) => {
+        console.error("Error fetching assigned orders:", err);
+        setError("Failed to load assigned orders.");
+        setLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
 
   const getFilteredOrders = () => {
-    if (activeFilter === 'all') return repairOrdersData;
-    return repairOrdersData.filter(order => order.status === activeFilter);
+    if (activeFilter === 'all') return orders;
+    return orders.filter(order => order.status === activeFilter);
   };
 
-  const getStatusColor = (status: string) => {
+  const getStatusColor = (status: RepairOrder['status']) => {
     switch (status) {
-      case 'in-progress':
-        return '#00F0FF';
-      case 'scheduled':
-        return '#7A89FF';
-      case 'waiting':
-        return '#FFB800';
-      default:
-        return '#FFFFFF';
+      case 'InProgress': return '#00F0FF';
+      case 'Accepted': return '#7A89FF';
+      case 'Completed': return '#34C759';
+      case 'Cancelled': return '#FF3D71';
+      default: return '#FFFFFF';
     }
   };
 
-  const getStatusLabel = (status: string) => {
+  const getStatusLabel = (status: RepairOrder['status']) => {
     switch (status) {
-      case 'in-progress':
-        return 'IN PROGRESS';
-      case 'scheduled':
-        return 'SCHEDULED';
-      case 'waiting':
-        return 'WAITING';
-      default:
-        return status.toUpperCase();
+      case 'InProgress': return 'IN PROGRESS';
+      case 'Accepted': return 'ACCEPTED';
+      case 'Completed': return 'COMPLETED';
+      case 'Cancelled': return 'CANCELLED';
+      default: return status.toUpperCase();
     }
   };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.centeredContainer}>
+          <ActivityIndicator size="large" color="#00F0FF" />
+          <Text style={styles.loadingText}>Loading Your Orders...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (error) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.centeredContainer}>
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -126,38 +133,50 @@ export default function RepairOrdersScreen() {
             <Pressable 
               style={[
                 styles.filterButton, 
-                activeFilter === 'in-progress' && styles.activeFilterButton
+                activeFilter === 'InProgress' && styles.activeFilterButton
               ]}
-              onPress={() => setActiveFilter('in-progress')}
+              onPress={() => setActiveFilter('InProgress')}
             >
               <Text style={[
                 styles.filterText,
-                activeFilter === 'in-progress' && styles.activeFilterText
+                activeFilter === 'InProgress' && styles.activeFilterText
               ]}>IN PROGRESS</Text>
             </Pressable>
             <Pressable 
               style={[
                 styles.filterButton, 
-                activeFilter === 'scheduled' && styles.activeFilterButton
+                activeFilter === 'Accepted' && styles.activeFilterButton
               ]}
-              onPress={() => setActiveFilter('scheduled')}
+              onPress={() => setActiveFilter('Accepted')}
             >
               <Text style={[
                 styles.filterText,
-                activeFilter === 'scheduled' && styles.activeFilterText
-              ]}>SCHEDULED</Text>
+                activeFilter === 'Accepted' && styles.activeFilterText
+              ]}>ACCEPTED</Text>
             </Pressable>
             <Pressable 
               style={[
                 styles.filterButton, 
-                activeFilter === 'waiting' && styles.activeFilterButton
+                activeFilter === 'Completed' && styles.activeFilterButton
               ]}
-              onPress={() => setActiveFilter('waiting')}
+              onPress={() => setActiveFilter('Completed')}
             >
               <Text style={[
                 styles.filterText,
-                activeFilter === 'waiting' && styles.activeFilterText
-              ]}>WAITING</Text>
+                activeFilter === 'Completed' && styles.activeFilterText
+              ]}>COMPLETED</Text>
+            </Pressable>
+            <Pressable 
+              style={[
+                styles.filterButton, 
+                activeFilter === 'Cancelled' && styles.activeFilterButton
+              ]}
+              onPress={() => setActiveFilter('Cancelled')}
+            >
+              <Text style={[
+                styles.filterText,
+                activeFilter === 'Cancelled' && styles.activeFilterText
+              ]}>CANCELLED</Text>
             </Pressable>
           </ScrollView>
         </View>
@@ -168,25 +187,33 @@ export default function RepairOrdersScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 100 }}
       >
-        {getFilteredOrders().map((order) => (
-          <Pressable key={order.id} style={styles.orderCard}>
+        {getFilteredOrders().map((item) => {
+          const placeholderAvatar = 'https://via.placeholder.com/48?text=User';
+          const displayCustomerName = item.customerId.substring(0, 8) + '...';
+          const displayVehicle = item.items[0]?.vehicleDisplay || 'Vehicle not specified';
+          const displayService = item.items[0]?.name || 'Service not specified';
+          const displayLocation = `${item.locationDetails.address}, ${item.locationDetails.city}`;
+          const displayNotes = item.locationDetails.additionalNotes || 'No additional notes provided.';
+
+          return (
+          <Pressable key={item.id} style={styles.orderCard}>
             <View style={styles.orderHeader}>
               <View style={styles.customerInfo}>
-                <Image source={{ uri: order.customer.image }} style={styles.customerImage} />
+                <Image source={{ uri: placeholderAvatar }} style={styles.customerImage} />
                 <View>
-                  <Text style={styles.customerName}>{order.customer.name.toUpperCase()}</Text>
-                  <Text style={styles.vehicleText}>{order.vehicle}</Text>
+                  <Text style={styles.customerName}>{displayCustomerName.toUpperCase()}</Text>
+                  <Text style={styles.vehicleText}>{displayVehicle}</Text>
                 </View>
               </View>
               <View style={[
                 styles.statusBadge,
-                { backgroundColor: `${getStatusColor(order.status)}20` }
+                { backgroundColor: `${getStatusColor(item.status)}20` }
               ]}>
                 <Text style={[
                   styles.statusText,
-                  { color: getStatusColor(order.status) }
+                  { color: getStatusColor(item.status) }
                 ]}>
-                  {getStatusLabel(order.status)}
+                  {getStatusLabel(item.status)}
                 </Text>
               </View>
             </View>
@@ -196,37 +223,33 @@ export default function RepairOrdersScreen() {
                 <Tool size={24} color="#00F0FF" />
               </View>
               <View style={styles.serviceDetails}>
-                <Text style={styles.serviceTitle}>{order.service}</Text>
-                <View style={styles.timeContainer}>
-                  <Clock size={14} color="#7A89FF" />
-                  <Text style={styles.timeText}>
-                    {order.startTime} - {order.estimatedCompletion}
-                  </Text>
-                </View>
+                <Text style={styles.serviceTitle}>{displayService}</Text>
               </View>
             </View>
             
             <View style={styles.notesContainer}>
-              <Text style={styles.notesLabel}>NOTES:</Text>
-              <Text style={styles.notesText}>{order.notes}</Text>
+              <Text style={styles.notesLabel}>LOCATION & NOTES:</Text>
+              <Text style={styles.notesText}>{displayLocation}</Text>
+              <Text style={styles.notesText}>{displayNotes}</Text>
             </View>
             
             <View style={styles.actionButtons}>
               <Pressable 
                 style={styles.actionButton}
-                onPress={() => navigation.navigate('UpdateStatus', { orderId: order.id })}
+                onPress={() => navigation.navigate('UpdateStatus', { orderId: item.id })}
               >
                 <Text style={styles.actionButtonText}>UPDATE STATUS</Text>
               </Pressable>
               <Pressable 
                 style={[styles.actionButton, styles.secondaryButton]}
-                onPress={() => navigation.navigate('RequestContact', { requestId: order.id })}
+                onPress={() => navigation.navigate('RequestContact', { orderId: item.id })}
               >
                 <Text style={styles.secondaryButtonText}>CONTACT CUSTOMER</Text>
               </Pressable>
             </View>
           </Pressable>
-        ))}
+          )}
+        )}
       </ScrollView>
 
       {showNotifications && (
@@ -386,16 +409,6 @@ const styles = StyleSheet.create({
     color: '#00F0FF',
     marginBottom: 4,
   },
-  timeContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  timeText: {
-    fontSize: 12,
-    fontFamily: 'Inter_400Regular',
-    color: '#D0DFFF',
-    marginLeft: 4,
-  },
   notesContainer: {
     backgroundColor: 'rgba(42, 53, 85, 0.5)',
     borderRadius: 8,
@@ -440,5 +453,22 @@ const styles = StyleSheet.create({
     color: '#7A89FF',
     fontSize: 12,
     fontFamily: 'Inter_600SemiBold',
+  },
+  centeredContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    color: '#7A89FF',
+    fontSize: 16,
+    fontFamily: 'Inter_600SemiBold',
+    marginTop: 16,
+  },
+  errorText: {
+    color: '#FF3D71',
+    fontSize: 16,
+    fontFamily: 'Inter_600SemiBold',
+    marginTop: 16,
   },
 }); 

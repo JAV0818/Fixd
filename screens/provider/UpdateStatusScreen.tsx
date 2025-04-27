@@ -3,16 +3,17 @@ import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, CheckCircle, Circle, Loader } from 'lucide-react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { RootStackParamList } from '@/navigation/AppNavigator';
+import { ProviderStackParamList } from '@/navigation/ProviderNavigator';
+import { RepairOrder } from '@/types/orders';
 
-type Props = NativeStackScreenProps<RootStackParamList, 'UpdateStatus'>;
+type Props = NativeStackScreenProps<ProviderStackParamList, 'UpdateStatus'>;
 
 // Define possible statuses
-const STATUS_OPTIONS = [
-  'Scheduled', 
-  'Waiting', 
-  'In Progress', 
-  'Completed', 
+const STATUS_OPTIONS: Array<RepairOrder['status']> = [
+  // 'Pending', // Provider shouldn't set back to Pending manually?
+  'Accepted',
+  'InProgress',
+  'Completed',
   'Cancelled'
 ];
 

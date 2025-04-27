@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, ActivityIndicator } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ProviderStackParamList } from '../../navigation/ProviderNavigator';
 import { Calendar, Clock, MapPin, Play, X, MessageCircle, Check } from 'lucide-react-native';
@@ -7,49 +7,53 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NavigationProp } from '@react-navigation/native';
 import { RootStackParamList } from '../../navigation/AppNavigator';
+import { firestore, auth } from '@/lib/firebase';
+import { collection, query, where, onSnapshot, Timestamp, orderBy } from 'firebase/firestore';
+import { RepairOrder } from '@/types/orders';
+import RequestCard from '@/components/provider/RequestCard';
 
 // The Props should match the name of this screen in the navigator
 type Props = NativeStackScreenProps<ProviderStackParamList, 'Requests'>;
 
-// Mock data for service requests
-const MOCK_REQUESTS = [
-  {
-    id: '1',
-    customerName: 'John Smith',
-    customerAvatar: 'https://randomuser.me/api/portraits/men/32.jpg',
-    service: 'Home Cleaning',
-    date: 'May 15, 2023',
-    time: '14:00 - 16:00',
-    address: '123 Main St, Anytown',
-    status: 'Pending',
-  },
-  {
-    id: '2',
-    customerName: 'Emily Johnson',
-    customerAvatar: 'https://randomuser.me/api/portraits/women/44.jpg',
-    service: 'Lawn Mowing',
-    date: 'May 16, 2023',
-    time: '10:00 - 11:30',
-    address: '456 Oak Ave, Anytown',
-    status: 'Pending',
-  },
-  {
-    id: '3',
-    customerName: 'Michael Brown',
-    customerAvatar: 'https://randomuser.me/api/portraits/men/22.jpg',
-    service: 'Furniture Assembly',
-    date: 'May 17, 2023',
-    time: '13:00 - 15:00',
-    address: '789 Pine St, Anytown',
-    status: 'Pending',
-  },
-];
-
 export default function RequestsScreen({ navigation: stackNavigation }: Props) {
-  const [requests, setRequests] = useState(MOCK_REQUESTS);
-  const navigation = useNavigation<NavigationProp<RootStackParamList>>();
+  const [requests, setRequests] = useState<RepairOrder[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const flatListRef = useRef<FlatList>(null);
   
+  // Fetch pending requests
+  useEffect(() => {
+    setLoading(true);
+    setError(null);
+
+    const ordersRef = collection(firestore, 'repairOrders');
+    const q = query(
+      ordersRef, 
+      where('status', '==', 'Pending'), 
+      where('providerId', '==', null), 
+      orderBy('createdAt', 'desc') // Show newest first
+    );
+
+    const unsubscribe = onSnapshot(q, 
+      (querySnapshot) => {
+        const fetchedRequests = querySnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        } as RepairOrder));
+        setRequests(fetchedRequests);
+        setLoading(false);
+      },
+      (err) => {
+        console.error("Error fetching requests:", err);
+        setError("Failed to load requests. Please try again later.");
+        setLoading(false);
+      }
+    );
+
+    // Cleanup listener on unmount
+    return () => unsubscribe();
+  }, []);
+
   // Scroll to top when the screen loses focus
   useFocusEffect(
     React.useCallback(() => {
@@ -64,90 +68,54 @@ export default function RequestsScreen({ navigation: stackNavigation }: Props) {
     }, [])
   );
 
-  const renderRequestItem = ({ item }: { item: typeof MOCK_REQUESTS[0] }) => (
-    <TouchableOpacity 
-      style={styles.requestCard}
-      onPress={() => navigation.navigate('RequestDetail', { requestId: item.id })}
-    >
-      <View style={styles.cardHeader}>
-        <Image source={{ uri: item.customerAvatar }} style={styles.avatar} />
-        <View style={styles.customerInfo}>
-          <Text style={styles.customerName}>{item.customerName.toUpperCase()}</Text>
-          <Text style={styles.serviceName}>{item.service}</Text>
-        </View>
-        <View style={styles.statusContainer}>
-          <Text style={styles.statusText}>{item.status.toUpperCase()}</Text>
-        </View>
-      </View>
-      
-      <View style={styles.cardContent}>
-        <View style={styles.infoRow}>
-          <Calendar size={16} color="#00F0FF" />
-          <Text style={styles.infoText}>{item.date}</Text>
-        </View>
-        
-        <View style={styles.infoRow}>
-          <Clock size={16} color="#00F0FF" />
-          <Text style={styles.infoText}>{item.time}</Text>
-        </View>
-        
-        <View style={styles.infoRow}>
-          <MapPin size={16} color="#00F0FF" />
-          <Text style={styles.infoText}>{item.address}</Text>
-        </View>
-      </View>
-      
-      <View style={styles.cardActions}>
-        <TouchableOpacity 
-          style={[styles.actionButton, styles.startButton]}
-          onPress={() => navigation.navigate('RequestStart', { requestId: item.id })}
-        >
-          <Check size={16} color="#0A0F1E" />
-          <Text style={styles.startButtonText}>ACCEPT</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={[styles.actionButton, styles.cancelButton]}
-          onPress={() => navigation.navigate('RequestCancel', { requestId: item.id })}
-        >
-          <X size={16} color="#FF3D71" />
-          <Text style={styles.cancelButtonText}>CANCEL</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={[styles.actionButton, styles.contactButton]}
-          onPress={() => navigation.navigate('RequestContact', { requestId: item.id })}
-        >
-          <MessageCircle size={16} color="#7A89FF" />
-          <Text style={styles.contactButtonText}>CONTACT</Text>
-        </TouchableOpacity>
-      </View>
-      
-      <View style={styles.cardLine} />
-    </TouchableOpacity>
-  );
-
-  // If no requests
-  if (requests.length === 0) {
+  // Loading State
+  if (loading) {
     return (
       <SafeAreaView style={styles.container}>
-        <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>NO SERVICE REQUESTS</Text>
-          <Text style={styles.emptySubtext}>New requests will appear here</Text>
+        <View style={styles.centeredContainer}> 
+          <ActivityIndicator size="large" color="#00F0FF" />
+          <Text style={styles.loadingText}>Loading Requests...</Text>
         </View>
       </SafeAreaView>
     );
   }
 
+  // Error State
+  if (error) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.centeredContainer}> 
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // If no requests after loading
+  if (requests.length === 0) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}> 
+          <Text style={styles.sectionTitle}>SERVICE REQUESTS</Text>
+        </View>
+        <View style={styles.emptyContainer}>
+          <Text style={styles.emptyText}>NO PENDING REQUESTS</Text>
+          <Text style={styles.emptySubtext}>New requests will appear here when available.</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Main content with requests
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.sectionTitle}>SERVICE REQUESTS</Text>
+        <Text style={styles.sectionTitle}>PENDING SERVICE REQUESTS</Text>
       </View>
       <FlatList
         ref={flatListRef}
         data={requests}
-        renderItem={renderRequestItem}
+        renderItem={({ item }) => <RequestCard item={item} navigation={stackNavigation} />}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContainer}
         showsVerticalScrollIndicator={false}
@@ -319,5 +287,22 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: 'Inter_400Regular',
     color: '#7A89FF',
+  },
+  centeredContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    fontSize: 16,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#00F0FF',
+    marginTop: 16,
+  },
+  errorText: {
+    fontSize: 16,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#FF3D71',
+    marginTop: 16,
   },
 }); 

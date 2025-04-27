@@ -1,112 +1,279 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ProviderStackParamList } from '../../navigation/ProviderNavigator';
-import { ArrowLeft, Check, X } from 'lucide-react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ArrowLeft, Check, X, MessageCircle } from 'lucide-react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { firestore, auth } from '@/lib/firebase';
+import { doc, onSnapshot, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { RepairOrder } from '@/types/orders';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 
 type Props = NativeStackScreenProps<ProviderStackParamList, 'RequestDetail'>;
 
 export default function RequestDetailScreen({ navigation, route }: Props) {
-  const { requestId } = route.params;
-  
-  // In a real app, you would fetch the request details using the ID
-  const requestDetails = {
-    id: requestId,
-    customerName: 'John Smith',
-    service: 'Home Cleaning',
-    date: 'May 15, 2023',
-    time: '14:00 - 16:00',
-    address: '123 Main St, Anytown, CA 94501',
-    status: 'Pending',
-    description: 'Need a full house cleaning, including kitchen, bathrooms, and all bedrooms. Please bring eco-friendly cleaning supplies.',
-    price: '$120.00',
+  const { orderId } = route.params;
+  const [order, setOrder] = useState<RepairOrder | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const tabBarHeight = useBottomTabBarHeight();
+  const insets = useSafeAreaInsets();
+
+  useEffect(() => {
+    setLoading(true);
+    const docRef = doc(firestore, 'repairOrders', orderId);
+
+    const unsubscribe = onSnapshot(docRef, 
+      (docSnap) => {
+        if (docSnap.exists()) {
+          setOrder({ id: docSnap.id, ...docSnap.data() } as RepairOrder);
+          setError(null);
+        } else {
+          setError("Request not found.");
+          setOrder(null);
+        }
+        setLoading(false);
+      },
+      (err) => {
+        console.error("Error fetching request details:", err);
+        setError("Failed to load request details.");
+        setLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [orderId]);
+
+  const handleAccept = async () => {
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+      Alert.alert("Error", "You must be logged in to accept requests.");
+      return;
+    }
+    if (!order) {
+      Alert.alert("Error", "Order data is not available.");
+      return;
+    }
+
+    setIsUpdating(true);
+    const docRef = doc(firestore, 'repairOrders', orderId);
+
+    try {
+      await updateDoc(docRef, {
+        providerId: currentUser.uid,
+        status: 'Accepted',
+        acceptedAt: serverTimestamp()
+      });
+      // Alert.alert("Success", "Request accepted!"); // Optional: Show success message
+      navigation.goBack(); // Go back after successful update
+    } catch (err) {
+      console.error("Error accepting request:", err);
+      Alert.alert("Error", "Could not accept the request. Please try again.");
+      setIsUpdating(false);
+    }
+    // No need to set isUpdating to false on success, as we navigate away
   };
 
-  const handleAccept = () => {
-    // Logic to accept the request
-    alert('Request accepted!');
-    navigation.goBack();
+  const handleDecline = async () => {
+    console.log("handleDecline called. isUpdating:", isUpdating, "Order exists:", !!order);
+    // Change status to Cancelled on decline
+    if (!isUpdating && order) { 
+      setIsUpdating(true);
+      console.log("Attempting to decline order:", orderId);
+      const docRef = doc(firestore, 'repairOrders', orderId);
+      try {
+        await updateDoc(docRef, {
+          status: 'Cancelled'
+        });
+        console.log("Order status updated to Cancelled in Firestore.");
+        navigation.goBack();
+      } catch (err) {
+        // Log the specific error
+        console.error("Firestore Error declining request:", err);
+        Alert.alert("Error", "Could not decline the request. Please try again.");
+        setIsUpdating(false);
+      }
+    } else {
+      console.log("Decline condition not met (already updating or order is null).");
+    }
   };
 
-  const handleDecline = () => {
-    // Logic to decline the request
-    alert('Request declined');
-    navigation.goBack();
+  const handleContact = () => {
+    if (order) {
+       navigation.navigate('RequestContact', { orderId: order.id });
+    }
   };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.loadingContainer} edges={['top']}>
+        <ActivityIndicator size="large" color="#00F0FF" />
+        <Text style={styles.loadingText}>Loading Details...</Text>
+      </SafeAreaView>
+    );
+  }
+
+  if (error || !order) {
+    return (
+      <SafeAreaView style={styles.errorContainer} edges={['top']}>
+        <View style={styles.header_basic}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton_basic}>
+            <ArrowLeft size={24} color="#FFF" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle_basic}>Error</Text>
+          <View style={{ width: 24 }} />
+        </View>
+        <View style={styles.centeredContent}>
+          <Text style={styles.errorText}>{error || "Order data could not be loaded."}</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={styles.container} /* edges={['top']} */ >
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <ArrowLeft size={24} color="#333" />
+          <ArrowLeft size={24} color="#FFFFFF" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Request Details</Text>
         <View style={{ width: 24 }} />
       </View>
-      
-      <ScrollView 
-        style={styles.content}
-        contentContainerStyle={{ paddingBottom: 20 }}
-      >
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Service Information</Text>
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Service:</Text>
-            <Text style={styles.detailValue}>{requestDetails.service}</Text>
+
+      <View style={styles.mainContentArea}> 
+        <ScrollView 
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollViewContent}
+        >
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>Service Information</Text>
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Service:</Text>
+              <Text style={styles.detailValue}>{order.items[0]?.name || 'N/A'}</Text>
+            </View>
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Date Requested:</Text>
+              <Text style={styles.detailValue}>{order.createdAt?.toDate().toLocaleDateString() || 'N/A'}</Text>
+            </View>
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Total Price:</Text>
+              <Text style={styles.detailValue}>${order.totalPrice.toFixed(2)}</Text>
+            </View>
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Vehicle:</Text>
+              <Text style={styles.detailValue}>{order.items[0]?.vehicleDisplay || 'N/A'}</Text>
+            </View>
           </View>
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Date:</Text>
-            <Text style={styles.detailValue}>{requestDetails.date}</Text>
+          
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>Customer & Location</Text>
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Customer ID:</Text>
+              <Text style={styles.detailValue}>{order.customerId}</Text>
+            </View>
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Address:</Text>
+              <Text style={styles.detailValue}>
+                {`${order.locationDetails.address}, ${order.locationDetails.city}, ${order.locationDetails.state} ${order.locationDetails.zipCode}`}
+              </Text>
+            </View>
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Phone:</Text>
+              <Text style={styles.detailValue}>{order.locationDetails.phoneNumber}</Text>
+            </View>
           </View>
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Time:</Text>
-            <Text style={styles.detailValue}>{requestDetails.time}</Text>
+          
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>Additional Notes</Text>
+            <Text style={styles.description}>{order.locationDetails.additionalNotes || 'No additional notes provided.'}</Text>
           </View>
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Price:</Text>
-            <Text style={styles.detailValue}>{requestDetails.price}</Text>
-          </View>
-        </View>
+        </ScrollView>
         
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Customer Information</Text>
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Name:</Text>
-            <Text style={styles.detailValue}>{requestDetails.customerName}</Text>
+        {order.status === 'Pending' && (
+          <View style={[styles.actionButtonsContainer, { paddingBottom: insets.bottom + 12 }]}>
+            <TouchableOpacity 
+              style={[styles.actionButton, styles.contactButton]} 
+              onPress={handleContact} 
+              disabled={isUpdating}
+            >
+              <MessageCircle size={20} color="#7A89FF" />
+              <Text style={styles.contactButtonText}>Contact</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={[styles.actionButton, styles.declineButton]} 
+              onPress={handleDecline} 
+              disabled={isUpdating}
+            >
+              <X size={20} color="#FF3D71" />
+              <Text style={styles.declineButtonText}>{isUpdating ? 'Declining...' : 'Decline'}</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={[styles.actionButton, styles.acceptButton]} 
+              onPress={handleAccept} 
+              disabled={isUpdating}
+            >
+              <Check size={20} color="#0A0F1E" />
+              <Text style={styles.acceptButtonText}>{isUpdating ? 'Accepting...' : 'Accept'}</Text>
+            </TouchableOpacity>
           </View>
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Address:</Text>
-            <Text style={styles.detailValue}>{requestDetails.address}</Text>
-          </View>
-        </View>
-        
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Request Details</Text>
-          <Text style={styles.description}>{requestDetails.description}</Text>
-        </View>
-      </ScrollView>
-      
-      {requestDetails.status === 'Pending' && (
-        <View style={styles.actionButtons}>
-          <TouchableOpacity style={[styles.actionButton, styles.declineButton]} onPress={handleDecline}>
-            <X size={20} color="#fff" />
-            <Text style={styles.buttonText}>Decline</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.actionButton, styles.acceptButton]} onPress={handleAccept}>
-            <Check size={20} color="#fff" />
-            <Text style={styles.buttonText}>Accept</Text>
-          </TouchableOpacity>
-        </View>
-      )}
+        )}
+      </View> 
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  loadingContainer: {
+    flex: 1,
+    backgroundColor: '#0A0F1E',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingText: {
+    color: '#00F0FF',
+    marginTop: 16,
+    fontSize: 16,
+    fontFamily: 'Inter_600SemiBold',
+  },
+  errorContainer: {
+    flex: 1,
+    backgroundColor: '#0A0F1E',
+  },
+  centeredContent: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+  },
+  errorText: {
+    color: '#FF3D71',
+    fontSize: 16,
+    fontFamily: 'Inter_600SemiBold',
+    textAlign: 'center',
+  },
+  header_basic: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#2A3555',
+  },
+  backButton_basic: {
+    padding: 4,
+  },
+  headerTitle_basic: {
+    fontSize: 18,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#FFFFFF',
+  },
   container: {
     flex: 1,
-    backgroundColor: '#f8f9fa',
+    backgroundColor: '#0A0F1E',
   },
   header: {
     flexDirection: 'row',
@@ -114,67 +281,75 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: '#fff',
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
+    borderBottomWidth: 1,
+    borderBottomColor: '#2A3555',
+    backgroundColor: '#0A0F1E',
   },
   backButton: {
     padding: 4,
   },
   headerTitle: {
     fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
+    fontFamily: 'Inter_600SemiBold',
+    color: '#FFFFFF',
   },
-  content: {
+  mainContentArea: {
     flex: 1,
-    padding: 16,
+  },
+  scrollView: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+  },
+  scrollViewContent: {
+    paddingBottom: 20,
   },
   card: {
-    backgroundColor: '#fff',
-    borderRadius: 8,
+    backgroundColor: '#121827',
+    borderRadius: 12,
     padding: 16,
     marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
+    borderWidth: 1,
+    borderColor: '#2A3555',
   },
   sectionTitle: {
     fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 12,
-    color: '#333',
+    fontFamily: 'Inter_600SemiBold',
+    color: '#00F0FF',
+    marginBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#2A3555',
+    paddingBottom: 8,
   },
   detailRow: {
     flexDirection: 'row',
-    marginBottom: 8,
+    marginBottom: 10,
+    alignItems: 'flex-start',
   },
   detailLabel: {
-    flex: 1,
+    width: 100,
     fontSize: 14,
-    color: '#666',
+    fontFamily: 'Inter_500Medium',
+    color: '#7A89FF',
+    marginRight: 8,
   },
   detailValue: {
-    flex: 2,
+    flex: 1,
     fontSize: 14,
-    color: '#333',
-    fontWeight: '500',
+    fontFamily: 'Inter_400Regular',
+    color: '#E0EFFF',
   },
   description: {
     fontSize: 14,
+    fontFamily: 'Inter_400Regular',
     lineHeight: 20,
-    color: '#444',
+    color: '#E0EFFF',
   },
-  actionButtons: {
+  actionButtonsContainer: {
     flexDirection: 'row',
-    padding: 16,
-    backgroundColor: '#fff',
-    borderTopColor: '#eee',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: '#121827',
+    borderTopColor: '#2A3555',
     borderTopWidth: 1,
   },
   actionButton: {
@@ -184,17 +359,37 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 12,
     borderRadius: 8,
-    marginHorizontal: 4,
+    marginHorizontal: 6,
+    borderWidth: 1,
+  },
+  contactButton: {
+    backgroundColor: 'rgba(122, 137, 255, 0.1)',
+    borderColor: '#7A89FF',
+  },
+  contactButtonText: {
+    marginLeft: 6,
+    color: '#7A89FF',
+    fontSize: 14,
+    fontFamily: 'Inter_600SemiBold',
   },
   declineButton: {
-    backgroundColor: '#dc3545',
+    backgroundColor: 'rgba(255, 61, 113, 0.1)',
+    borderColor: '#FF3D71',
+  },
+  declineButtonText: {
+    marginLeft: 6,
+    color: '#FF3D71',
+    fontSize: 14,
+    fontFamily: 'Inter_600SemiBold',
   },
   acceptButton: {
-    backgroundColor: '#28a745',
+    backgroundColor: '#00F0FF',
+    borderColor: '#00F0FF',
   },
-  buttonText: {
-    marginLeft: 8,
-    color: '#fff',
-    fontWeight: '600',
+  acceptButtonText: {
+    marginLeft: 6,
+    color: '#0A0F1E',
+    fontSize: 14,
+    fontFamily: 'Inter_600SemiBold',
   },
 }); 

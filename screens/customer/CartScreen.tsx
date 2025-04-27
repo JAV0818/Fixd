@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, FlatList, Pressable, Image, Alert } from 'react-native';
+import { View, Text, StyleSheet, FlatList, Pressable, Image, Alert, ActivityIndicator } from 'react-native';
 import { ArrowLeft, Trash, Minus, Plus } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -60,50 +60,60 @@ export default function CartScreen() {
   };
 
   const renderCartItem = ({ item }: { item: CartItem }) => {
-    const isExpanded = expandedItemId === item.id;
+    console.log(`Rendering item: ${item.id}, Price: ${item.price}, Quantity: ${item.quantity}`); 
     
-    return (
-      <Pressable 
-        style={styles.cartItem} 
-        onPress={() => toggleItemExpand(item.id)}
-      >
-        <Image source={item.serviceImage} style={styles.itemImage} />
-        
-        <View style={styles.itemDetails}>
-          <Text style={styles.itemName}>{item.serviceName}</Text>
-          <Text style={styles.itemPrice}>${item.basePrice.toFixed(2)}</Text>
+    try {
+      return (
+        <View style={styles.cartItem}> 
+          {/* Placeholder for image if needed later */}
+          <View style={styles.itemImagePlaceholder} /> 
           
-          {isExpanded && item.selectedAddons && item.selectedAddons.length > 0 && (
-            <View style={styles.addonsContainer}>
-              <Text style={styles.addonsTitle}>Add-ons:</Text>
-              {item.selectedAddons.map(addon => (
-                <View key={addon.id} style={styles.addonItem}>
-                  <Text style={styles.addonName}>{addon.name}</Text>
-                  <Text style={styles.addonPrice}>+${addon.price.toFixed(2)}</Text>
-                </View>
-              ))}
-            </View>
-          )}
+          <View style={styles.itemDetails}>
+            <Text style={styles.itemName}>{item.name || 'Name Missing'}</Text> 
+            {/* Display vehicle info */}
+            {item.vehicleDisplay && (
+              <Text style={styles.itemVehicle}>{item.vehicleDisplay}</Text>
+            )}
+            <Text style={styles.itemPrice}>Base: ${item.price !== undefined ? item.price : 'N/A'}</Text> 
+          </View>
           
-          {!isExpanded && item.selectedAddons && item.selectedAddons.length > 0 && (
-            <Text style={styles.addonCount}>
-              {`+ ${item.selectedAddons.length} add-on${item.selectedAddons.length > 1 ? 's' : ''}`}
-            </Text>
-          )}
+          <View style={styles.itemActions}>
+            <Text style={styles.totalPrice}>
+              Qty: {item.quantity !== undefined ? item.quantity : 'N/A'} / 
+              Total: ${(item.price !== undefined && item.quantity !== undefined) ? (item.price * item.quantity).toFixed(2) : 'Error'}
+            </Text> 
+            <Pressable 
+              style={styles.removeButton} 
+              onPress={() => handleRemoveItem(item.id)}
+            >
+              <Trash size={18} color="#FF3D71" />
+            </Pressable>
+          </View>
         </View>
-        
-        <View style={styles.itemActions}>
-          <Text style={styles.totalPrice}>${item.totalPrice.toFixed(2)}</Text>
-          <Pressable 
-            style={styles.removeButton} 
-            onPress={() => handleRemoveItem(item.id)}
-          >
-            <Trash size={18} color="#FF3D71" />
-          </Pressable>
+      );
+    } catch (error) {
+      console.error(`Error rendering item ${item.id}:`, error);
+      return (
+        <View style={styles.cartItemError}>
+          <Text>Error rendering item: {item.id}</Text>
         </View>
-      </Pressable>
-    );
+      );
+    }
   };
+
+  // Log cart state on every render of CartScreen
+  console.log("[CartScreen] State on render:", JSON.stringify(cartState, null, 2));
+
+  // --- Show Loading Indicator --- 
+  if (cartState.isLoading) {
+    return (
+      <View style={[styles.container, styles.loadingContainer]}>
+        <ActivityIndicator size="large" color="#00F0FF" />
+        <Text style={styles.loadingText}>Loading Cart...</Text>
+      </View>
+    )
+  }
+  // --- End Loading Indicator --- 
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -120,7 +130,7 @@ export default function CartScreen() {
         )}
       </View>
 
-      {/* Cart Content */}
+      {/* Cart Content - Reverted temporary debugging change */}
       {cartState.items.length === 0 ? (
         <View style={styles.emptyCartContainer}>
           <Text style={styles.emptyCartText}>Your cart is empty</Text>
@@ -136,12 +146,11 @@ export default function CartScreen() {
           <FlatList
             data={cartState.items}
             renderItem={renderCartItem}
-            keyExtractor={item => item.id}
+            keyExtractor={(item: CartItem) => item.id}
             contentContainerStyle={styles.listContent}
             showsVerticalScrollIndicator={false}
           />
 
-          {/* Footer with Total and Checkout Button */}
           <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
             <View style={styles.totalContainer}>
               <Text style={styles.totalLabel}>Total:</Text>
@@ -206,6 +215,13 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginRight: 12,
   },
+  itemImagePlaceholder: { // Style for placeholder
+    width: 70,
+    height: 70,
+    borderRadius: 8,
+    marginRight: 12,
+    backgroundColor: 'rgba(42, 53, 85, 0.5)', // Placeholder color
+  },
   itemDetails: {
     flex: 1,
     justifyContent: 'center',
@@ -214,6 +230,12 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontFamily: 'Inter_600SemiBold',
+    marginBottom: 4,
+  },
+  itemVehicle: { // Style for vehicle text
+    color: '#A0AFFF', // Lighter accent color
+    fontSize: 13,
+    fontFamily: 'Inter_400Regular',
     marginBottom: 4,
   },
   itemPrice: {
@@ -236,6 +258,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginLeft: 8,
     marginVertical: 2,
+    paddingRight: 5,
   },
   addonName: {
     color: '#D0DFFF',
@@ -320,5 +343,20 @@ const styles = StyleSheet.create({
     color: '#030515',
     fontSize: 16,
     fontFamily: 'Inter_600SemiBold',
+  },
+  cartItemError: { // Style for error placeholder
+    backgroundColor: '#500',
+    padding: 10,
+    margin: 5,
+    borderRadius: 5,
+  },
+  loadingContainer: { // Styles for loading state
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 10,
+    color: '#FFFFFF',
+    fontSize: 16,
   },
 }); 

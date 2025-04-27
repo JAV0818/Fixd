@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, Image, TextInput, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, Image, TextInput, ActivityIndicator, Alert, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Camera, PenTool as Tool, Clock, Settings, ChevronRight, LogOut, Star, CheckCircle, Users, DollarSign, Activity, Info } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
@@ -59,7 +59,7 @@ const performanceMetrics = [
 
 export default function ProviderProfileScreen() {
   const stackNavigation = useNavigation<NativeStackNavigationProp<ProviderStackParamList>>();
-  const rootNavigation = useNavigation<NavigationProp<RootStackParamList>>();
+  const navigation = useNavigation<NavigationProp<RootStackParamList>>();
   const [profileData, setProfileData] = useState<ProviderProfile>({});
   const [profileImage, setProfileImage] = useState<string | null>(null);
   const [bio, setBio] = useState('');
@@ -253,8 +253,8 @@ export default function ProviderProfileScreen() {
     }
   };
 
-  const handleMetricsDetailsPress = () => {
-    rootNavigation.navigate('PerformanceDetails');
+  const handleViewPerformance = () => {
+    stackNavigation.navigate('PerformanceDetails');
   };
 
   // Show loading indicator while fetching profile
@@ -402,7 +402,7 @@ export default function ProviderProfileScreen() {
         <View style={styles.metricsSection}>
           <View style={styles.sectionHeaderRow}>
             <Text style={styles.sectionTitle}>PERFORMANCE METRICS</Text>
-            <Pressable onPress={handleMetricsDetailsPress} style={styles.detailsContainer}>
+            <Pressable onPress={handleViewPerformance} style={styles.detailsContainer}>
               <Text style={styles.detailsText}>Details</Text>
               <ChevronRight size={16} color="#00F0FF" />
             </Pressable>
@@ -430,14 +430,14 @@ export default function ProviderProfileScreen() {
         </View>
 
         <View style={styles.menuSection}>
-          <Pressable 
+          <TouchableOpacity 
             style={styles.menuItem}
-            onPress={() => rootNavigation.navigate('AccountSettings')}
+            onPress={() => stackNavigation.navigate('AccountSettings')}
           >
-            <Settings size={20} color="#00F0FF" />
+            <Settings size={20} color="#7A89FF" />
             <Text style={styles.menuText}>Account Settings</Text>
             <ChevronRight size={20} color="#7A89FF" />
-          </Pressable>
+          </TouchableOpacity>
         </View>
 
         <Pressable style={styles.logoutButton} onPress={handleLogout}>

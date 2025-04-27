@@ -16,14 +16,14 @@ const CANCELLATION_REASONS = [
 ];
 
 export default function RequestCancelScreen({ navigation, route }: Props) {
-  const { requestId } = route.params;
+  const { orderId } = route.params;
   const [loading, setLoading] = useState(false);
   const [selectedReason, setSelectedReason] = useState('');
   const [otherReason, setOtherReason] = useState('');
   
   // In a real app, you would fetch the request details using the ID
   const requestDetails = {
-    id: requestId,
+    id: orderId,
     customerName: 'John Smith',
     customerAvatar: 'https://randomuser.me/api/portraits/men/32.jpg',
     service: 'Home Cleaning',

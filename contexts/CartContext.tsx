@@ -17,17 +17,12 @@ try {
 // Types
 export type CartItem = {
   id: string;
-  serviceId: string;
-  serviceName: string;
-  serviceImage: any;
-  basePrice: number;
-  selectedAddons: {
-    id: string;
-    name: string;
-    price: number;
-  }[];
-  totalPrice: number;
-  timestamp: number;
+  name: string;
+  price: number;
+  quantity: number;
+  vehicleId: string | null;
+  vehicleDisplay: string | null;
+  image: any;
 };
 
 type CartState = {
@@ -38,7 +33,7 @@ type CartState = {
 };
 
 type CartAction =
-  | { type: 'ADD_ITEM'; payload: CartItem }
+  | { type: 'ADD_ITEM'; payload: { item: CartItem } }
   | { type: 'REMOVE_ITEM'; payload: { id: string } }
   | { type: 'UPDATE_ITEM_QUANTITY'; payload: { id: string; quantity: number } }
   | { type: 'CLEAR_CART' }
@@ -47,7 +42,8 @@ type CartAction =
 
 type CartContextType = {
   state: CartState;
-  addItem: (item: Omit<CartItem, 'id' | 'timestamp'>) => void;
+  dispatch: React.Dispatch<CartAction>;
+  addItem: (item: CartItem) => void;
   removeItem: (id: string) => void;
   updateItemQuantity: (id: string, quantity: number) => void;
   clearCart: () => void;
@@ -68,10 +64,10 @@ const CartContext = createContext<CartContextType | undefined>(undefined);
 function cartReducer(state: CartState, action: CartAction): CartState {
   switch (action.type) {
     case 'ADD_ITEM': {
-      const newItem = action.payload;
-      // Check if item already exists
+      const newItem = action.payload.item;
+      // Check if item already exists with the same vehicle
       const existingItemIndex = state.items.findIndex(
-        item => item.serviceId === newItem.serviceId
+        item => item.id === newItem.id && item.vehicleId === newItem.vehicleId
       );
 
       let updatedItems: CartItem[];
@@ -86,7 +82,7 @@ function cartReducer(state: CartState, action: CartAction): CartState {
       }
 
       const newTotalItems = updatedItems.length;
-      const newTotalPrice = updatedItems.reduce((sum, item) => sum + item.totalPrice, 0);
+      const newTotalPrice = updatedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
 
       return {
         ...state,
@@ -99,7 +95,7 @@ function cartReducer(state: CartState, action: CartAction): CartState {
     case 'REMOVE_ITEM': {
       const updatedItems = state.items.filter(item => item.id !== action.payload.id);
       const newTotalItems = updatedItems.length;
-      const newTotalPrice = updatedItems.reduce((sum, item) => sum + item.totalPrice, 0);
+      const newTotalPrice = updatedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
 
       return {
         ...state,
@@ -115,6 +111,7 @@ function cartReducer(state: CartState, action: CartAction): CartState {
     }
 
     case 'CLEAR_CART':
+      console.log("[cartReducer] Clearing cart state.");
       return {
         ...initialState,
         isLoading: false,
@@ -141,15 +138,74 @@ export function CartProvider({ children }: { children: ReactNode }) {
   // Load cart from AsyncStorage on mount
   useEffect(() => {
     const loadCart = async () => {
+      // --- AsyncStorage Test Code ---
+      const testKey = '@MyApp:storageTest';
+      const testValue = { message: "AsyncStorage test successful!" };
+      try {
+        console.log(`[AsyncStorage Test] Attempting to write to key: ${testKey}`);
+        await AsyncStorage.setItem(testKey, JSON.stringify(testValue));
+        console.log(`[AsyncStorage Test] Write successful.`);
+        
+        console.log(`[AsyncStorage Test] Attempting to read from key: ${testKey}`);
+        const readResult = await AsyncStorage.getItem(testKey);
+        if (readResult !== null) {
+          console.log(`[AsyncStorage Test] Read successful. Value:`, JSON.parse(readResult));
+        } else {
+          console.warn(`[AsyncStorage Test] Read failed. Value is null.`);
+        }
+      } catch (e) {
+        console.error(`[AsyncStorage Test] Error during test:`, e);
+      }
+      // --- End AsyncStorage Test Code ---
+      
+      // --- TEMPORARY FORCE CLEAR (REMOVED) --- 
+      // try {
+      //   console.log("Attempting to force clear 'cart' from AsyncStorage...");
+      //   await AsyncStorage.removeItem('cart');
+      //   console.log("Forced clear successful.");
+      // } catch (e) {
+      //   console.error("Error during force clear:", e);
+      // }
+      // --- END TEMPORARY FORCE CLEAR ---
+      
+      let shouldClear = false; 
       try {
         const cartData = await AsyncStorage.getItem('cart');
         if (cartData) {
-          dispatch({ type: 'SET_CART', payload: JSON.parse(cartData) });
+          const parsedCart = JSON.parse(cartData) as CartState;
+          
+          // Robust Check: Validate every item in the loaded cart
+          if (parsedCart.items && Array.isArray(parsedCart.items)) {
+            for (const item of parsedCart.items) {
+              // Check if essential new properties are missing
+              if (item.price === undefined || item.quantity === undefined || !item.hasOwnProperty('vehicleId')) {
+                 console.log('Detected invalid or old cart item format. Clearing cart.', item);
+                 shouldClear = true;
+                 break; // Stop checking once one invalid item is found
+              }
+            }
+          } else {
+            // If items array is missing or not an array, treat as invalid
+            console.log('Invalid cart structure loaded. Clearing cart.');
+            shouldClear = true;
+          }
+
+          // Only set the cart if it passed the checks
+          if (!shouldClear) {
+             dispatch({ type: 'SET_CART', payload: parsedCart });
+          }
         }
       } catch (error) {
-        console.error('Error loading cart from storage:', error);
+        console.error('Error loading/parsing cart from storage:', error);
+        shouldClear = true; // Clear cart on parsing error too
       } finally {
-        dispatch({ type: 'SET_LOADING', payload: false });
+        if (shouldClear) {
+          dispatch({ type: 'CLEAR_CART' }); // Dispatch clear cart outside try-catch
+        } else {
+          // Only set loading to false if we didn't clear the cart
+          // (CLEAR_CART action already sets isLoading to false)
+          dispatch({ type: 'SET_LOADING', payload: false });
+        }
       }
     };
 
@@ -173,13 +229,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
   }, [state]);
 
   // Helper functions for cart operations
-  const addItem = (item: Omit<CartItem, 'id' | 'timestamp'>) => {
-    const newItem: CartItem = {
-      ...item,
-      id: Math.random().toString(36).substring(2, 15), // Generate unique ID
-      timestamp: Date.now(),
-    };
-    dispatch({ type: 'ADD_ITEM', payload: newItem });
+  const addItem = (item: CartItem) => {
+    dispatch({ type: 'ADD_ITEM', payload: { item } });
   };
 
   const removeItem = (id: string) => {
@@ -196,6 +247,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   const value = {
     state,
+    dispatch,
     addItem,
     removeItem,
     updateItemQuantity,

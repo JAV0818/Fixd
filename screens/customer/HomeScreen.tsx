@@ -1,4 +1,4 @@
-import { View, Text, ScrollView, StyleSheet, Image, Pressable, TextInput, FlatList, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Image, Pressable, TextInput, FlatList, ActivityIndicator, Alert } from 'react-native';
 import { Search, Bell, Star, Wrench, Clock, MapPin, Zap, Car, Navigation, ShoppingCart, PlusCircle } from 'lucide-react-native';
 import { useState, useEffect } from 'react';
 import NotificationPanel from '../../components/NotificationPanel';
@@ -71,6 +71,13 @@ const serviceCategoriesData: ServiceCategory[] = [
         image: require('../../img_assets/Brake.png'),
         price: 'From $50',
       },
+      {
+        id: 'test-free-service', 
+        name: 'Free System Checkup',
+        description: 'Complimentary basic system check.',
+        image: require('../../img_assets/diagnostics.png'), // Re-use image
+        price: '$0', // Display price as $0
+      },
     ],
   },
 ];
@@ -88,10 +95,11 @@ export default function HomeScreen() {
   // const router = useRouter();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const insets = useSafeAreaInsets(); // Get safe area insets
-  const { state: cartState } = useCart(); // Get cart state
+  const { state: cartState, dispatch: cartDispatch } = useCart(); // Get cart state AND dispatch
   const [showNotifications, setShowNotifications] = useState(false);
   const [userVehicles, setUserVehicles] = useState<Vehicle[]>([]);
   const [loadingVehicles, setLoadingVehicles] = useState(true);
+  const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null); // State for selected vehicle
 
   // Fetch user vehicles (example using onSnapshot for real-time updates)
   useEffect(() => {
@@ -111,6 +119,10 @@ export default function HomeScreen() {
         fetchedVehicles.push({ id: doc.id, ...doc.data() } as Vehicle);
       });
       setUserVehicles(fetchedVehicles);
+      // Automatically select the first vehicle if only one exists
+      if (fetchedVehicles.length === 1) {
+        setSelectedVehicleId(fetchedVehicles[0].id);
+      }
       setLoadingVehicles(false);
     }, (error) => {
       console.error("Error fetching vehicles: ", error);
@@ -126,26 +138,81 @@ export default function HomeScreen() {
     navigation.navigate('Cart');
   };
 
+  // Reverted handleServiceSelect to navigate, not add directly to cart
   const handleServiceSelect = (serviceId: string) => {
-    if (serviceId === 'battery-jump-start') {
-      navigation.navigate('BatteryJumpStart');
-    } else {
-      navigation.navigate('ServiceDetail', { id: serviceId });
+    // Check if a vehicle selection is required
+    if (userVehicles.length > 1 && !selectedVehicleId) {
+      Alert.alert(
+        "Select Vehicle",
+        "Please select the vehicle you want to service first."
+      );
+      return;
     }
+    
+    // Determine the vehicle ID to pass (handle single vehicle case)
+    const vehicleIdToPass = userVehicles.length === 1 ? userVehicles[0].id : selectedVehicleId;
+    
+    // Always navigate to ServiceDetail, passing serviceId and vehicleId
+    // We no longer differentiate BatteryJumpStart here, let ServiceDetail handle it or create specific screens later
+    navigation.navigate('ServiceDetail', { id: serviceId, vehicleId: vehicleIdToPass });
+    
+    // Remove direct cart dispatch logic
+    /* 
+    const vehicleIdToUse = userVehicles.length === 1 ? userVehicles[0].id : selectedVehicleId;
+
+    if (!vehicleIdToUse) {
+       Alert.alert("No Vehicle", "Cannot add service without a vehicle.");
+       return;
+    }
+
+    // Example: Add to cart logic (replace with your actual add to cart)
+    // Find the full vehicle object for display purposes
+    const selectedVehicle = userVehicles.find(v => v.id === vehicleIdToUse);
+    const vehicleDisplay = selectedVehicle ? `${selectedVehicle.year} ${selectedVehicle.make} ${selectedVehicle.model}` : 'Unknown Vehicle';
+
+    // Use type guard to safely access title or name
+    const serviceName = 'title' in service ? service.title : service.name;
+
+    console.log(`Adding service '${serviceName}' for vehicle ID: ${vehicleIdToUse}`);
+    cartDispatch({ 
+      type: 'ADD_ITEM', 
+      payload: { 
+        item: { 
+          id: service.id,
+          name: serviceName, // Use the determined name
+          price: parseFloat(service.price?.replace('From $', '') || '0'), // Extract price
+          quantity: 1, 
+          // ---- Include vehicle info ----
+          vehicleId: vehicleIdToUse,
+          vehicleDisplay: vehicleDisplay,
+          // ---- Add other service specific details if needed ----
+        } 
+      }
+    });
+    Alert.alert("Added to Cart", `${serviceName} added for ${vehicleDisplay}.`);
+    */
   };
 
   const handleAddVehicle = () => {
     navigation.navigate('AddVehicle'); // Navigate to the new screen
   };
 
-  // Render item for vehicle list
-  const renderVehicleItem = ({ item }: { item: Vehicle }) => (
-    <View style={styles.vehicleItem}>
-      <Car size={20} color="#7A89FF" />
-      <Text style={styles.vehicleText}>{`${item.year} ${item.make} ${item.model}`}</Text>
-      {/* Add options like delete or edit later */}
-    </View>
-  );
+  // Render item for vehicle list - Now Pressable and indicates selection
+  const renderVehicleItem = ({ item }: { item: Vehicle }) => {
+    const isSelected = item.id === selectedVehicleId;
+    return (
+      <Pressable 
+        style={[styles.vehicleItem, isSelected && styles.selectedVehicleItem]}
+        onPress={() => setSelectedVehicleId(item.id)}
+      >
+        <Car size={20} color={isSelected ? "#FFFFFF" : "#7A89FF"} />
+        <Text style={[styles.vehicleText, isSelected && styles.selectedVehicleText]}>
+          {`${item.year} ${item.make} ${item.model}`}
+        </Text>
+        {/* Add options like delete or edit later */}
+      </Pressable>
+    );
+  };
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -227,7 +294,7 @@ export default function HomeScreen() {
               <EmergencyServiceCard
                 key={service.id}
                 service={service}
-                onPress={handleServiceSelect}
+                onPress={() => handleServiceSelect(service.id)} // Pass only service ID
               />
             ))}
           </ScrollView>
@@ -244,7 +311,7 @@ export default function HomeScreen() {
                 <ServiceCard
                   key={service.id}
                   service={service}
-                  onPress={handleServiceSelect}
+                  onPress={() => handleServiceSelect(service.id)} // Pass only service ID
                 />
               ))}
             </View>
@@ -414,6 +481,15 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: 'Inter_500Medium',
     marginLeft: 6,
+  },
+  selectedVehicleItem: {
+    backgroundColor: '#0080FF', // Highlight color for selected vehicle
+    borderColor: '#00F0FF',
+    borderWidth: 1,
+  },
+  selectedVehicleText: {
+    color: '#FFFFFF',
+    fontFamily: 'Inter_600SemiBold',
   },
   noVehiclesText: {
     color: '#7A89FF',

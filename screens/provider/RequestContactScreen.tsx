@@ -1,84 +1,215 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, ScrollView, TextInput, Alert, KeyboardAvoidingView, Platform } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Image, ScrollView, TextInput, Alert, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ProviderStackParamList } from '../../navigation/ProviderNavigator';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, Send, MessageCircle, Phone, Calendar, Clock } from 'lucide-react-native';
+import { RepairOrder } from '@/types/orders';
+import { auth, firestore } from '@/lib/firebase';
+import {
+  doc, getDoc, onSnapshot, collection, query, orderBy, addDoc,
+  serverTimestamp, Timestamp, setDoc
+} from 'firebase/firestore';
+
+// Define structure for User document (adjust based on your actual structure)
+interface UserProfile {
+  displayName?: string;
+  profileImageUrl?: string;
+  // Add other fields if needed
+}
+
+// Define structure for Message document
+interface Message {
+  id: string;
+  senderUid: string;
+  text: string;
+  createdAt: Timestamp;
+}
 
 type Props = NativeStackScreenProps<ProviderStackParamList, 'RequestContact'>;
 
-// Mock message history
-const MOCK_MESSAGES = [
-  {
-    id: '1',
-    sender: 'provider',
-    text: 'Hello! I saw your service request for home cleaning.',
-    timestamp: '10:30 AM'
-  },
-  {
-    id: '2',
-    sender: 'customer',
-    text: 'Hi! Yes, I needed someone to come by next week.',
-    timestamp: '10:32 AM'
-  },
-  {
-    id: '3',
-    sender: 'provider',
-    text: 'I can help with that. Do you have any specific cleaning products you prefer I use?',
-    timestamp: '10:33 AM'
-  }
-];
-
 export default function RequestContactScreen({ navigation, route }: Props) {
-  const { requestId } = route.params;
+  const { orderId } = route.params;
   const [message, setMessage] = useState('');
-  const [messages, setMessages] = useState(MOCK_MESSAGES);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [sending, setSending] = useState(false);
-  
-  // In a real app, you would fetch the request and customer details using the ID
-  const requestDetails = {
-    id: requestId,
-    customerName: 'John Smith',
-    customerAvatar: 'https://randomuser.me/api/portraits/men/32.jpg',
-    service: 'Home Cleaning',
-    date: 'May 15, 2023',
-    time: '14:00 - 16:00',
-    address: '123 Main St, Anytown, CA 94501',
-    phoneNumber: '(555) 123-4567',
-    email: 'john.smith@example.com',
-    status: 'Pending',
-  };
+  const [order, setOrder] = useState<RepairOrder | null>(null);
+  const [customer, setCustomer] = useState<UserProfile | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const scrollViewRef = useRef<ScrollView>(null);
+  const currentUser = auth.currentUser;
 
-  const handleSendMessage = () => {
-    if (!message.trim()) return;
+  // Fetch Order and Customer details
+  useEffect(() => {
+    setLoading(true);
+    const orderDocRef = doc(firestore, 'repairOrders', orderId);
+
+    const unsubscribeOrder = onSnapshot(orderDocRef, async (docSnap) => {
+      console.log("Order Snapshot received. Exists:", docSnap.exists());
+      if (docSnap.exists()) {
+        const orderData = { id: docSnap.id, ...docSnap.data() } as RepairOrder;
+        console.log("Order Data:", orderData);
+        setOrder(orderData);
+        setError(null);
+
+        // Fetch customer data once order is loaded
+        if (orderData.customerId) {
+          const customerDocRef = doc(firestore, 'users', orderData.customerId);
+          try {
+            const customerDoc = await getDoc(customerDocRef);
+            console.log("Customer Snapshot received. Exists:", customerDoc.exists());
+            if (customerDoc.exists()) {
+              console.log("Customer Data:", customerDoc.data());
+              setCustomer(customerDoc.data() as UserProfile);
+            } else {
+              console.warn("Customer document not found for ID:", orderData.customerId);
+              setCustomer(null); // Handle customer not found
+            }
+          } catch (customerError) {
+            console.error("Error fetching customer data:", customerError);
+            setError("Failed to load customer details.");
+          }
+        } else {
+            setCustomer(null);
+        }
+
+      } else {
+        setError("Order not found.");
+        setOrder(null);
+        setCustomer(null);
+      }
+      // Keep loading true until messages are also loaded (in next effect)
+    }, (err) => {
+      console.error("Error fetching order details (onSnapshot):", err); // Log specific error location
+      setError("Failed to load order details.");
+      setLoading(false);
+    });
+
+    return () => unsubscribeOrder(); // Cleanup order listener
+  }, [orderId]);
+
+  // Fetch Messages
+  useEffect(() => {
+    if (!order) return; // Wait for order to load
+
+    const messagesRef = collection(firestore, 'chats', orderId, 'messages');
+    const q = query(messagesRef, orderBy('createdAt', 'asc'));
+
+    const unsubscribeMessages = onSnapshot(q, (querySnapshot) => {
+      console.log("Messages Snapshot received. Size:", querySnapshot.size);
+      const fetchedMessages = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as Message));
+      console.log("Fetched Messages:", fetchedMessages);
+      setMessages(fetchedMessages);
+      setLoading(false); // Stop loading after messages (and order/customer) are fetched
+       // Scroll to bottom when messages load/update
+       setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
+    }, (err) => {
+      console.error("Error fetching messages (onSnapshot):", err); // Log specific error location
+      setError("Failed to load messages.");
+      setLoading(false);
+    });
+
+    return () => unsubscribeMessages(); // Cleanup messages listener
+  }, [orderId, order]); // Rerun when orderId or order object changes
+
+  const handleSendMessage = async () => {
+    console.log("handleSendMessage called. currentUser:", !!currentUser, "order:", !!order, "message:", message);
+    if (!message.trim() || !currentUser || !order || !order.customerId) {
+        console.log("handleSendMessage: Preconditions not met.");
+        return;
+    }
     
     setSending(true);
-    
-    // Simulate sending a message
-    setTimeout(() => {
-      const newMessage = {
-        id: Date.now().toString(),
-        sender: 'provider',
-        text: message,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      };
+    const messageText = message;
+    setMessage(''); // Clear input immediately
+
+    const chatId = order.id;
+    const chatDocRef = doc(firestore, 'chats', chatId);
+    const messagesRef = collection(firestore, 'chats', chatId, 'messages');
+
+    try {
+      console.log(`Ensuring chat doc exists: chats/${chatId}`);
+      await setDoc(chatDocRef, { 
+        participants: [order.customerId, currentUser.uid] 
+      }, { merge: true });
+      console.log(`Chat doc ensured. Adding message to chats/${chatId}/messages`);
+      await addDoc(messagesRef, {
+        senderUid: currentUser.uid,
+        text: messageText,
+        createdAt: serverTimestamp()
+      });
+      console.log("Message added successfully.");
       
-      setMessages([...messages, newMessage]);
-      setMessage('');
+      // Scroll to bottom after sending
+       setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
+
+    } catch (error) {
+      console.error("Firestore Error sending message:", error); // Log specific error
+      Alert.alert("Error", "Could not send message.");
+      setMessage(messageText); // Restore message on error
+    } finally {
       setSending(false);
-    }, 500);
+    }
   };
 
   const handlePhoneCall = () => {
     Alert.alert(
       "Make Phone Call",
-      `Call ${requestDetails.customerName} at ${requestDetails.phoneNumber}?`,
+      `Call ${order?.locationDetails?.phoneNumber || '(XXX) XXX-XXXX'}?`,
       [
         { text: "Cancel", style: "cancel" },
         { text: "Call", onPress: () => console.log("Initiating call...") }
       ]
     );
   };
+
+  // --- Render Logic --- 
+  if (loading) {
+     return (
+      <SafeAreaView style={styles.container}>
+         {/* Basic Header for Loading */}
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+            <ArrowLeft size={24} color="#00F0FF" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>CONTACT CLIENT</Text>
+          <View style={{ width: 24 }} /> 
+        </View>
+        <View style={styles.centeredContainer}>
+          <ActivityIndicator size="large" color="#00F0FF" />
+          <Text style={styles.loadingText}>Loading Chat...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (error || !order) {
+    return (
+      <SafeAreaView style={styles.container}>
+         <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+            <ArrowLeft size={24} color="#00F0FF" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Error</Text>
+          <View style={{ width: 24 }} /> 
+        </View>
+        <View style={styles.centeredContainer}>
+          <Text style={styles.errorText}>{error || "Could not load order details."}</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Prepare display data
+  const displayCustomerName = customer?.displayName || order.customerId.substring(0, 8) + '...';
+  const displayAvatar = customer?.profileImageUrl || 'https://via.placeholder.com/48?text=User';
+  const displayService = order.items[0]?.name || 'Service N/A';
+  const displayDate = order.createdAt?.toDate().toLocaleDateString() || 'N/A';
+  const displayTime = order.createdAt?.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) || 'N/A';
 
   return (
     <SafeAreaView style={styles.container}>
@@ -87,19 +218,19 @@ export default function RequestContactScreen({ navigation, route }: Props) {
           <ArrowLeft size={24} color="#00F0FF" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>CONTACT CLIENT</Text>
-        <View style={{ width: 24 }} />
+        <View style={{ width: 24 }} /> 
       </View>
       
       <View style={styles.customerCard}>
-        <Image source={{ uri: requestDetails.customerAvatar }} style={styles.avatar} />
+        <Image source={{ uri: displayAvatar }} style={styles.avatar} />
         <View style={styles.customerInfo}>
-          <Text style={styles.customerName}>{requestDetails.customerName.toUpperCase()}</Text>
-          <Text style={styles.serviceInfo}>{requestDetails.service}</Text>
+          <Text style={styles.customerName}>{displayCustomerName.toUpperCase()}</Text>
+          <Text style={styles.serviceInfo}>{displayService}</Text>
           <View style={styles.serviceDetailRow}>
             <Calendar size={12} color="#7A89FF" />
-            <Text style={styles.serviceDetailText}>{requestDetails.date}</Text>
+            <Text style={styles.serviceDetailText}>{displayDate}</Text>
             <Clock size={12} color="#7A89FF" />
-            <Text style={styles.serviceDetailText}>{requestDetails.time}</Text>
+            <Text style={styles.serviceDetailText}>{displayTime}</Text>
           </View>
         </View>
       </View>
@@ -127,19 +258,29 @@ export default function RequestContactScreen({ navigation, route }: Props) {
         style={styles.messageContainer}
         keyboardVerticalOffset={100}
       >
-        <ScrollView style={styles.messagesScroll}>
-          {messages.map(msg => (
-            <View 
-              key={msg.id} 
-              style={[
-                styles.messageBubble,
-                msg.sender === 'provider' ? styles.sentMessage : styles.receivedMessage
-              ]}
-            >
-              <Text style={styles.messageText}>{msg.text}</Text>
-              <Text style={styles.messageTimestamp}>{msg.timestamp}</Text>
-            </View>
-          ))}
+        <ScrollView 
+          ref={scrollViewRef}
+          style={styles.messagesScroll}
+          // Scroll to bottom on content size change
+          onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: false })} 
+        >
+          {messages.map(msg => {
+             const isSentByMe = msg.senderUid === currentUser?.uid;
+             return (
+                <View 
+                  key={msg.id} 
+                  style={[
+                    styles.messageBubble,
+                    isSentByMe ? styles.sentMessage : styles.receivedMessage
+                  ]}
+                >
+                  <Text style={styles.messageText}>{msg.text}</Text>
+                  <Text style={styles.messageTimestamp}>
+                    {msg.createdAt?.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) || 'sending...'}
+                  </Text>
+                </View>
+             );
+            })}
         </ScrollView>
         
         <View style={styles.inputContainer}>
@@ -152,11 +293,11 @@ export default function RequestContactScreen({ navigation, route }: Props) {
             multiline
           />
           <TouchableOpacity 
-            style={[styles.sendButton, !message.trim() && styles.disabledSendButton]}
+            style={[styles.sendButton, (!message.trim() || sending) && styles.disabledSendButton]}
             onPress={handleSendMessage}
             disabled={!message.trim() || sending}
           >
-            <Send size={20} color={message.trim() ? "#0A0F1E" : "#7A89FF"} />
+            <Send size={20} color={message.trim() && !sending ? "#0A0F1E" : "#7A89FF"} />
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
@@ -279,32 +420,31 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
   },
   messageBubble: {
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 18,
+    marginBottom: 8,
     maxWidth: '80%',
-    padding: 12,
-    borderRadius: 16,
-    marginBottom: 12,
   },
   sentMessage: {
+    backgroundColor: '#00F0FF',
     alignSelf: 'flex-end',
-    backgroundColor: 'rgba(0, 240, 255, 0.2)',
-    borderBottomRightRadius: 4,
   },
   receivedMessage: {
+    backgroundColor: '#2A3555',
     alignSelf: 'flex-start',
-    backgroundColor: 'rgba(122, 137, 255, 0.2)',
-    borderBottomLeftRadius: 4,
   },
   messageText: {
-    fontSize: 14,
+    fontSize: 15,
     fontFamily: 'Inter_400Regular',
-    color: '#FFFFFF',
-    marginBottom: 4,
+    color: '#0A0F1E',
   },
   messageTimestamp: {
     fontSize: 10,
     fontFamily: 'Inter_400Regular',
-    color: '#7A89FF',
-    alignSelf: 'flex-end',
+    color: 'rgba(10, 15, 30, 0.6)',
+    marginTop: 4,
+    textAlign: 'right',
   },
   inputContainer: {
     flexDirection: 'row',
@@ -335,5 +475,23 @@ const styles = StyleSheet.create({
   },
   disabledSendButton: {
     backgroundColor: 'rgba(122, 137, 255, 0.2)',
+  },
+  centeredContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  loadingText: {
+    color: '#00F0FF',
+    marginTop: 16,
+    fontSize: 16,
+    fontFamily: 'Inter_600SemiBold',
+  },
+  errorText: {
+    color: '#FF3D71',
+    fontSize: 16,
+    fontFamily: 'Inter_600SemiBold',
+    textAlign: 'center',
   },
 }); 

@@ -4,26 +4,35 @@ import { MapPin, Clock, Check, ChevronRight, MessageCircle, AlertCircle } from '
 import ProgressBar from '@/components/ui/ProgressBar';
 
 // Define the type for order items - align with Firestore data
-export type OrderStatus = 'Pending' | 'Scheduled' | 'Waiting' | 'In Progress' | 'Completed' | 'Cancelled';
+export type OrderStatus = 'Pending' | 'Scheduled' | 'Waiting' | 'In Progress' | 'Completed' | 'Cancelled' | 'Denied';
 
-export type OrderItem = {
-  id: string; // Document ID from Firestore
-  serviceType: string;
-  scheduledDateTime: any; // Firestore Timestamp (or convert to Date)
+// Represents a single item within an order
+export type OrderItemDetail = {
+  id: string; // Service ID
+  name: string;
+  price: number;
+  quantity: number;
+  vehicleId: string | null;
+  vehicleDisplay: string | null;
+};
+
+// Represents the overall order document
+export type Order = {
+  id: string; // Firestore document ID
+  items: OrderItemDetail[]; // Array of items in the order
+  totalPrice: number;
   status: OrderStatus;
-  location?: string; // May not always be present
-  // Provider details (might be null if pending/cancelled)
-  providerName?: string;
-  providerAvatar?: string; // URL
-  // Customer details (usually fetched separately or passed if needed)
-  customerName?: string; 
-  // Other potential fields
-  estimatedArrival?: string; // Keep if used for UI
-  notes?: string;
+  createdAt: any; // Firestore Timestamp (or convert to Date)
+  customerId: string; // Keep track of the customer
+  locationDetails: {
+      address: string;
+  };
+  providerId?: string | null; // Optional provider ID
+  // Add other potential fields like providerName, scheduledDateTime if needed later
 };
 
 interface OrderCardProps {
-  order: OrderItem;
+  order: Order;
   onViewDetails: (orderId: string) => void;
   onChatPress: (orderId: string, providerName?: string) => void; // Pass provider name for chat
 }
@@ -75,15 +84,19 @@ const GlowingBorder = () => {
 };
 
 const OrderCard: React.FC<OrderCardProps> = ({ order, onViewDetails, onChatPress }) => {
+  // Determine the primary service name (e.g., first item or a summary)
+  const primaryServiceName = order.items.length > 0 ? order.items[0].name : 'Order';
+  const serviceCount = order.items.length;
+
   const isActive = order.status === 'In Progress';
   const isPending = order.status === 'Pending' || order.status === 'Scheduled' || order.status === 'Waiting';
   const isCompleted = order.status === 'Completed';
   const isCancelled = order.status === 'Cancelled';
 
   // Format Date/Time from Timestamp
-  const scheduledDate = order.scheduledDateTime?.toDate();
-  const formattedDate = scheduledDate?.toLocaleDateString() || 'N/A';
-  const formattedTime = scheduledDate?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) || 'N/A';
+  const createdDate = order.createdAt?.toDate ? order.createdAt.toDate() : null; // Handle potential null or non-timestamp
+  const formattedDate = createdDate?.toLocaleDateString() || 'N/A';
+  const formattedTime = createdDate?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) || 'N/A';
 
   // Determine status badge style and text
   const getStatusStyle = () => {
@@ -98,6 +111,8 @@ const OrderCard: React.FC<OrderCardProps> = ({ order, onViewDetails, onChatPress
         return { badge: styles.completedStatusBadge, text: styles.completedStatusText, label: 'Completed' };
       case 'Cancelled':
         return { badge: styles.cancelledStatusBadge, text: styles.cancelledStatusText, label: 'Cancelled' };
+      case 'Denied':
+        return { badge: styles.cancelledStatusBadge, text: styles.cancelledStatusText, label: 'Denied' };
       default:
         return { badge: {}, text: {}, label: order.status };
     }
@@ -136,7 +151,9 @@ const OrderCard: React.FC<OrderCardProps> = ({ order, onViewDetails, onChatPress
         // disabled={isCancelled}
       >
         <View style={styles.orderHeader}>
-          <Text style={styles.orderService}>{order.serviceType}</Text>
+          <Text style={styles.orderService}>
+            {primaryServiceName}{serviceCount > 1 ? ` (+${serviceCount - 1})` : ''}
+          </Text>
           <View style={[styles.statusBadge, statusStyle.badge]}>
             <Text style={[styles.statusText, statusStyle.text]}>
               {statusStyle.label.toUpperCase()}
@@ -151,36 +168,28 @@ const OrderCard: React.FC<OrderCardProps> = ({ order, onViewDetails, onChatPress
           </Text>
         </View>
 
-        {order.location && (
-          <View style={styles.orderDetail}>
-            <MapPin size={16} color="#7A89FF" />
-            <Text style={styles.orderDetailText}>
-              {order.location}
-            </Text>
-          </View>
-        )}
+        <View style={styles.orderDetail}>
+          <MapPin size={14} color="#7A89FF" />
+          <Text style={styles.orderDetailText}>{order.locationDetails?.address || 'Address unavailable'}</Text>
+        </View>
 
         {/* Show different content based on status */} 
-        {isActive && order.estimatedArrival && (
+        {isActive && (
           <View style={styles.estimatedArrival}>
-            <Text style={styles.arrivalLabel}>Estimated arrival:</Text>
-            <Text style={styles.arrivalTime}>{order.estimatedArrival}</Text>
-            <ProgressBar 
-              progress={order.estimatedArrival ? getEstimatedProgress(order.estimatedArrival) : 0.5}
-              height={6}
-              showPercentage={false}
-              gradientColors={['#7A89FF', '#00F0FF']}
-              backgroundColor="rgba(10, 15, 30, 0.5)"
-              containerStyle={styles.progressBarContainer}
-            />
+            <Text style={styles.arrivalLabel}>Estimated Arrival</Text>
+            <Text style={styles.arrivalTime}>N/A</Text>
+            <View style={styles.progressBarContainer}>
+              <ProgressBar progress={0.7} height={6} />
+            </View>
           </View>
         )}
 
-        {(isCompleted || isActive) && order.providerName && (
-           <View style={styles.providerInfo}>
-             <Text style={styles.providerLabel}>Serviced by:</Text>
-             <Text style={styles.providerName}>{order.providerName}</Text>
-           </View>
+        {/* Show provider info if available and relevant */}
+        {order.status !== 'Pending' && order.status !== 'Cancelled' && order.status !== 'Denied' && (
+          <View style={styles.providerInfo}>
+            <Text style={styles.providerLabel}>Assigned Provider</Text>
+            <Text style={styles.providerName}>Waiting for assignment...</Text>
+          </View>
         )}
 
         {isPending && (
@@ -210,7 +219,7 @@ const OrderCard: React.FC<OrderCardProps> = ({ order, onViewDetails, onChatPress
           {canChat && (
             <Pressable 
               style={styles.chatButton}
-              onPress={() => onChatPress(order.id, order.providerName)}
+              onPress={() => onChatPress(order.id/* , order.providerName */)}
             >
               <MessageCircle size={18} color="#00F0FF" />
               <Text style={styles.chatButtonText}>

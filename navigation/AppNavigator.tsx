@@ -38,7 +38,7 @@ export type RootStackParamList = {
   Signup: undefined;
   CustomerApp: undefined; // Represents the entire Customer Tab Navigator
   ProviderApp: undefined; // Represents the Provider main screen/navigator
-  ServiceDetail: { id: string }; // For the generic template approach
+  ServiceDetail: { id: string; vehicleId: string | null }; // Updated to include vehicleId
   BatteryJumpStart: undefined; // Add the new dedicated screen
   ServiceSchedule: undefined; // Added from ProfileScreen navigation
   PrivacySettings: undefined; // Added from ProfileScreen navigation
@@ -48,15 +48,16 @@ export type RootStackParamList = {
   MechanicChat: { orderId: string; mechanicName?: string }; // Add chat screen
   PastChats: undefined; // Add past chats screen
   AddVehicle: undefined; // Add the new vehicle screen
-  // Provider screens
-  RequestDetail: { requestId: string };
+  // Provider screens - REMOVE THESE - they belong in ProviderStackParamList
+  /*
+  RequestDetail: { requestId: string }; 
   RequestStart: { requestId: string };
   RequestCancel: { requestId: string };
   RequestContact: { requestId: string };
-  // New provider screens
   PerformanceDetails: undefined;
   AccountSettings: undefined;
-  UpdateStatus: { orderId: string }; // Add the new screen params
+  UpdateStatus: { orderId: string };
+  */
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -109,7 +110,8 @@ export default function AppNavigator() {
         isAdmin ? (
           <>
             <Stack.Screen name="ProviderApp" component={ProviderTabNavigator} />
-            {/* Provider screens */}
+            {/* Provider screens - REMOVE THESE - Handled by ProviderNavigator */}
+            {/* 
             <Stack.Screen name="RequestDetail" component={RequestDetailScreen} />
             <Stack.Screen name="RequestStart" component={RequestStartScreen} />
             <Stack.Screen name="RequestCancel" component={RequestCancelScreen} />
@@ -117,6 +119,7 @@ export default function AppNavigator() {
             <Stack.Screen name="PerformanceDetails" component={PerformanceDetailsScreen} />
             <Stack.Screen name="AccountSettings" component={AccountSettingsScreen} />
             <Stack.Screen name="UpdateStatus" component={UpdateStatusScreen} />
+            */}
           </>
         ) : (
           // Regular customer flow
