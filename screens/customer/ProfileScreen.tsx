@@ -8,7 +8,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '@/navigation/AppNavigator';
 import { LinearGradient } from 'expo-linear-gradient';
 import { auth, firestore } from '@/lib/firebase'; // Import Firebase
-import { doc, getDoc, Timestamp } from 'firebase/firestore'; // Import Firestore functions
+import { doc, getDoc, Timestamp, collection, query, where, getCountFromServer } from 'firebase/firestore'; // Added imports for query
 
 // Interface for Customer Profile Data
 interface CustomerProfile {
@@ -22,7 +22,9 @@ interface CustomerProfile {
 export default function ProfileScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [profileData, setProfileData] = useState<CustomerProfile>({});
+  const [completedOrderCount, setCompletedOrderCount] = useState(0);
   const [loadingProfile, setLoadingProfile] = useState(true);
+  const [loadingCount, setLoadingCount] = useState(true);
 
   // Fetch profile data
   useEffect(() => {
@@ -44,8 +46,27 @@ export default function ProfileScreen() {
           console.error("Error fetching user data:", error);
           setProfileData({});
         }
+        setLoadingProfile(false);
+
+        // Fetch Completed Order Count
+        setLoadingCount(true);
+        try {
+          const ordersRef = collection(firestore, 'repairOrders');
+          const q = query(ordersRef, where('customerId', '==', user.uid), where('status', '==', 'Completed'));
+          const snapshot = await getCountFromServer(q);
+          setCompletedOrderCount(snapshot.data().count);
+        } catch (countError) {
+          console.error("Error fetching completed order count:", countError);
+          setCompletedOrderCount(0);
+        }
+        setLoadingCount(false);
+      } else {
+        // Handle case where user is not logged in (clear data)
+        setProfileData({});
+        setCompletedOrderCount(0);
+        setLoadingProfile(false);
+        setLoadingCount(false);
       }
-      setLoadingProfile(false);
     };
 
     fetchProfileData();
@@ -64,7 +85,7 @@ export default function ProfileScreen() {
   const lastName = profileData.lastName || '';
   const displayName = `${firstName} ${lastName}`.trim() || 'CUSTOMER NAME';
   const initials = `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
-  const orders = profileData.ordersPlaced || 0;
+  // const orders = profileData.ordersPlaced || 0;
   // const rating = profileData.averageRating?.toFixed(1) || 'N/A'; // Decide on rating display
   const memberSinceDate = profileData.createdAt?.toDate();
   const memberSinceMonth = memberSinceDate?.toLocaleDateString('en-US', { month: 'short' }).toUpperCase() || 'N/A';
@@ -90,7 +111,7 @@ export default function ProfileScreen() {
     );
   };
 
-  if (loadingProfile) {
+  if (loadingProfile || loadingCount) {
     return (
       <SafeAreaView style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#00F0FF" />
@@ -112,7 +133,7 @@ export default function ProfileScreen() {
           <Text style={styles.membershipLevel}>FIXD CUSTOMER</Text>
           <View style={styles.statsContainer}>
             <View style={styles.statItem}>
-              <Text style={styles.statValue}>{orders}</Text>
+              <Text style={styles.statValue}>{completedOrderCount}</Text>
               <Text style={styles.statLabel}>ORDERS</Text>
             </View>
             <View style={styles.statDivider} />
