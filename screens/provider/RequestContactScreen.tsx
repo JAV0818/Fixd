@@ -1,15 +1,32 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, ScrollView, TextInput, Alert, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
+import { 
+  View, 
+  Text, 
+  StyleSheet, 
+  TouchableOpacity, 
+  Image, 
+  ScrollView, // Keep for main structure if needed, but FlatList for messages
+  TextInput, 
+  Alert, 
+  KeyboardAvoidingView, 
+  Platform, 
+  ActivityIndicator,
+  FlatList, // Import FlatList
+  Dimensions, // Import Dimensions
+  Pressable, // Import Pressable
+  Animated, // Import Animated
+} from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ProviderStackParamList } from '../../navigation/ProviderNavigator';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowLeft, Send, MessageCircle, Phone, Calendar, Clock } from 'lucide-react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ArrowLeft, Send, MessageCircle, Phone, Calendar, Clock, Paperclip, Image as ImageIcon, Mic } from 'lucide-react-native';
 import { RepairOrder } from '@/types/orders';
 import { auth, firestore } from '@/lib/firebase';
 import {
   doc, getDoc, onSnapshot, collection, query, orderBy, addDoc,
   serverTimestamp, Timestamp, setDoc
 } from 'firebase/firestore';
+import { LinearGradient } from 'expo-linear-gradient'; // Import LinearGradient
 
 // Define structure for User document (adjust based on your actual structure)
 interface UserProfile {
@@ -37,8 +54,10 @@ export default function RequestContactScreen({ navigation, route }: Props) {
   const [customer, setCustomer] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const scrollViewRef = useRef<ScrollView>(null);
+  const flatListRef = useRef<FlatList>(null);
   const currentUser = auth.currentUser;
+  const insets = useSafeAreaInsets(); // Call hook at top level
+  const fadeAnim = useRef(new Animated.Value(0)).current; // Add fadeAnim from customer screen
 
   // Fetch Order and Customer details
   useEffect(() => {
@@ -106,7 +125,7 @@ export default function RequestContactScreen({ navigation, route }: Props) {
       setMessages(fetchedMessages);
       setLoading(false); // Stop loading after messages (and order/customer) are fetched
        // Scroll to bottom when messages load/update
-       setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
+       setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
     }, (err) => {
       console.error("Error fetching messages (onSnapshot):", err); // Log specific error location
       setError("Failed to load messages.");
@@ -115,6 +134,22 @@ export default function RequestContactScreen({ navigation, route }: Props) {
 
     return () => unsubscribeMessages(); // Cleanup messages listener
   }, [orderId, order]); // Rerun when orderId or order object changes
+
+  // Scroll to bottom when messages change (additional safety measure)
+  useEffect(() => {
+    setTimeout(() => {
+      flatListRef.current?.scrollToEnd({ animated: true });
+    }, 100);
+  }, [messages]);
+
+  // Fade in animation for the screen (from customer screen)
+  useEffect(() => {
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 800,
+      useNativeDriver: true,
+    }).start();
+  }, []);
 
   const handleSendMessage = async () => {
     console.log("handleSendMessage called. currentUser:", !!currentUser, "order:", !!order, "message:", message);
@@ -145,7 +180,7 @@ export default function RequestContactScreen({ navigation, route }: Props) {
       console.log("Message added successfully.");
       
       // Scroll to bottom after sending
-       setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
+       setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
 
     } catch (error) {
       console.error("Firestore Error sending message:", error); // Log specific error
@@ -166,6 +201,82 @@ export default function RequestContactScreen({ navigation, route }: Props) {
       ]
     );
   };
+
+  // --- Helper functions from MechanicChatScreen ---
+  const formatTime = (date: Date) => {
+    // Defensive check
+    if (!date || !(date instanceof Date)) return 'N/A'; 
+    const hours = date.getHours();
+    const minutes = date.getMinutes();
+    return `${hours % 12 || 12}:${minutes < 10 ? '0' : ''}${minutes} ${hours >= 12 ? 'PM' : 'AM'}`;
+  };
+
+  const groupMessagesByDate = () => {
+    const groupedMessages: { date: string; data: Message[] }[] = [];
+    messages?.forEach((message) => {
+      if (!message.createdAt?.toDate) {
+        return; 
+      }
+      const messageDate = message.createdAt.toDate();
+      const dateString = messageDate.toDateString();
+      const existingGroup = groupedMessages.find(group => group.date === dateString);
+      if (existingGroup) {
+        existingGroup.data.push(message);
+      } else {
+        groupedMessages.push({ date: dateString, data: [message] });
+      }
+    });
+    return groupedMessages;
+  };
+
+  const renderDateSeparator = (date: string) => {
+    const today = new Date().toDateString();
+    const yesterday = new Date(Date.now() - 86400000).toDateString();
+    let displayDate = date;
+    if (date === today) displayDate = "Today";
+    else if (date === yesterday) displayDate = "Yesterday";
+    return (
+      <View style={styles.dateSeparator}>
+        <View style={styles.dateLine} />
+        <Text style={styles.dateText}>{displayDate}</Text>
+        <View style={styles.dateLine} />
+      </View>
+    );
+  };
+
+  const renderMessage = ({ item }: { item: Message }) => {
+    const isSentByMe = item.senderUid === currentUser?.uid;
+    if (!item.createdAt?.toDate) return null; 
+    return (
+      <View style={[styles.messageContainer, isSentByMe ? styles.userMessageContainer : styles.mechanicMessageContainer]}>
+        <LinearGradient
+          colors={isSentByMe ? ['#00C2FF', '#0080FF'] : ['#2A3555', '#272A3A']} // Match customer UI
+          start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+          style={[styles.messageBubble, isSentByMe ? styles.userMessageBubble : styles.mechanicMessageBubble]}
+        >
+          {/* Ensure text color is visible */}
+          <Text style={[styles.messageText, isSentByMe ? styles.userMessageText : styles.mechanicMessageText]}>{item.text}</Text>
+          <View style={styles.messageFooter}>
+            <Text style={[styles.messageTimestamp, isSentByMe ? styles.userTimestamp : styles.mechanicTimestamp]}>{formatTime(item.createdAt.toDate())}</Text>
+          </View>
+        </LinearGradient>
+      </View>
+    );
+  };
+
+  const renderMessageGroup = ({ item }: { item: { date: string; data: Message[] } }) => {
+    return (
+      <View>
+        {renderDateSeparator(item.date)}
+        {item.data?.map(message => (
+          <React.Fragment key={message.id}>
+            {renderMessage({ item: message })}
+          </React.Fragment>
+        ))}
+      </View>
+    );
+  };
+  // --- End Helper Functions ---
 
   // --- Render Logic --- 
   if (loading) {
@@ -209,15 +320,23 @@ export default function RequestContactScreen({ navigation, route }: Props) {
   const displayAvatar = customer?.profileImageUrl || 'https://via.placeholder.com/48?text=User';
   const displayService = order.items[0]?.name || 'Service N/A';
   const displayDate = order.createdAt?.toDate().toLocaleDateString() || 'N/A';
-  const displayTime = order.createdAt?.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) || 'N/A';
+  let displayTime = 'N/A';
+  try {
+      if (order.createdAt?.toDate) {
+          displayTime = order.createdAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      }
+  } catch (e) { console.error("Error formatting time:", e); }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <Animated.View style={[styles.container, { paddingTop: insets.top, opacity: fadeAnim }]}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <ArrowLeft size={24} color="#00F0FF" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>CONTACT CLIENT</Text>
+        <View style={styles.headerTitleContainer}>
+          <Text style={styles.headerTitle}>CONTACT CLIENT</Text>
+          <Text style={styles.headerSubtitle}>{orderId}</Text>
+        </View>
         <View style={{ width: 24 }} /> 
       </View>
       
@@ -233,82 +352,105 @@ export default function RequestContactScreen({ navigation, route }: Props) {
             <Text style={styles.serviceDetailText}>{displayTime}</Text>
           </View>
         </View>
-      </View>
-      
-      <View style={styles.contactOptions}>
-        <TouchableOpacity style={styles.contactOption} onPress={handlePhoneCall}>
-          <View style={styles.contactIconContainer}>
-            <Phone size={20} color="#00F0FF" />
-          </View>
-          <Text style={styles.contactOptionText}>CALL</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity style={[styles.contactOption, styles.activeContactOption]}>
-          <View style={[styles.contactIconContainer, styles.activeIconContainer]}>
-            <MessageCircle size={20} color="#0A0F1E" />
-          </View>
-          <Text style={styles.activeContactOptionText}>MESSAGE</Text>
+        <TouchableOpacity style={styles.callButtonInline} onPress={handlePhoneCall}>
+           <View style={styles.callButtonIconContainerInline}>
+             <Phone size={20} color="#00F0FF" />
+           </View>
+           <Text style={styles.callButtonTextInline}>CALL</Text>
         </TouchableOpacity>
       </View>
-      
-      <View style={styles.divider} />
       
       <KeyboardAvoidingView 
         behavior={Platform.OS === "ios" ? "padding" : "height"}
-        style={styles.messageContainer}
         keyboardVerticalOffset={100}
+        style={{ flex: 1 }}
       >
-        <ScrollView 
-          ref={scrollViewRef}
-          style={styles.messagesScroll}
-          // Scroll to bottom on content size change
-          onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: false })} 
-        >
-          {messages.map(msg => {
-             const isSentByMe = msg.senderUid === currentUser?.uid;
-             return (
-                <View 
-                  key={msg.id} 
-                  style={[
-                    styles.messageBubble,
-                    isSentByMe ? styles.sentMessage : styles.receivedMessage
-                  ]}
-                >
-                  <Text style={styles.messageText}>{msg.text}</Text>
-                  <Text style={styles.messageTimestamp}>
-                    {msg.createdAt?.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) || 'sending...'}
-                  </Text>
-                </View>
-             );
-            })}
-        </ScrollView>
-        
-        <View style={styles.inputContainer}>
-          <TextInput
-            style={styles.messageInput}
-            value={message}
-            onChangeText={setMessage}
-            placeholder="Type a message..."
-            placeholderTextColor="#7A89FF"
-            multiline
-          />
-          <TouchableOpacity 
-            style={[styles.sendButton, (!message.trim() || sending) && styles.disabledSendButton]}
-            onPress={handleSendMessage}
-            disabled={!message.trim() || sending}
-          >
-            <Send size={20} color={message.trim() && !sending ? "#0A0F1E" : "#7A89FF"} />
-          </TouchableOpacity>
-        </View>
+         {/* Message List using FlatList directly */}
+         <FlatList
+             ref={flatListRef}
+             data={groupMessagesByDate()}
+             renderItem={renderMessageGroup}
+             keyExtractor={item => item.date}
+             style={styles.messagesListContainer}
+             contentContainerStyle={styles.messagesListContent}
+             showsVerticalScrollIndicator={false}
+         />
+
+          {/* Sending Indicator (copied from customer screen) */}
+          {sending && (
+             <View style={styles.loadingContainer}>
+               <LinearGradient
+                 colors={['rgba(0, 240, 255, 0.2)', 'rgba(122, 137, 255, 0.2)']}
+                 start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                 style={styles.loadingBubble}
+               >
+                 <ActivityIndicator size="small" color="#00F0FF" />
+                 <Text style={styles.sendingText}>Sending...</Text>
+               </LinearGradient>
+             </View>
+          )}
+
+         {/* Input Area - Copied from Customer screen */} 
+          <LinearGradient
+             colors={['#121827', '#0A0F1E']}
+             style={[
+               styles.inputContainer,
+               { paddingBottom: Platform.OS === 'ios' ? Math.max(insets.bottom, 16) : 16 }
+             ]}
+           >
+             <Pressable style={styles.attachButton}>
+               <LinearGradient colors={['#7A89FF', '#5A6AD0']} style={styles.iconButton}>
+                   <Paperclip size={18} color="#FFFFFF" />
+               </LinearGradient>
+             </Pressable>
+             <View style={styles.textInputContainer}> 
+               <TextInput
+                 style={styles.textInput}
+                 placeholder="Type a message..."
+                 placeholderTextColor="#6E7191"
+                 value={message}
+                 onChangeText={setMessage}
+                 multiline
+               />
+             </View>
+             <View style={styles.rightButtons}>
+               {message.length === 0 ? (
+                 <>
+                   <Pressable style={styles.mediaButton}>
+                     <LinearGradient colors={['#7A89FF', '#5A6AD0']} style={styles.iconButton}>
+                         <ImageIcon size={18} color="#FFFFFF" />
+                     </LinearGradient>
+                   </Pressable>
+                   <Pressable style={styles.mediaButton}>
+                     <LinearGradient colors={['#7A89FF', '#5A6AD0']} style={styles.iconButton}>
+                         <Mic size={18} color="#FFFFFF" />
+                     </LinearGradient>
+                   </Pressable>
+                 </>
+               ) : (
+                 <Pressable 
+                   style={styles.sendButton} 
+                   onPress={handleSendMessage}
+                   disabled={sending}
+                 >
+                   <LinearGradient colors={['#00C2FF', '#0080FF']} style={styles.sendGradient}>
+                       <Send size={18} color="#FFFFFF" />
+                   </LinearGradient>
+                 </Pressable>
+               )}
+             </View>
+           </LinearGradient>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </Animated.View>
   );
 }
+
+const { width } = Dimensions.get('window'); // Get width for styling
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0A0F1E',
+    backgroundColor: '#030515',
   },
   header: {
     flexDirection: 'row',
@@ -321,12 +463,24 @@ const styles = StyleSheet.create({
   },
   backButton: {
     padding: 8,
+    borderRadius: 20, // Match customer style
+    backgroundColor: 'rgba(0, 240, 255, 0.1)', // Match customer style
   },
-  headerTitle: {
+  headerTitleContainer: { // From customer style
+    flex: 1,
+    alignItems: 'center',
+  },
+  headerTitle: { // From customer style
     fontSize: 18,
     fontFamily: 'Inter_700Bold',
-    color: '#00F0FF',
-    letterSpacing: 2,
+    color: '#FFFFFF', // White title from customer style
+    letterSpacing: 0.5,
+  },
+  headerSubtitle: { // From customer style (display order ID?)
+    color: '#7A89FF',
+    fontSize: 12,
+    fontFamily: 'Inter_400Regular',
+    marginTop: 2,
   },
   customerCard: {
     flexDirection: 'row',
@@ -370,112 +524,55 @@ const styles = StyleSheet.create({
     marginLeft: 4,
     marginRight: 8,
   },
-  contactOptions: {
-    flexDirection: 'row',
-    justifyContent: 'space-evenly',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+  callButtonInline: {
+      alignItems: 'center',
+      marginLeft: 16,
+      justifyContent: 'center', 
   },
-  contactOption: {
-    alignItems: 'center',
-    minWidth: 100,
+  callButtonIconContainerInline: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: 'rgba(0, 240, 255, 0.1)',
+      borderWidth: 1,
+      borderColor: '#00F0FF',
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: 6,
   },
-  contactIconContainer: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(0, 240, 255, 0.1)',
-    borderWidth: 1,
-    borderColor: '#00F0FF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 6,
-  },
-  contactOptionText: {
-    fontSize: 10,
-    fontFamily: 'Inter_600SemiBold',
-    color: '#00F0FF',
-    letterSpacing: 1,
-  },
-  activeContactOption: {
-    opacity: 1,
-  },
-  activeIconContainer: {
-    backgroundColor: '#00F0FF',
-  },
-  activeContactOptionText: {
-    color: '#00F0FF',
-    fontFamily: 'Inter_700Bold',
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#2A3555',
-  },
-  messageContainer: {
-    flex: 1,
-    paddingHorizontal: 16,
-  },
-  messagesScroll: {
-    flex: 1,
-    paddingVertical: 16,
-  },
-  messageBubble: {
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: 18,
-    marginBottom: 8,
-    maxWidth: '80%',
-  },
-  sentMessage: {
-    backgroundColor: '#00F0FF',
-    alignSelf: 'flex-end',
-  },
-  receivedMessage: {
-    backgroundColor: '#2A3555',
-    alignSelf: 'flex-start',
-  },
-  messageText: {
-    fontSize: 15,
-    fontFamily: 'Inter_400Regular',
-    color: '#0A0F1E',
-  },
-  messageTimestamp: {
-    fontSize: 10,
-    fontFamily: 'Inter_400Regular',
-    color: 'rgba(10, 15, 30, 0.6)',
-    marginTop: 4,
-    textAlign: 'right',
+  callButtonTextInline: {
+      fontSize: 10,
+      fontFamily: 'Inter_600SemiBold',
+      color: '#00F0FF',
+      letterSpacing: 1,
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(122, 137, 255, 0.1)',
+    paddingTop: 12,
+    borderWidth: 1,
+    borderTopColor: '#2A3555',
+  },
+  textInputContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(18, 24, 39, 0.8)',
     borderRadius: 24,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    marginVertical: 16,
     borderWidth: 1,
     borderColor: '#2A3555',
+    paddingHorizontal: 16,
+    marginHorizontal: 8,
   },
-  messageInput: {
+  textInput: {
     flex: 1,
-    fontSize: 14,
+    fontSize: 15,
     fontFamily: 'Inter_400Regular',
     color: '#FFFFFF',
+    paddingVertical: 10,
     maxHeight: 100,
   },
-  sendButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#00F0FF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 8,
-  },
-  disabledSendButton: {
-    backgroundColor: 'rgba(122, 137, 255, 0.2)',
-  },
+  dateSeparator: { flexDirection: 'row', alignItems: 'center', marginVertical: 20 },
+  dateLine: { flex: 1, height: 1, backgroundColor: 'rgba(42, 53, 85, 0.5)' },
+  dateText: { color: '#7A89FF', fontSize: 12, fontFamily: 'Inter_500Medium', marginHorizontal: 10, paddingHorizontal: 10, paddingVertical: 4, backgroundColor: 'rgba(122, 137, 255, 0.1)', borderRadius: 10 },
   centeredContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -493,5 +590,91 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: 'Inter_600SemiBold',
     textAlign: 'center',
+  },
+  rightButtons: { flexDirection: 'row', },
+  attachButton: { marginHorizontal: 2, },
+  mediaButton: { marginHorizontal: 2, },
+  iconButton: { width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center', },
+  loadingContainer: { paddingHorizontal: 16, paddingVertical: 8, alignItems: 'flex-start', },
+  loadingBubble: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16, borderBottomLeftRadius: 4, },
+  sendingText: {
+    color: '#00F0FF',
+    marginTop: 16,
+    fontSize: 16,
+    fontFamily: 'Inter_600SemiBold',
+  },
+  messageContainer: {
+    marginBottom: 12,
+    maxWidth: '80%',
+  },
+  userMessageContainer: { // Container for alignment
+    alignSelf: 'flex-end',
+  },
+  mechanicMessageContainer: { // Container for alignment
+    alignSelf: 'flex-start',
+  },
+  messageBubble: {
+    padding: 14,
+    paddingBottom: 10,
+    marginBottom: 12, // Duplicates messageContainer marginBottom, check if needed
+    borderRadius: 20,
+    maxWidth: '80%', // Duplicates messageContainer maxWidth, check if needed
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  userMessageBubble: {
+    borderBottomRightRadius: 4, // Match customer style
+  },
+  mechanicMessageBubble: {
+    borderBottomLeftRadius: 4, // Match customer style
+  },
+  messageText: {
+    fontSize: 15,
+    fontFamily: 'Inter_400Regular',
+    lineHeight: 22, 
+    marginBottom: 6, 
+  },
+  userMessageText: {
+    color: '#FFFFFF', 
+  },
+  mechanicMessageText: {
+    color: '#FFFFFF', 
+  },
+  messageTimestamp: {
+    fontSize: 10,
+    fontFamily: 'Inter_400Regular',
+    marginTop: 4,
+    textAlign: 'right',
+    alignSelf: 'flex-end',
+  },
+  userTimestamp: {
+    color: 'rgba(255, 255, 255, 0.7)',
+  },
+  mechanicTimestamp: {
+    color: 'rgba(255, 255, 255, 0.7)',
+  },
+  messageFooter: { // Container for timestamp etc.
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'flex-end'
+  },
+  messagesListContainer: { // Added missing style
+      flex: 1, 
+  },
+  messagesListContent: { // Added missing style
+      padding: 16,
+  },
+  sendButton: { // Added missing style
+    width: 42,
+    height: 42,
+    marginLeft: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  sendGradient: { // Added missing style
+      width: 42, height: 42, borderRadius: 21, justifyContent: 'center', alignItems: 'center'
   },
 }); 

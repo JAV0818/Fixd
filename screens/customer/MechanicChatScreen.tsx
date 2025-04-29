@@ -10,7 +10,8 @@ import {
   Platform,
   ActivityIndicator,
   Animated,
-  Dimensions
+  Dimensions,
+  Alert
 } from 'react-native';
 import { ArrowLeft, Send, Paperclip, Image as ImageIcon, Mic, CheckCheck } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -18,6 +19,8 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '@/navigation/AppNavigator';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Timestamp, collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, doc, setDoc, getDoc } from 'firebase/firestore';
+import { auth, firestore } from '@/lib/firebase';
 
 type MechanicChatScreenRouteProp = RouteProp<RootStackParamList, 'MechanicChat'>;
 type MechanicChatScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'MechanicChat'>;
@@ -26,9 +29,8 @@ type MechanicChatScreenNavigationProp = NativeStackNavigationProp<RootStackParam
 type Message = {
   id: string;
   text: string;
-  timestamp: Date;
-  sender: 'user' | 'mechanic';
-  read: boolean;
+  createdAt: Timestamp;
+  senderUid: string;
   // For potential image/attachment support
   attachment?: { 
     type: 'image' | 'document';
@@ -36,66 +38,57 @@ type Message = {
   };
 };
 
-// Mock initial messages (in a real app, these would be fetched from a backend)
-const initialMessages: Message[] = [
-  {
-    id: '1',
-    text: 'Hi there! I\'m Michael, your assigned mechanic for the battery jump start service.',
-    timestamp: new Date(Date.now() - 35 * 60000), // 35 mins ago
-    sender: 'mechanic',
-    read: true,
-  },
-  {
-    id: '2',
-    text: 'I\'m on my way to your location. Should arrive in about 15-20 minutes.',
-    timestamp: new Date(Date.now() - 30 * 60000), // 30 mins ago
-    sender: 'mechanic',
-    read: true,
-  },
-  {
-    id: '3',
-    text: 'Great, thank you! My car is parked near the building entrance.',
-    timestamp: new Date(Date.now() - 28 * 60000), // 28 mins ago
-    sender: 'user',
-    read: true,
-  },
-  {
-    id: '4',
-    text: 'Do I need to prepare anything before you arrive?',
-    timestamp: new Date(Date.now() - 26 * 60000), // 26 mins ago
-    sender: 'user',
-    read: true,
-  },
-  {
-    id: '5',
-    text: 'No need to prepare anything. I\'ll bring all the necessary equipment. Just make sure you have your keys ready.',
-    timestamp: new Date(Date.now() - 20 * 60000), // 20 mins ago
-    sender: 'mechanic',
-    read: true,
-  },
-  {
-    id: '6',
-    text: 'I\'m about 5 minutes away now.',
-    timestamp: new Date(Date.now() - 5 * 60000), // 5 mins ago
-    sender: 'mechanic',
-    read: true,
-  },
-];
-
 export default function MechanicChatScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<MechanicChatScreenNavigationProp>();
   const route = useRoute<MechanicChatScreenRouteProp>();
   const { orderId, mechanicName } = route.params;
   
-  const [messages, setMessages] = useState<Message[]>(initialMessages);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   
   const flatListRef = useRef<FlatList>(null);
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const currentUser = auth.currentUser;
 
-  // Scroll to bottom on load and when messages change
+  // Fetch messages using onSnapshot
+  useEffect(() => {
+    if (!orderId || !currentUser) {
+        setLoading(false);
+        setError("Missing order ID or user information.");
+        return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    const messagesRef = collection(firestore, 'chats', orderId, 'messages');
+    const q = query(messagesRef, orderBy('createdAt', 'asc'));
+
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+      const fetchedMessages = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as Message));
+      setMessages(fetchedMessages);
+      setLoading(false);
+       // Scroll to bottom when messages load/update
+       setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+    }, (err) => {
+      console.error("Error fetching messages:", err);
+      setError("Failed to load messages.");
+      setLoading(false);
+    });
+
+    // Cleanup listener on unmount
+    return () => unsubscribe();
+
+  }, [orderId, currentUser]);
+
+  // Scroll to bottom when messages change (additional safety measure)
   useEffect(() => {
     setTimeout(() => {
       flatListRef.current?.scrollToEnd({ animated: true });
@@ -111,38 +104,50 @@ export default function MechanicChatScreen() {
     }).start();
   }, []);
 
-  const handleSendMessage = () => {
-    if (inputText.trim() === '') return;
+  const handleSendMessage = async () => {
+    if (!inputText.trim() || !currentUser || !orderId) {
+        console.log("Send message preconditions not met (text, user, orderId)");
+        return;
+    }
     
-    // Create new message
-    const newMessage: Message = {
-      id: Date.now().toString(),
-      text: inputText.trim(),
-      timestamp: new Date(),
-      sender: 'user',
-      read: false,
-    };
-    
-    // Add message to the list
-    setMessages([...messages, newMessage]);
-    
-    // Clear the input field
-    setInputText('');
-    
-    // Simulate mechanic response after a delay
-    setLoading(true);
-    setTimeout(() => {
-      const mechanicResponse: Message = {
-        id: (Date.now() + 1).toString(),
-        text: "I've arrived at your location. I'll be checking your car battery now.",
-        timestamp: new Date(),
-        sender: 'mechanic',
-        read: false,
-      };
-      
-      setMessages(prevMessages => [...prevMessages, mechanicResponse]);
-      setLoading(false);
-    }, 3000);
+    const messageText = inputText.trim();
+    setInputText(''); // Clear input immediately
+    setSending(true);
+
+    const chatDocRef = doc(firestore, 'chats', orderId);
+    const messagesCollectionRef = collection(firestore, 'chats', orderId, 'messages');
+
+    try {
+      // Ensure chat doc exists and customer is a participant (provider adds themselves on accept)
+      const chatDocSnap = await getDoc(chatDocRef);
+      let participants = [currentUser.uid]; // Start with current user
+      if (chatDocSnap.exists() && chatDocSnap.data().participants) {
+         participants = [...new Set([...chatDocSnap.data().participants, currentUser.uid])]; // Add user if not present
+      } else {
+         // Need provider ID if creating for first time - ideally provider creates it on accept
+         // For now, we proceed assuming provider created it
+         console.warn("Chat document might not exist yet, attempting to write message anyway.");
+      }
+      // Optional: Update participants if needed - uncomment if necessary
+      // await setDoc(chatDocRef, { participants }, { merge: true });
+
+      // Add the new message
+      await addDoc(messagesCollectionRef, {
+        senderUid: currentUser.uid,
+        text: messageText,
+        createdAt: serverTimestamp()
+      });
+
+      // Scroll to bottom after sending
+      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+
+    } catch (error) {
+      console.error("Firestore Error sending message:", error);
+      Alert.alert("Error", "Could not send message.");
+      setInputText(messageText); // Restore message on error
+    } finally {
+      setSending(false);
+    }
   };
 
   const formatTime = (date: Date) => {
@@ -155,8 +160,12 @@ export default function MechanicChatScreen() {
   const groupMessagesByDate = () => {
     const groupedMessages: { date: string; data: Message[] }[] = [];
     
-    messages.forEach((message) => {
-      const messageDate = new Date(message.timestamp);
+    messages?.forEach((message) => {
+      // Defensively check createdAt before using it
+      if (!message.createdAt?.toDate) {
+        return; // Skip message if createdAt is not a valid Timestamp yet
+      }
+      const messageDate = message.createdAt.toDate();
       const dateString = messageDate.toDateString();
       
       const existingGroup = groupedMessages.find(group => group.date === dateString);
@@ -195,7 +204,13 @@ export default function MechanicChatScreen() {
   };
 
   const renderMessage = ({ item }: { item: Message }) => {
-    const isUser = item.sender === 'user';
+    // Check if the sender is the currently logged-in user
+    const isUser = item.senderUid === currentUser?.uid;
+
+    // Defensively check createdAt before rendering
+    if (!item.createdAt?.toDate) { 
+      return null; 
+    }
     
     return (
       <View style={[
@@ -222,11 +237,9 @@ export default function MechanicChatScreen() {
               styles.messageTimestamp,
               isUser ? styles.userTimestamp : styles.mechanicTimestamp
             ]}>
-              {formatTime(item.timestamp)}
+              {formatTime(item.createdAt.toDate())}
             </Text>
-            {isUser && item.read && (
-              <CheckCheck size={12} color={isUser ? "rgba(255, 255, 255, 0.7)" : "#7A89FF"} style={styles.readIcon} />
-            )}
+            {/* Read status removed - Implement later if needed */}
           </View>
         </LinearGradient>
       </View>
@@ -237,7 +250,7 @@ export default function MechanicChatScreen() {
     return (
       <View>
         {renderDateSeparator(item.date)}
-        {item.data.map(message => (
+        {item.data?.map(message => (
           <React.Fragment key={message.id}>
             {renderMessage({ item: message })}
           </React.Fragment>
@@ -245,6 +258,39 @@ export default function MechanicChatScreen() {
       </View>
     );
   };
+
+  // Handle Loading State
+  if (loading) {
+    return (
+      <Animated.View style={[styles.container, { opacity: fadeAnim, paddingTop: insets.top }]}>
+        <View style={styles.header}>
+           <Pressable onPress={() => navigation.goBack()} style={styles.backButton}>
+             <ArrowLeft size={24} color="#FFFFFF" />
+           </Pressable>
+          <Text style={styles.headerTitle}>{mechanicName || 'MECHANIC'}</Text>
+           <View style={{width: 24}}/>{/* Spacer */}
+         </View>
+         <View style={styles.centeredContainer}>
+           <ActivityIndicator size="large" color="#00F0FF" />
+           <Text style={styles.loadingText}>Loading Messages...</Text>
+         </View>
+      </Animated.View>
+    );
+  }
+
+  // Handle Error State
+  if (error) {
+      return (
+          <Animated.View style={[styles.container, { opacity: fadeAnim, paddingTop: insets.top }]}>
+             <View style={styles.header}>
+                 {/* ... header ... */}
+             </View>
+             <View style={styles.centeredContainer}>
+                 <Text style={styles.errorText}>{error}</Text>
+             </View>
+          </Animated.View>
+      );
+  }
 
   return (
     <Animated.View 
@@ -279,7 +325,7 @@ export default function MechanicChatScreen() {
       />
       
       {/* Loading indicator */}
-      {loading && (
+      {sending && (
         <View style={styles.loadingContainer}>
           <LinearGradient
             colors={['rgba(0, 240, 255, 0.2)', 'rgba(122, 137, 255, 0.2)']}
@@ -564,5 +610,16 @@ const styles = StyleSheet.create({
     borderRadius: 21,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  centeredContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  errorText: {
+    color: '#FF0000',
+    fontSize: 16,
+    fontFamily: 'Inter_500Medium',
+    marginTop: 16,
   },
 }); 

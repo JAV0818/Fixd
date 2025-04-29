@@ -2,6 +2,7 @@ import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Home, User, PenTool as Tool, Activity, Bell } from 'lucide-react-native';
 import { View, StyleSheet, Animated, Easing } from 'react-native';
+import { getFocusedRouteNameFromRoute, RouteProp } from '@react-navigation/native';
 
 // Import provider screens
 import ProviderDashboardScreen from '../screens/provider/ProviderDashboardScreen';
@@ -161,7 +162,28 @@ export default function ProviderTabNavigator() {
         tabBarHideOnKeyboard: true,
       })}
     >
-      <Tab.Screen name="Requests" component={ProviderNavigator} options={{ tabBarLabel: 'REQUESTS' }} />
+      <Tab.Screen 
+        name="Requests" 
+        component={ProviderNavigator} 
+        options={({ route }) => {
+          const defaultStyle = { // Define default/visible style
+              backgroundColor: '#0A0F1E', 
+              borderTopColor: '#2A3555',
+              height: 65,
+              position: 'absolute' as 'absolute', // Ensure type correctness
+              borderTopWidth: 1,
+              elevation: 0,
+              shadowOpacity: 0,
+              display: 'flex' as 'flex', // Default display
+          };
+          const routeName = getFocusedRouteNameFromRoute(route) ?? 'Requests';
+          const hideOnScreens = ['RequestContact', 'RequestDetail']; // Screens to hide tab bar on
+          if (hideOnScreens.includes(routeName)) {
+              return { tabBarLabel: 'REQUESTS', tabBarStyle: { ...defaultStyle, display: 'none' } };
+          }
+          return { tabBarLabel: 'REQUESTS', tabBarStyle: defaultStyle };
+        }}
+      />
       <Tab.Screen name="RepairOrders" component={RepairOrdersScreen} options={{ tabBarLabel: 'REPAIR QUEUE' }} />
       <Tab.Screen name="Profile" component={ProviderProfileScreen} />
     </Tab.Navigator>

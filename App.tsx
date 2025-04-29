@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { Text, View } from 'react-native'; // Import basic components if needed for error state
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { registerRootComponent } from 'expo'; // Import registerRootComponent
 import { useFonts, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
 import { NavigationContainer } from '@react-navigation/native'; // Import NavigationContainer
 
@@ -49,3 +50,6 @@ export default function App() {
     </SafeAreaProvider>
   );
 }
+
+// Register the main App component
+registerRootComponent(App);
