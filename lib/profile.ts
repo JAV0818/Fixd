@@ -1,5 +1,7 @@
 import { auth, firestore } from './firebase';
 import { doc, getDoc } from 'firebase/firestore';
+// Consider importing Timestamp if createdAt should be that type
+// import { Timestamp } from 'firebase/firestore'; 
 
 export interface UserProfile {
   firstName: string;
@@ -8,10 +10,21 @@ export interface UserProfile {
   phone: string;
   isAdmin: boolean;
   createdAt: string;
-  servicesRequested: number;
-  averageRating: number;
-  ratingGiven: number;
-  vehicles: any[];
+  servicesRequested?: number;
+  averageRating?: number;
+  ratingGiven?: number;
+  vehicles?: any[];
+  profilePictureUrl?: string;
+  bio?: string;
+  yearsOfExperience?: number;
+  numberOfJobsCompleted?: number;
+  reviewCount?: number;
+  performance?: {
+    weeklyEarnings?: number;
+    numberOfServices?: number;
+    clientRatingIndex?: number;
+    totalHours?: number;
+  };
 }
 
 export async function getUserProfile(): Promise<UserProfile | null> {
@@ -23,5 +36,6 @@ export async function getUserProfile(): Promise<UserProfile | null> {
   
   if (!userDoc.exists()) return null;
   
-  return userDoc.data() as UserProfile;
+  // Cast to UserProfile, assuming Firestore data matches
+  return userDoc.data() as UserProfile; 
 }

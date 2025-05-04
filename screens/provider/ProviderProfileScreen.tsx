@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, Image, TextInput, ActivityIndicator, Alert, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Camera, PenTool as Tool, Clock, Settings, ChevronRight, LogOut, Star, CheckCircle, Users, DollarSign, Activity, Info } from 'lucide-react-native';
+import { Camera, PenTool as Tool, Clock, Settings, ChevronRight, LogOut, Star, CheckCircle, Users, DollarSign, Activity, Info, Briefcase, Award } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { logout } from '@/lib/auth';
 import { useNavigation } from '@react-navigation/native';
@@ -9,21 +9,10 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { ProviderStackParamList } from '@/navigation/ProviderNavigator';
 import { RootStackParamList } from '@/navigation/AppNavigator';
 import { NavigationProp } from '@react-navigation/native';
-import { auth, firestore, storage } from '@/lib/firebase'; // Import auth, firestore, and storage
-import { doc, updateDoc, getDoc } from 'firebase/firestore'; // Import firestore functions
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'; // Import storage functions
-
-// Define an interface for the user profile data
-interface ProviderProfile {
-  firstName?: string;
-  lastName?: string;
-  level?: number;
-  rating?: number;
-  jobsCompleted?: number;
-  yearsExperience?: number;
-  bio?: string;
-  profileImageUrl?: string;
-}
+import { auth, firestore, storage } from '@/lib/firebase';
+import { doc, updateDoc, getDoc } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { UserProfile } from '@/lib/profile';
 
 // Performance metrics data
 const performanceMetrics = [
@@ -57,10 +46,18 @@ const performanceMetrics = [
   },
 ];
 
+// Performance icons mapping (can be extended)
+const performanceIcons = {
+  weeklyEarnings: DollarSign,
+  numberOfServices: Tool,
+  clientRatingIndex: Users, // Or Star?
+  totalHours: Clock,
+};
+
 export default function ProviderProfileScreen() {
   const stackNavigation = useNavigation<NativeStackNavigationProp<ProviderStackParamList>>();
   const navigation = useNavigation<NavigationProp<RootStackParamList>>();
-  const [profileData, setProfileData] = useState<ProviderProfile>({});
+  const [profileData, setProfileData] = useState<UserProfile | null>(null);
   const [profileImage, setProfileImage] = useState<string | null>(null);
   const [bio, setBio] = useState('');
   const [originalBio, setOriginalBio] = useState('');
@@ -72,7 +69,8 @@ export default function ProviderProfileScreen() {
   const [savingYears, setSavingYears] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
 
-  // Fetch profile data on component mount
+  const defaultProfileImageUrl = 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=800&auto=format&fit=crop&q=60'; // Define default image URL
+
   useEffect(() => {
     const fetchProfileData = async () => {
       setLoadingProfile(true);
@@ -82,28 +80,34 @@ export default function ProviderProfileScreen() {
         try {
           const userDoc = await getDoc(userDocRef);
           if (userDoc.exists()) {
-            const data = userDoc.data() as ProviderProfile;
+            const data = userDoc.data() as UserProfile;
             setProfileData(data);
-            setBio(data.bio || 'No bio set yet.');
-            setOriginalBio(data.bio || 'No bio set yet.');
-            setProfileImage(data.profileImageUrl || 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=800&auto=format&fit=crop&q=60'); // Default image
-            setYearsInput((data.yearsExperience || 0).toString()); // Initialize yearsInput
+            const currentBio = data.bio || 'No bio set yet.';
+            setBio(currentBio);
+            setOriginalBio(currentBio);
+            setProfileImage(data.profilePictureUrl || defaultProfileImageUrl);
+            setYearsInput((data.yearsOfExperience || 0).toString());
           } else {
             console.error("No such user document!");
+            setProfileData(null);
             setBio('Could not load profile.');
             setOriginalBio('Could not load profile.');
-            setProfileImage('https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=800&auto=format&fit=crop&q=60'); // Default image
+            setProfileImage(defaultProfileImageUrl);
             setYearsInput('0');
           }
         } catch (error) {
           console.error("Error fetching user data:", error);
+          setProfileData(null);
           setBio('Error loading profile.');
           setOriginalBio('Error loading profile.');
-          setProfileImage('https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=800&auto=format&fit=crop&q=60'); // Default image
+          setProfileImage(defaultProfileImageUrl);
           setYearsInput('0');
+        } finally {
+          setLoadingProfile(false);
         }
+      } else {
+        setLoadingProfile(false);
       }
-      setLoadingProfile(false);
     };
 
     fetchProfileData();
@@ -111,9 +115,8 @@ export default function ProviderProfileScreen() {
 
   const handleImagePick = async () => {
     setUploadingImage(true);
-    // Ask for permission (might be needed on standalone builds)
     const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (permissionResult.granted === false) {
+    if (!permissionResult.granted) {
       Alert.alert("Permission Denied", "Permission to access camera roll is required!");
       setUploadingImage(false);
       return;
@@ -123,7 +126,7 @@ export default function ProviderProfileScreen() {
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       aspect: [1, 1],
-      quality: 0.7, // Lower quality slightly for faster uploads
+      quality: 0.7,
     });
 
     if (result.canceled) {
@@ -132,44 +135,35 @@ export default function ProviderProfileScreen() {
     }
 
     const imageUri = result.assets[0].uri;
-    setProfileImage(imageUri); // Show local image immediately
+    setProfileImage(imageUri);
 
     const user = auth.currentUser;
     if (!user) {
-      Alert.alert("Error", "You must be logged in to upload images.");
+      Alert.alert("Error", "You must be logged in.");
       setUploadingImage(false);
       return;
     }
 
     try {
-      // Convert URI to Blob
       const response = await fetch(imageUri);
       const blob = await response.blob();
-
-      // Create a storage reference
       const storageRef = ref(storage, `profileImages/${user.uid}.jpg`);
-
-      // Upload the file
       await uploadBytes(storageRef, blob);
-
-      // Get the download URL
       const downloadURL = await getDownloadURL(storageRef);
 
-      // Update Firestore
       const userDocRef = doc(firestore, 'users', user.uid);
       await updateDoc(userDocRef, {
-        profileImageUrl: downloadURL
+        profilePictureUrl: downloadURL
       });
 
-      // Update state with the final URL (optional, as fetchProfileData might re-run)
-      setProfileImage(downloadURL); 
+      setProfileImage(downloadURL);
+      setProfileData(prev => prev ? { ...prev, profilePictureUrl: downloadURL } : null);
       Alert.alert("Success", "Profile image updated.");
 
     } catch (error) {
       console.error("Error uploading image: ", error);
       Alert.alert("Upload Error", "Failed to upload profile image.");
-      // Optionally revert local state if upload fails
-      // setProfileImage(profileData.profileImageUrl || 'DEFAULT_URL');
+      setProfileImage(profileData?.profilePictureUrl || defaultProfileImageUrl);
     } finally {
       setUploadingImage(false);
     }
@@ -178,7 +172,6 @@ export default function ProviderProfileScreen() {
   const handleLogout = async () => {
     try {
       await logout();
-      // AppNavigator handles redirection based on auth state
     } catch (error) {
       console.error('Error logging out:', error);
     }
@@ -186,63 +179,57 @@ export default function ProviderProfileScreen() {
 
   const handleSaveBio = async () => {
     if (bio === originalBio) {
-      setIsEditingBio(false); // No changes, just close edit mode
+      setIsEditingBio(false);
       return;
     }
-
     setSavingBio(true);
     const user = auth.currentUser;
     if (!user) {
-      Alert.alert("Error", "You must be logged in to save changes.");
+      Alert.alert("Error", "You must be logged in.");
       setSavingBio(false);
       return;
     }
-
     const userDocRef = doc(firestore, 'users', user.uid);
-
     try {
-      await updateDoc(userDocRef, {
-        bio: bio // Update the bio field
-      });
-      setOriginalBio(bio); // Update original bio after successful save
+      await updateDoc(userDocRef, { bio: bio });
+      setOriginalBio(bio);
+      setProfileData(prev => prev ? { ...prev, bio: bio } : null);
       setIsEditingBio(false);
       Alert.alert("Success", "Bio updated successfully.");
     } catch (error) {
       console.error("Error updating bio:", error);
-      Alert.alert("Error", "Could not update bio. Please try again.");
+      Alert.alert("Error", "Could not update bio.");
     } finally {
       setSavingBio(false);
     }
   };
 
   const handleSaveYears = async () => {
-    const currentYears = (profileData.yearsExperience || 0).toString();
-    if (yearsInput === currentYears) {
+    const currentYearsStr = (profileData?.yearsOfExperience || 0).toString();
+    if (yearsInput === currentYearsStr) {
       setIsEditingYears(false);
       return;
     }
     
     const yearsValue = parseInt(yearsInput, 10);
     if (isNaN(yearsValue) || yearsValue < 0) {
-      Alert.alert("Invalid Input", "Please enter a valid number for years of experience.");
+      Alert.alert("Invalid Input", "Please enter a valid number (0 or more).");
       return;
     }
 
     setSavingYears(true);
     const user = auth.currentUser;
     if (!user) {
-      Alert.alert("Error", "You must be logged in to save changes.");
+      Alert.alert("Error", "You must be logged in.");
       setSavingYears(false);
       return;
     }
-
     const userDocRef = doc(firestore, 'users', user.uid);
-
     try {
       await updateDoc(userDocRef, {
-        yearsExperience: yearsValue
+        yearsOfExperience: yearsValue
       });
-      setProfileData(prevData => ({ ...prevData, yearsExperience: yearsValue })); // Update local state
+      setProfileData(prev => prev ? { ...prev, yearsOfExperience: yearsValue } : null);
       setIsEditingYears(false);
       Alert.alert("Success", "Years of experience updated.");
     } catch (error) {
@@ -254,196 +241,182 @@ export default function ProviderProfileScreen() {
   };
 
   const handleViewPerformance = () => {
-    stackNavigation.navigate('PerformanceDetails');
+    Alert.alert("Navigate", "Navigate to Performance Details Screen (Not implemented yet)");
   };
 
-  // Show loading indicator while fetching profile
   if (loadingProfile) {
     return (
-      <SafeAreaView style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#00F0FF" />
+      <SafeAreaView style={styles.container}>
+        <ActivityIndicator size="large" color="#00F0FF" style={{ marginTop: 50 }}/>
+      </SafeAreaView>
+    );
+  }
+  
+  if (!profileData) {
+     return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.headerContainer}>
+            <Text style={styles.headerTitle}>Profile</Text>
+            <Pressable onPress={handleLogout} style={styles.logoutButton}>
+              <LogOut size={24} color="#FF3D71" />
+            </Pressable>
+        </View>
+        <View style={styles.centeredMessage}>
+          <Text style={styles.errorText}>Could not load profile data.</Text>
+        </View>
       </SafeAreaView>
     );
   }
 
-  // Format display name
-  const displayName = `${profileData.firstName || ''} ${profileData.lastName || ''}`.trim() || 'PROVIDER NAME';
-  const level = profileData.level || 'X';
-  const rating = profileData.rating?.toFixed(1) || 'N/A';
-  const jobs = profileData.jobsCompleted || 0;
-  const ratingValue = profileData.rating || 0;
-  const displayYears = profileData.yearsExperience || 0;
-
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView 
-        style={styles.content}
-        contentContainerStyle={{ flexGrow: 1, paddingBottom: 100 }}
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.header}>
+      <ScrollView showsVerticalScrollIndicator={false}>
+        <View style={styles.headerContainer}>
+          <Text style={styles.headerTitle}>Profile</Text>
+          <Pressable onPress={handleLogout} style={styles.logoutButton}>
+            <LogOut size={24} color="#FF3D71" />
+          </Pressable>
+        </View>
+
+        <View style={styles.profileSection}>
           <View style={styles.profileImageContainer}>
-            {uploadingImage && (
-              <View style={styles.imageOverlay}>
-                <ActivityIndicator size="large" color="#FFFFFF" />
-              </View>
-            )}
-            {profileImage && <Image source={{ uri: profileImage }} style={styles.profileImage} />}
-            <Pressable 
-              style={[styles.editImageButton, uploadingImage && styles.buttonDisabled]}
-              onPress={handleImagePick}
-              disabled={uploadingImage}
-            >
-              <Camera size={20} color="#00F0FF" />
+            <Image
+              source={{ uri: profileImage || defaultProfileImageUrl }}
+              style={styles.profileImage}
+            />
+            <Pressable style={styles.cameraButton} onPress={handleImagePick} disabled={uploadingImage}>
+              {uploadingImage ? <ActivityIndicator size="small" color="#0A0F1E" /> : <Camera size={16} color="#0A0F1E" />}
             </Pressable>
           </View>
-          <Text style={styles.name}>{displayName.toUpperCase()}</Text>
-          <Text style={styles.membershipLevel}>{`QUANTUM TECHNICIAN - LEVEL ${level}`}</Text>
-          <View style={styles.statsContainer}>
+          <Text style={styles.nameText}>{`${profileData.firstName || ''} ${profileData.lastName || ''}`.trim() || 'Provider Name'}</Text>
+          <View style={styles.statsRow}>
             <View style={styles.statItem}>
-              <Text style={styles.statValue}>{jobs}</Text>
-              <Text style={styles.statLabel}>JOBS</Text>
+              <Briefcase size={16} color="#7A89FF" />
+              <Text style={styles.statText}>{profileData.numberOfJobsCompleted ?? 0} Jobs</Text>
             </View>
-            <View style={styles.statDivider} />
+            <View style={styles.statSeparator} />
             <View style={styles.statItem}>
-              <Text style={styles.statValue}>{rating}</Text>
-              <View style={styles.ratingContainer}>
-                <View style={styles.starsContainer}>
-                  {[1, 2, 3, 4, 5].map((star) => (
-                    <Star
-                      key={star}
-                      size={16}
-                      fill={star <= Math.floor(ratingValue) || (star === Math.ceil(ratingValue) && (ratingValue % 1) >= 0.5) ? "#FFB800" : "none"}
-                      color="#FFB800"
-                      style={{ marginRight: 2 }}
-                    />
-                  ))}
-                </View>
-              </View>
+              <Star size={16} color="#FFC107" />
+              <Text style={styles.statText}>
+                 {profileData.averageRating?.toFixed(1) ?? 'N/A'} ({profileData.reviewCount ?? 0} reviews)
+              </Text>
             </View>
-            <View style={styles.statDivider} />
-            <Pressable 
-              style={styles.statItem}
-              onPress={() => { 
-                  if (!isEditingYears) {
-                    setYearsInput((profileData.yearsExperience || 0).toString()); // Reset input on edit start
-                    setIsEditingYears(true); 
-                  }
-              }}
-              disabled={isEditingYears || savingYears}
-            >
-              {isEditingYears ? (
-                <View style={styles.editStatContainer}>
-                  <TextInput
-                    style={styles.statInput}
-                    value={yearsInput}
-                    onChangeText={setYearsInput}
-                    keyboardType="numeric"
-                    autoFocus
-                    maxLength={2} // Limit years input
-                    editable={!savingYears}
-                  />
-                  <Pressable 
-                    style={[styles.saveStatButton, savingYears && styles.buttonDisabled]}
-                    onPress={handleSaveYears}
-                    disabled={savingYears}
-                  >
-                    {savingYears ? (
-                      <ActivityIndicator size="small" color="#00F0FF"/>
-                    ) : (
-                      <CheckCircle size={18} color="#00F0FF" />
-                    )}
-                  </Pressable>
-                </View>
-              ) : (
-                <>
-                  <Text style={styles.statValue}>{displayYears}</Text>
-                  <Text style={styles.statLabel}>YEARS</Text>
-                </>
-              )}
-            </Pressable>
+            <View style={styles.statSeparator} />
+            <View style={styles.statItem}>
+              <Award size={16} color="#00F0FF" />
+              <Text style={styles.statText}>{profileData.yearsOfExperience ?? 0} Yrs Exp</Text>
+            </View>
           </View>
         </View>
 
-        <View style={styles.bioSection}>
-          <Text style={styles.sectionTitle}>BIO</Text>
+        <View style={styles.sectionCard}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>About Me</Text>
+            {!isEditingBio && (
+              <TouchableOpacity onPress={() => setIsEditingBio(true)} style={styles.editButton}>
+                <Tool size={18} color="#7A89FF" />
+              </TouchableOpacity>
+            )}
+          </View>
           {isEditingBio ? (
             <View>
               <TextInput
                 style={styles.bioInput}
+                multiline
                 value={bio}
                 onChangeText={setBio}
-                multiline
-                autoFocus
-                editable={!savingBio} // Disable input while saving
+                placeholder="Tell clients about yourself..."
+                placeholderTextColor="#555E78"
+                maxLength={500}
               />
-              <Pressable 
-                style={[styles.saveBioButton, savingBio && styles.buttonDisabled]} 
-                onPress={handleSaveBio} 
-                disabled={savingBio}
-              >
-                {savingBio ? (
-                  <ActivityIndicator size="small" color="#0A0F1E" />
-                ) : (
-                  <CheckCircle size={16} color="#0A0F1E" />
-                )}
-                <Text style={styles.saveBioButtonText}>SAVE BIO</Text>
-              </Pressable>
+              <View style={styles.bioActions}>
+                <TouchableOpacity onPress={() => { setBio(originalBio); setIsEditingBio(false); }} style={[styles.bioButton, styles.cancelBioButton]}>
+                  <Text style={styles.cancelBioButtonText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={handleSaveBio} disabled={savingBio} style={[styles.bioButton, styles.saveBioButton]}>
+                  {savingBio ? <ActivityIndicator size="small" color="#0A0F1E"/> : <Text style={styles.saveBioButtonText}>Save Bio</Text>}
+                </TouchableOpacity>
+              </View>
             </View>
           ) : (
-            <Pressable onPress={() => setIsEditingBio(true)} disabled={savingBio}>
-              <Text style={styles.bioText}>{bio}</Text>
-              <Text style={styles.editBioPrompt}>Tap to edit</Text>
-            </Pressable>
+            <Text style={styles.bioText}>{bio}</Text>
           )}
         </View>
-
-        {/* Performance Metrics Section */}
-        <View style={styles.metricsSection}>
-          <View style={styles.sectionHeaderRow}>
-            <Text style={styles.sectionTitle}>PERFORMANCE METRICS</Text>
-            <Pressable onPress={handleViewPerformance} style={styles.detailsContainer}>
-              <Text style={styles.detailsText}>Details</Text>
-              <ChevronRight size={16} color="#00F0FF" />
-            </Pressable>
-          </View>
-          <View style={styles.metricsContainer}>
-            <View style={styles.metricsGrid}>
-              {performanceMetrics.map((metric, index) => (
-                <View key={index} style={styles.metricCard}>
-                  <View style={styles.metricHeader}>
-                    <metric.icon size={20} color={metric.color} />
-                    <Text style={styles.metricTitle}>{metric.title}</Text>
-                  </View>
-                  <Text style={styles.metricValue}>{metric.value}</Text>
-                  <Text style={[
-                    styles.metricChange,
-                    { color: metric.change.includes('+') ? '#00F0FF' : '#FF3D71' }
-                  ]}>
-                    {metric.change} this cycle
-                  </Text>
-                  <View style={[styles.metricLine, { backgroundColor: metric.color }]} />
-                </View>
-              ))}
+        
+        <View style={styles.sectionCard}>
+            <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>Years of Experience</Text>
+                 {!isEditingYears && (
+                    <TouchableOpacity onPress={() => setIsEditingYears(true)} style={styles.editButton}>
+                        <Tool size={18} color="#7A89FF" />
+                    </TouchableOpacity>
+                 )}
             </View>
+            {isEditingYears ? (
+                <View>
+                    <TextInput
+                        style={styles.yearsInput}
+                        value={yearsInput}
+                        onChangeText={setYearsInput}
+                        keyboardType="numeric"
+                        placeholder="0"
+                        placeholderTextColor="#555E78"
+                        maxLength={2}
+                    />
+                    <View style={styles.bioActions}>
+                        <TouchableOpacity onPress={() => { setYearsInput((profileData.yearsOfExperience || 0).toString()); setIsEditingYears(false); }} style={[styles.bioButton, styles.cancelBioButton]}>
+                        <Text style={styles.cancelBioButtonText}>Cancel</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={handleSaveYears} disabled={savingYears} style={[styles.bioButton, styles.saveBioButton]}>
+                        {savingYears ? <ActivityIndicator size="small" color="#0A0F1E"/> : <Text style={styles.saveBioButtonText}>Save Years</Text>}
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            ) : (
+                <Text style={styles.bioText}>{profileData.yearsOfExperience ?? 0} years</Text>
+            )}
+        </View>
+
+        <View style={styles.sectionCard}>
+          <Pressable style={styles.sectionHeader} onPress={handleViewPerformance}>
+            <Text style={styles.sectionTitle}>Performance Overview</Text>
+            <ChevronRight size={18} color="#7A89FF" />
+          </Pressable>
+          <View style={styles.performanceGrid}>
+            {profileData.performance ? (
+              Object.entries(profileData.performance).map(([key, value]) => {
+                const IconComponent = performanceIcons[key as keyof typeof performanceIcons] || Info;
+                const displayValue = typeof value === 'number' 
+                  ? (key === 'weeklyEarnings' ? `$${value.toFixed(2)}` : value.toString()) 
+                  : 'N/A';
+                const displayTitle = key
+                    .replace(/([A-Z])/g, ' $1')
+                    .replace(/^./, str => str.toUpperCase())
+                    .toUpperCase();
+                    
+                return (
+                  <View key={key} style={styles.performanceItem}>
+                    <IconComponent size={24} color="#00F0FF" />
+                    <Text style={styles.performanceValue}>{displayValue}</Text>
+                    <Text style={styles.performanceLabel}>{displayTitle}</Text>
+                  </View>
+                );
+              })
+            ) : (
+              <Text style={styles.noDataText}>No performance data available.</Text>
+            )}
           </View>
         </View>
 
-        <View style={styles.menuSection}>
-          <TouchableOpacity 
-            style={styles.menuItem}
-            onPress={() => stackNavigation.navigate('AccountSettings')}
-          >
+        <View style={styles.sectionCard}>
+          <Text style={styles.sectionTitle}>Account</Text>
+          <Pressable style={styles.settingsItem} onPress={() => Alert.alert("Navigation", "Go to Account Settings")}>
             <Settings size={20} color="#7A89FF" />
-            <Text style={styles.menuText}>Account Settings</Text>
-            <ChevronRight size={20} color="#7A89FF" />
-          </TouchableOpacity>
+            <Text style={styles.settingsText}>Account Settings</Text>
+            <ChevronRight size={18} color="#7A89FF" />
+          </Pressable>
         </View>
 
-        <Pressable style={styles.logoutButton} onPress={handleLogout}>
-          <LogOut size={20} color="#FF3D71" />
-          <Text style={styles.logoutText}>LOGOUT</Text>
-        </Pressable>
       </ScrollView>
     </SafeAreaView>
   );
@@ -454,12 +427,40 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#0A0F1E',
   },
-  content: {
-    flex: 1,
+  centeredMessage: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: 20,
   },
-  header: {
+  errorText: {
+      color: '#FF3D71',
+      fontSize: 16,
+      textAlign: 'center',
+      fontFamily: 'Inter_500Medium',
+  },
+  headerContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 24,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#2A3555',
+  },
+  headerTitle: {
+    fontSize: 22,
+    fontFamily: 'Inter_700Bold',
+    color: '#FFFFFF',
+    letterSpacing: 1,
+  },
+  logoutButton: {
+    padding: 8,
+  },
+  profileSection: {
+    alignItems: 'center',
+    paddingVertical: 24,
+    paddingHorizontal: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#2A3555',
   },
@@ -474,302 +475,182 @@ const styles = StyleSheet.create({
     borderWidth: 3,
     borderColor: '#00F0FF',
   },
-  editImageButton: {
+  cameraButton: {
     position: 'absolute',
-    right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0, 240, 255, 0.2)',
+    right: 0,
+    backgroundColor: '#00F0FF',
+    borderRadius: 15,
     padding: 8,
-    borderRadius: 20,
     borderWidth: 2,
-    borderColor: '#00F0FF',
+    borderColor: '#0A0F1E',
   },
-  name: {
+  nameText: {
     fontSize: 24,
-    fontFamily: 'Inter_700Bold',
-    color: '#00F0FF',
-    marginBottom: 4,
-    letterSpacing: 2,
-  },
-  membershipLevel: {
-    fontSize: 14,
     fontFamily: 'Inter_600SemiBold',
-    color: '#7A89FF',
-    letterSpacing: 2,
-    marginBottom: 16,
+    color: '#FFFFFF',
+    marginBottom: 8,
   },
-  statsContainer: {
+  statsRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  statItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(122, 137, 255, 0.1)',
-    padding: 16,
+    paddingHorizontal: 12,
+  },
+  statText: {
+    marginLeft: 6,
+    fontSize: 13,
+    fontFamily: 'Inter_400Regular',
+    color: '#E0EFFF',
+  },
+  statSeparator: {
+    width: 1,
+    height: 16,
+    backgroundColor: '#2A3555',
+  },
+  sectionCard: {
+    backgroundColor: '#121827',
+    marginHorizontal: 16,
+    marginTop: 16,
     borderRadius: 12,
+    padding: 16,
     borderWidth: 1,
     borderColor: '#2A3555',
   },
-  statItem: {
-    alignItems: 'center',
-    flex: 1,
-  },
-  statValue: {
-    fontSize: 24,
-    fontFamily: 'Inter_700Bold',
-    color: '#00F0FF',
-    marginBottom: 4,
-  },
-  statLabel: {
-    fontSize: 12,
-    fontFamily: 'Inter_500Medium',
-    color: '#7A89FF',
-    letterSpacing: 1,
-  },
-  ratingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  ratingText: {
-    fontSize: 14,
-    fontFamily: 'Inter_600SemiBold',
-    color: '#FFFFFF',
-    marginRight: 4,
-  },
-  starsContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  statDivider: {
-    width: 1,
-    height: 40,
-    backgroundColor: '#2A3555',
-  },
-  bioSection: {
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#2A3555',
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontFamily: 'Inter_700Bold',
-    color: '#00F0FF',
-    marginBottom: 12,
-    letterSpacing: 2,
-  },
-  sectionHeaderRow: {
+  sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 12,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(42, 83, 85, 0.5)',
   },
-  detailsContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0, 240, 255, 0.1)',
-    borderRadius: 20,
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(0, 240, 255, 0.3)',
-  },
-  detailsText: {
-    fontSize: 12,
+  sectionTitle: {
+    fontSize: 16,
     fontFamily: 'Inter_600SemiBold',
     color: '#00F0FF',
-    marginRight: 4,
+  },
+  editButton: {
+      padding: 4,
   },
   bioText: {
     fontSize: 14,
     fontFamily: 'Inter_400Regular',
-    color: '#FFFFFF',
-    lineHeight: 20,
-  },
-  editBioPrompt: {
-    fontSize: 12,
-    fontFamily: 'Inter_400Regular',
-    color: '#7A89FF',
-    marginTop: 8,
-    fontStyle: 'italic',
+    color: '#E0EFFF',
+    lineHeight: 21,
   },
   bioInput: {
-    backgroundColor: 'rgba(122, 137, 255, 0.1)',
-    borderRadius: 8,
-    padding: 12,
+    backgroundColor: 'rgba(10, 15, 30, 0.8)',
+    color: '#E0EFFF',
     fontSize: 14,
     fontFamily: 'Inter_400Regular',
-    color: '#FFFFFF',
-    lineHeight: 20,
-    height: 100,
-    textAlignVertical: 'top',
-    borderWidth: 1,
-    borderColor: '#2A3555',
-  },
-  saveBioButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#00F0FF',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
     borderRadius: 8,
-    marginTop: 12,
-    alignSelf: 'flex-end',
-    gap: 6,
-  },
-  saveBioButtonText: {
-    fontSize: 12,
-    fontFamily: 'Inter_600SemiBold',
-    color: '#0A0F1E',
-    letterSpacing: 1,
-  },
-  // Performance metrics styles
-  metricsSection: {
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#2A3555',
-  },
-  metricsHeader: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    alignItems: 'center',
+    padding: 12,
+    minHeight: 100,
+    textAlignVertical: 'top',
+    borderColor: '#2A3555',
+    borderWidth: 1,
     marginBottom: 12,
   },
-  metricsContainer: {
-    backgroundColor: 'rgba(10, 15, 30, 0.8)',
-    borderRadius: 12,
-    marginTop: 16,
-    paddingBottom: 16,
-    paddingTop: 16,
-    paddingHorizontal: 16,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 1,
-    zIndex: 1,
-    borderWidth: 0,
+   yearsInput: {
+        backgroundColor: 'rgba(10, 15, 30, 0.8)',
+        color: '#E0EFFF',
+        fontSize: 14,
+        fontFamily: 'Inter_400Regular',
+        borderRadius: 8,
+        padding: 12,
+        borderColor: '#2A3555',
+        borderWidth: 1,
+        marginBottom: 12,
+        textAlign: 'center',
+        maxWidth: 80,
+        alignSelf: 'center',
+    },
+  bioActions: {
+      flexDirection: 'row',
+      justifyContent: 'flex-end',
+      marginTop: 8,
   },
-  metricsGrid: {
+  bioButton: {
+      paddingVertical: 8,
+      paddingHorizontal: 16,
+      borderRadius: 6,
+      marginLeft: 8,
+      flexDirection: 'row',
+      alignItems: 'center',
+  },
+  cancelBioButton: {
+      backgroundColor: 'rgba(122, 137, 255, 0.1)',
+      borderColor: '#7A89FF',
+      borderWidth: 1,
+  },
+  cancelBioButtonText: {
+      color: '#7A89FF',
+      fontFamily: 'Inter_500Medium',
+  },
+  saveBioButton: {
+      backgroundColor: '#00F0FF',
+      borderColor: '#00F0FF',
+      borderWidth: 1,
+  },
+  saveBioButtonText: {
+      color: '#0A0F1E',
+      fontFamily: 'Inter_600SemiBold',
+  },
+  performanceGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
-    marginHorizontal: 0,
+    marginTop: 8,
   },
-  metricCard: {
+  performanceItem: {
+    backgroundColor: 'rgba(42, 53, 85, 0.3)',
     width: '48%',
-    backgroundColor: 'rgba(26, 33, 56, 1)',
-    borderRadius: 12,
-    padding: 14,
+    borderRadius: 8,
+    padding: 16,
     marginBottom: 12,
-    borderWidth: 0,
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  metricHeader: {
-    flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 6,
-    gap: 4,
-  },
-  metricTitle: {
-    fontSize: 9,
-    fontFamily: 'Inter_600SemiBold',
-    color: '#7A89FF',
-    letterSpacing: 0.5,
-    flexShrink: 1,
-    lineHeight: 12,
-    maxWidth: '90%',
-  },
-  metricValue: {
-    fontSize: 24,
-    fontFamily: 'Inter_700Bold',
-    color: '#FFFFFF',
-    marginBottom: 4,
-  },
-  metricChange: {
-    fontSize: 12,
-    fontFamily: 'Inter_500Medium',
-    marginBottom: 8,
-  },
-  metricLine: {
-    height: 2,
-    width: '100%',
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-  },
-  menuSection: {
-    padding: 16,
-    gap: 8,
-    marginTop: 8, // Add margin before this section
-  },
-  menuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    backgroundColor: 'rgba(122, 137, 255, 0.1)',
-    borderRadius: 12,
     borderWidth: 1,
     borderColor: '#2A3555',
   },
-  menuText: {
-    flex: 1,
-    marginLeft: 16,
-    fontSize: 16,
-    fontFamily: 'Inter_500Medium',
-    color: '#00F0FF',
-  },
-  logoutButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    margin: 16,
-    padding: 16,
-    backgroundColor: 'rgba(255, 61, 113, 0.1)',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#FF3D71',
-  },
-  logoutText: {
-    marginLeft: 8,
-    fontSize: 16,
-    fontFamily: 'Inter_600SemiBold',
-    color: '#FF3D71',
-    letterSpacing: 2,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#0A0F1E',
-  },
-  buttonDisabled: {
-    opacity: 0.5,
-  },
-  imageOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: 60, // Match image border radius
-    zIndex: 1, // Ensure overlay is on top
-  },
-  editStatContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: '100%', // Ensure it takes full width within the stat item
-  },
-  statInput: {
-    fontSize: 24,
+  performanceValue: {
+    fontSize: 20,
     fontFamily: 'Inter_700Bold',
     color: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#00F0FF',
-    paddingBottom: 0,
-    marginRight: 8,
-    minWidth: 30, // Give some base width
-    textAlign: 'center',
+    marginTop: 8,
+    marginBottom: 4,
   },
-  saveStatButton: {
-    padding: 4, 
+  performanceLabel: {
+    fontSize: 10,
+    fontFamily: 'Inter_500Medium',
+    color: '#7A89FF',
+    textAlign: 'center',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+   noDataText: {
+        fontSize: 14,
+        fontFamily: 'Inter_400Regular',
+        color: '#7A89FF',
+        textAlign: 'center',
+        marginTop: 10,
+    },
+  settingsItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+  },
+  settingsText: {
+    flex: 1,
+    marginLeft: 12,
+    fontSize: 15,
+    fontFamily: 'Inter_500Medium',
+    color: '#E0EFFF',
   },
 }); 

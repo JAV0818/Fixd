@@ -8,12 +8,12 @@ import { ArrowLeft, Calendar, Clock, MapPin, CheckCircle, Briefcase, User } from
 type Props = NativeStackScreenProps<ProviderStackParamList, 'RequestStart'>;
 
 export default function RequestStartScreen({ navigation, route }: Props) {
-  const { requestId } = route.params;
+  const { orderId } = route.params;
   const [loading, setLoading] = useState(false);
   
   // In a real app, you would fetch the request details using the ID
   const requestDetails = {
-    id: requestId,
+    id: orderId,
     customerName: 'John Smith',
     customerAvatar: 'https://randomuser.me/api/portraits/men/32.jpg',
     service: 'Home Cleaning',

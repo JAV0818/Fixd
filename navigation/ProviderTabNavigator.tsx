@@ -177,7 +177,7 @@ export default function ProviderTabNavigator() {
               display: 'flex' as 'flex', // Default display
           };
           const routeName = getFocusedRouteNameFromRoute(route) ?? 'Requests';
-          const hideOnScreens = ['RequestContact', 'RequestDetail']; // Screens to hide tab bar on
+          const hideOnScreens = ['RequestContact', 'RequestDetail', 'RequestStart', 'RequestCancel']; 
           if (hideOnScreens.includes(routeName)) {
               return { tabBarLabel: 'REQUESTS', tabBarStyle: { ...defaultStyle, display: 'none' } };
           }

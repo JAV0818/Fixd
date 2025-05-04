@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ProviderStackParamList } from '../../navigation/ProviderNavigator';
-import { ArrowLeft, Check, X, MessageCircle } from 'lucide-react-native';
+import { ArrowLeft, Check, X, MessageCircle, Play, Ban } from 'lucide-react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { firestore, auth } from '@/lib/firebase';
 import { doc, onSnapshot, updateDoc, serverTimestamp } from 'firebase/firestore';
@@ -65,19 +65,16 @@ export default function RequestDetailScreen({ navigation, route }: Props) {
         status: 'Accepted',
         acceptedAt: serverTimestamp()
       });
-      // Alert.alert("Success", "Request accepted!"); // Optional: Show success message
-      navigation.goBack(); // Go back after successful update
+      navigation.goBack();
     } catch (err) {
       console.error("Error accepting request:", err);
       Alert.alert("Error", "Could not accept the request. Please try again.");
       setIsUpdating(false);
     }
-    // No need to set isUpdating to false on success, as we navigate away
   };
 
   const handleDecline = async () => {
     console.log("handleDecline called. isUpdating:", isUpdating, "Order exists:", !!order);
-    // Change status to Cancelled on decline
     if (!isUpdating && order) { 
       setIsUpdating(true);
       console.log("Attempting to decline order:", orderId);
@@ -89,7 +86,6 @@ export default function RequestDetailScreen({ navigation, route }: Props) {
         console.log("Order status updated to Cancelled in Firestore.");
         navigation.goBack();
       } catch (err) {
-        // Log the specific error
         console.error("Firestore Error declining request:", err);
         Alert.alert("Error", "Could not decline the request. Please try again.");
         setIsUpdating(false);
@@ -103,6 +99,48 @@ export default function RequestDetailScreen({ navigation, route }: Props) {
     if (order) {
        navigation.navigate('RequestContact', { orderId: order.id });
     }
+  };
+
+  const handleStartService = () => {
+    if (order) {
+      navigation.navigate('RequestStart', { orderId: order.id });
+    }
+  };
+
+  const handleCancelService = async () => {
+    if (!order) {
+      Alert.alert("Error", "Order data is not available.");
+      return;
+    }
+    if (isUpdating) return; 
+
+    Alert.alert(
+      "Confirm Cancellation",
+      "Are you sure you want to cancel this service? This cannot be undone.",
+      [
+        { text: "No", style: "cancel" },
+        {
+          text: "Yes, Cancel",
+          style: "destructive",
+          onPress: async () => {
+            setIsUpdating(true);
+            const docRef = doc(firestore, 'repairOrders', order.id);
+            try {
+              await updateDoc(docRef, {
+                status: 'Cancelled',
+                cancelledAt: serverTimestamp(),
+              });
+              console.log("Order status updated to Cancelled in Firestore.");
+              navigation.goBack();
+            } catch (err) {
+              console.error("Firestore Error cancelling service:", err);
+              Alert.alert("Error", "Could not cancel the service. Please try again.");
+              setIsUpdating(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   if (loading) {
@@ -132,7 +170,7 @@ export default function RequestDetailScreen({ navigation, route }: Props) {
   }
 
   return (
-    <SafeAreaView style={styles.container} /* edges={['top']} */ >
+    <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <ArrowLeft size={24} color="#FFFFFF" />
@@ -141,7 +179,7 @@ export default function RequestDetailScreen({ navigation, route }: Props) {
         <View style={{ width: 24 }} />
       </View>
 
-      <View style={styles.mainContentArea}> 
+      <View style={styles.mainContentArea}>
         <ScrollView 
           style={styles.scrollView}
           contentContainerStyle={styles.scrollViewContent}
@@ -154,11 +192,11 @@ export default function RequestDetailScreen({ navigation, route }: Props) {
             </View>
             <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>Date Requested:</Text>
-              <Text style={styles.detailValue}>{order.createdAt?.toDate().toLocaleDateString() || 'N/A'}</Text>
+              <Text style={styles.detailValue}>{order.createdAt?.toDate() ? order.createdAt.toDate().toLocaleDateString() : 'N/A'}</Text>
             </View>
             <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>Total Price:</Text>
-              <Text style={styles.detailValue}>${order.totalPrice.toFixed(2)}</Text>
+              <Text style={styles.detailValue}>${order.totalPrice?.toFixed(2) ?? 'N/A'}</Text>
             </View>
             <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>Vehicle:</Text>
@@ -190,36 +228,69 @@ export default function RequestDetailScreen({ navigation, route }: Props) {
           </View>
         </ScrollView>
         
-        {order.status === 'Pending' && (
-          <View style={[styles.actionButtonsContainer, { paddingBottom: insets.bottom + 12 }]}>
-            <TouchableOpacity 
-              style={[styles.actionButton, styles.contactButton]} 
-              onPress={handleContact} 
-              disabled={isUpdating}
-            >
-              <MessageCircle size={20} color="#7A89FF" />
-              <Text style={styles.contactButtonText}>Contact</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={[styles.actionButton, styles.declineButton]} 
-              onPress={handleDecline} 
-              disabled={isUpdating}
-            >
-              <X size={20} color="#FF3D71" />
-              <Text style={styles.declineButtonText}>{isUpdating ? 'Declining...' : 'Decline'}</Text>
-            </TouchableOpacity>
+        <View style={[styles.actionButtonsContainer, { paddingBottom: insets.bottom + 12 }]}>
+          {order.status === 'Pending' && (
+            <>
+              <TouchableOpacity 
+                style={[styles.actionButton, styles.contactButton]} 
+                onPress={handleContact} 
+                disabled={isUpdating}
+              >
+                <MessageCircle size={20} color="#7A89FF" />
+                <Text style={styles.contactButtonText}>Contact</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={[styles.actionButton, styles.declineButton]} 
+                onPress={handleDecline} 
+                disabled={isUpdating}
+              >
+                <X size={20} color="#FF3D71" />
+                <Text style={styles.declineButtonText}>{isUpdating ? 'Declining...' : 'Decline'}</Text>
+              </TouchableOpacity>
 
-            <TouchableOpacity 
-              style={[styles.actionButton, styles.acceptButton]} 
-              onPress={handleAccept} 
-              disabled={isUpdating}
-            >
-              <Check size={20} color="#0A0F1E" />
-              <Text style={styles.acceptButtonText}>{isUpdating ? 'Accepting...' : 'Accept'}</Text>
-            </TouchableOpacity>
-          </View>
-        )}
+              <TouchableOpacity 
+                style={[styles.actionButton, styles.acceptButton]} 
+                onPress={handleAccept} 
+                disabled={isUpdating}
+              >
+                <Check size={20} color="#0A0F1E" />
+                <Text style={styles.acceptButtonText}>{isUpdating ? 'Accepting...' : 'Accept'}</Text>
+              </TouchableOpacity>
+            </>
+          )}
+
+          {(order.status === 'Accepted' || order.status === 'InProgress') && (
+            <>
+              <TouchableOpacity
+                style={[styles.actionButton, styles.contactButton]}
+                onPress={handleContact}
+                 disabled={isUpdating}
+              >
+                <MessageCircle size={20} color="#7A89FF" />
+                <Text style={styles.contactButtonText}>Contact</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.actionButton, styles.cancelServiceButton]} 
+                onPress={handleCancelService}
+                disabled={isUpdating} 
+              >
+                <Ban size={20} color="#FF3D71" />
+                <Text style={styles.cancelServiceButtonText}>Cancel Service</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.actionButton, styles.startServiceButton]} 
+                onPress={handleStartService}
+                disabled={isUpdating} 
+              >
+                <Play size={20} color="#0A0F1E" />
+                <Text style={styles.startServiceButtonText}>Start Service</Text>
+              </TouchableOpacity>
+            </>
+          )}
+        </View>
       </View> 
     </SafeAreaView>
   );
@@ -295,13 +366,13 @@ const styles = StyleSheet.create({
   },
   mainContentArea: {
     flex: 1,
+    justifyContent: 'space-between',
   },
   scrollView: {
-    paddingHorizontal: 16,
-    paddingTop: 16,
+    flex: 1,
   },
   scrollViewContent: {
-    paddingBottom: 20,
+    padding: 16,
   },
   card: {
     backgroundColor: '#121827',
@@ -357,17 +428,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
     borderRadius: 8,
-    marginHorizontal: 6,
+    marginHorizontal: 4,
     borderWidth: 1,
+    minHeight: 44,
+    gap: 6,
   },
   contactButton: {
     backgroundColor: 'rgba(122, 137, 255, 0.1)',
     borderColor: '#7A89FF',
   },
   contactButtonText: {
-    marginLeft: 6,
     color: '#7A89FF',
     fontSize: 14,
     fontFamily: 'Inter_600SemiBold',
@@ -377,7 +450,6 @@ const styles = StyleSheet.create({
     borderColor: '#FF3D71',
   },
   declineButtonText: {
-    marginLeft: 6,
     color: '#FF3D71',
     fontSize: 14,
     fontFamily: 'Inter_600SemiBold',
@@ -387,7 +459,24 @@ const styles = StyleSheet.create({
     borderColor: '#00F0FF',
   },
   acceptButtonText: {
-    marginLeft: 6,
+    color: '#0A0F1E',
+    fontSize: 14,
+    fontFamily: 'Inter_600SemiBold',
+  },
+  cancelServiceButton: {
+    backgroundColor: 'rgba(255, 61, 113, 0.1)',
+    borderColor: '#FF3D71',
+  },
+  cancelServiceButtonText: {
+    color: '#FF3D71',
+    fontSize: 14,
+    fontFamily: 'Inter_600SemiBold',
+  },
+  startServiceButton: {
+    backgroundColor: '#00F0FF',
+    borderColor: '#00F0FF',
+  },
+  startServiceButtonText: {
     color: '#0A0F1E',
     fontSize: 14,
     fontFamily: 'Inter_600SemiBold',
