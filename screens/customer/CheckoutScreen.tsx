@@ -160,7 +160,7 @@ export default function CheckoutScreen() {
               <Text style={styles.summaryItemPrice}>${(item.price * item.quantity).toFixed(2)}</Text>
             </View>
           )}
-          keyExtractor={item => item.id}
+          keyExtractor={item => `${item.id}-${item.vehicleId || 'no-vehicle'}`}
           scrollEnabled={false}
           ListFooterComponent={
             <View style={styles.totalRow}>

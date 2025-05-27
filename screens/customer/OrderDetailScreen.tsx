@@ -1,41 +1,45 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, Image } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft, MapPin, Clock, Wrench, User, PhoneCall, Car, MessageCircle, CheckCircle } from 'lucide-react-native';
+import { ArrowLeft, MapPin, Clock, Wrench, User, PhoneCall, Car, MessageCircle, CheckCircle, AlertCircle } from 'lucide-react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '@/navigation/AppNavigator';
+import { firestore, auth } from '@/lib/firebase';
+import { doc, getDoc, Timestamp } from 'firebase/firestore';
+
+// Define a more specific Order type based on what's stored and needed
+// This should align with the structure in `repairOrders` collection
+export type Order = {
+  id: string;
+  customerId: string;
+  items: Array<{
+    id: string; // Service ID
+    name: string;
+    price: number;
+    quantity: number;
+    vehicleId?: string;
+    vehicleDisplay?: string;
+  }>;
+  totalPrice: number;
+  status: 'Pending' | 'Scheduled' | 'In-Progress' | 'Completed' | 'Cancelled';
+  createdAt: Timestamp; // Firestore Timestamp
+  locationDetails: {
+    address: string;
+    city: string;
+    state: string;
+    zipCode: string;
+    phoneNumber: string;
+    additionalNotes?: string;
+  };
+  providerId?: string | null;
+  providerName?: string | null; // Optional: if we denormalize mechanic name
+  estimatedArrival?: string; // This might come from provider updates later
+  // Add any other fields that are part of your order structure
+};
 
 type OrderDetailScreenRouteProp = RouteProp<RootStackParamList, 'OrderDetail'>;
 type OrderDetailScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'OrderDetail'>;
-
-// This would be fetched from the backend in a real app
-const MOCK_ORDER_DETAILS = {
-  id: '1',
-  service: 'Battery Jump Start',
-  date: '2023-05-15',
-  time: '14:30',
-  status: 'in-progress',
-  location: '123 Main St, Anytown, CA 92101',
-  estimatedArrival: '15 mins',
-  description: 'Vehicle won\'t start. Battery appears to be dead. No other visible issues.',
-  vehicle: {
-    make: 'Toyota',
-    model: 'Camry',
-    year: '2019',
-    color: 'Silver',
-    licensePlate: 'ABC-1234',
-  },
-  assignedMechanic: {
-    name: 'Michael Rodriguez',
-    rating: 4.8,
-    phone: '(555) 123-4567',
-    experience: '8 years',
-    photo: null, // Would be an image URL
-  },
-  paymentAmount: 75.99,
-  additionalNotes: 'Please bring jumper cables and battery testing equipment.',
-};
 
 // Mechanic avatar placeholder component
 const MechanicAvatar = () => (
@@ -50,19 +54,56 @@ export default function OrderDetailScreen() {
   const route = useRoute<OrderDetailScreenRouteProp>();
   const { orderId } = route.params;
   
-  const [orderDetails, setOrderDetails] = useState<typeof MOCK_ORDER_DETAILS | null>(null);
+  const [orderDetails, setOrderDetails] = useState<Order | null>(null);
+  const [mechanicDetails, setMechanicDetails] = useState<{ name?: string; photo?: string | null; experience?: string; rating?: number, phone?: string } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Simulate API call to fetch order details
     const fetchOrderDetails = async () => {
+      if (!orderId) {
+        setError("Order ID is missing.");
+        setLoading(false);
+        return;
+      }
+      setLoading(true);
+      setError(null);
       try {
-        // This would be an actual API call in a real app
-        await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate network delay
-        setOrderDetails(MOCK_ORDER_DETAILS);
-      } catch (error) {
-        console.error('Error fetching order details:', error);
-        // Handle error state
+        const orderDocRef = doc(firestore, 'repairOrders', orderId);
+        const orderDocSnap = await getDoc(orderDocRef);
+
+        if (orderDocSnap.exists()) {
+          const orderData = orderDocSnap.data() as Order;
+          orderData.id = orderDocSnap.id; // Ensure ID is part of the object
+          setOrderDetails(orderData);
+
+          if (orderData.providerId) {
+            const providerDocRef = doc(firestore, 'users', orderData.providerId);
+            const providerDocSnap = await getDoc(providerDocRef);
+            if (providerDocSnap.exists()) {
+              const providerData = providerDocSnap.data();
+              setMechanicDetails({
+                name: `${providerData.firstName} ${providerData.lastName}`,
+                photo: providerData.profilePictureUrl || null,
+                // Assuming these fields exist on provider's user document
+                experience: providerData.yearsOfExperience ? `${providerData.yearsOfExperience} years` : 'N/A',
+                rating: providerData.averageRating || 0, // Default to 0 if not present
+                phone: providerData.phone || 'N/A',
+              });
+            } else {
+              console.warn("Mechanic document not found for providerId:", orderData.providerId);
+              setMechanicDetails({ name: 'Assigned (Details N/A)' }); // Fallback if provider doc not found
+            }
+          } else {
+            setMechanicDetails(null); // No provider assigned
+          }
+        } else {
+          setError("Order not found.");
+          console.error("No such document for orderId:", orderId);
+        }
+      } catch (err) {
+        console.error('Error fetching order details:', err);
+        setError("Failed to fetch order details. Please try again.");
       } finally {
         setLoading(false);
       }
@@ -72,7 +113,19 @@ export default function OrderDetailScreen() {
   }, [orderId]);
 
   const handleChatPress = () => {
-    navigation.navigate('MechanicChat', { orderId, mechanicName: orderDetails?.assignedMechanic.name });
+    if (orderDetails?.providerId && mechanicDetails?.name) {
+      navigation.navigate('MechanicChat', { orderId: orderDetails.id, mechanicName: mechanicDetails.name });
+    } else {
+      // Handle case where chat is not possible (e.g. no mechanic assigned)
+      // Alert.alert("Chat Unavailable", "No mechanic has been assigned to this order yet.");
+    }
+  };
+  
+  const formatTimestamp = (timestamp: Timestamp | undefined) => {
+    if (!timestamp) return 'N/A';
+    return timestamp.toDate().toLocaleDateString('en-US', {
+      year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+    });
   };
 
   if (loading) {
@@ -84,47 +137,80 @@ export default function OrderDetailScreen() {
     );
   }
 
-  if (!orderDetails) {
+  if (error) {
     return (
       <View style={[styles.errorContainer, { paddingTop: insets.top }]}>
-        <Text style={styles.errorText}>Failed to load order details.</Text>
-        <Pressable style={styles.backButton} onPress={() => navigation.goBack()}>
-          <Text style={styles.backButtonText}>Go Back</Text>
+        <AlertCircle size={48} color="#FF3D71" style={{ marginBottom: 16 }}/>
+        <Text style={styles.errorText}>{error}</Text>
+        <Pressable style={styles.goBackButton} onPress={() => navigation.goBack()}>
+          <Text style={styles.goBackButtonText}>Go Back</Text>
         </Pressable>
       </View>
     );
   }
 
-  const isActive = orderDetails.status === 'in-progress';
+  if (!orderDetails) {
+    // This case should ideally be covered by the error state if orderId was valid but not found
+    return (
+      <View style={[styles.errorContainer, { paddingTop: insets.top }]}>
+         <AlertCircle size={48} color="#FF3D71" style={{ marginBottom: 16 }}/>
+        <Text style={styles.errorText}>Order details are unavailable.</Text>
+        <Pressable style={styles.goBackButton} onPress={() => navigation.goBack()}>
+          <Text style={styles.goBackButtonText}>Go Back</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  const isActive = orderDetails.status === 'In-Progress' || orderDetails.status === 'Scheduled' || orderDetails.status === 'Pending';
+  const isCompleted = orderDetails.status === 'Completed';
+  
+  const getStatusLabel = (status: Order['status']) => {
+    switch (status) {
+      case 'Pending': return 'Pending Assignment';
+      case 'Scheduled': return 'Mechanic Assigned';
+      case 'In-Progress': return 'Service In Progress';
+      case 'Completed': return 'Service Completed';
+      case 'Cancelled': return 'Order Cancelled';
+      default: return 'Status Unknown';
+    }
+  };
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* Header */}
       <View style={styles.header}>
-        <Pressable onPress={() => navigation.goBack()} style={styles.backButton}>
+        <Pressable onPress={() => navigation.goBack()} style={styles.backButtonHeader}>
           <ArrowLeft size={24} color="#00F0FF" />
         </Pressable>
-        <Text style={styles.headerTitle}>Order Details</Text>
+        <Text style={styles.headerTitle}>Order #{orderId.substring(0, 6)}...</Text>
         <View style={{ width: 24 }} />
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {/* Order Status Banner */}
-        <View style={[styles.statusBanner, isActive ? styles.activeStatusBanner : styles.completedStatusBanner]}>
+        <View style={[
+            styles.statusBanner, 
+            orderDetails.status === 'Completed' ? styles.completedStatusBanner : 
+            orderDetails.status === 'Cancelled' ? styles.cancelledStatusBanner : 
+            styles.activeStatusBanner
+        ]}>
           <View style={styles.statusIconContainer}>
-            {isActive ? (
-              <Clock size={24} color="#FFFFFF" />
-            ) : (
-              <CheckCircle size={24} color="#FFFFFF" />
-            )}
+            {orderDetails.status === 'Completed' ? <CheckCircle size={24} color="#FFFFFF" /> :
+             orderDetails.status === 'Cancelled' ? <AlertCircle size={24} color="#FFFFFF" /> :
+             <Clock size={24} color="#FFFFFF" />}
           </View>
           <View style={styles.statusTextContainer}>
-            <Text style={styles.statusTitle}>{isActive ? 'In Progress' : 'Completed'}</Text>
-            <Text style={styles.statusDescription}>
-              {isActive 
-                ? `Estimated arrival in ${orderDetails.estimatedArrival}`
-                : 'Service has been completed'}
-            </Text>
+            <Text style={styles.statusTitle}>{getStatusLabel(orderDetails.status)}</Text>
+            { (orderDetails.status === 'Pending' || orderDetails.status === 'Scheduled') && mechanicDetails?.name && (
+                <Text style={styles.statusDescription}>Mechanic: {mechanicDetails.name}</Text>
+            )}
+            { orderDetails.status === 'In-Progress' && orderDetails.estimatedArrival && (
+                <Text style={styles.statusDescription}>Estimated arrival in {orderDetails.estimatedArrival}</Text>
+            )}
+             { orderDetails.status === 'Pending' && !orderDetails.providerId && (
+                <Text style={styles.statusDescription}>Searching for a mechanic...</Text>
+            )}
           </View>
         </View>
 
@@ -132,94 +218,97 @@ export default function OrderDetailScreen() {
         <View style={styles.sectionContainer}>
           <Text style={styles.sectionTitle}>Service Information</Text>
           
-          <View style={styles.infoRow}>
-            <Wrench size={18} color="#7A89FF" />
-            <Text style={styles.infoLabel}>Service:</Text>
-            <Text style={styles.infoValue}>{orderDetails.service}</Text>
-          </View>
+          {orderDetails.items.map((item, index) => (
+            <View key={index} style={styles.serviceItemContainer}>
+              <View style={styles.infoRow}>
+                <Wrench size={18} color="#7A89FF" />
+                <Text style={styles.infoLabel}>Service:</Text>
+                <Text style={styles.infoValue}>{item.name}</Text>
+              </View>
+              {item.vehicleDisplay && (
+                <View style={styles.infoRow}>
+                  <Car size={18} color="#7A89FF" />
+                  <Text style={styles.infoLabel}>For Vehicle:</Text>
+                  <Text style={styles.infoValue}>{item.vehicleDisplay}</Text>
+                </View>
+              )}
+               <View style={styles.infoRow}>
+                 <Text style={styles.infoLabel}>Price:</Text>
+                 <Text style={styles.infoValue}>${item.price.toFixed(2)} (Qty: {item.quantity})</Text>
+               </View>
+            </View>
+          ))}
           
           <View style={styles.infoRow}>
             <Clock size={18} color="#7A89FF" />
-            <Text style={styles.infoLabel}>Date & Time:</Text>
-            <Text style={styles.infoValue}>{orderDetails.date} at {orderDetails.time}</Text>
+            <Text style={styles.infoLabel}>Requested:</Text>
+            <Text style={styles.infoValue}>{formatTimestamp(orderDetails.createdAt)}</Text>
           </View>
 
           <View style={styles.infoRow}>
             <MapPin size={18} color="#7A89FF" />
             <Text style={styles.infoLabel}>Location:</Text>
-            <Text style={styles.infoValue}>{orderDetails.location}</Text>
-          </View>
-
-          <View style={styles.descriptionContainer}>
-            <Text style={styles.descriptionLabel}>Description:</Text>
-            <Text style={styles.descriptionText}>{orderDetails.description}</Text>
-          </View>
-
-          {orderDetails.additionalNotes && (
-            <View style={styles.notesContainer}>
-              <Text style={styles.notesLabel}>Additional Notes:</Text>
-              <Text style={styles.notesText}>{orderDetails.additionalNotes}</Text>
-            </View>
-          )}
-        </View>
-
-        {/* Vehicle Information */}
-        <View style={styles.sectionContainer}>
-          <Text style={styles.sectionTitle}>Vehicle Information</Text>
-          
-          <View style={styles.infoRow}>
-            <Car size={18} color="#7A89FF" />
-            <Text style={styles.infoLabel}>Vehicle:</Text>
             <Text style={styles.infoValue}>
-              {orderDetails.vehicle.year} {orderDetails.vehicle.make} {orderDetails.vehicle.model}
+              {orderDetails.locationDetails.address}, {orderDetails.locationDetails.city}, {orderDetails.locationDetails.state} {orderDetails.locationDetails.zipCode}
             </Text>
           </View>
           
           <View style={styles.infoRow}>
-            <Text style={[styles.colorCircle, { backgroundColor: orderDetails.vehicle.color.toLowerCase() }]} />
-            <Text style={styles.infoLabel}>Color:</Text>
-            <Text style={styles.infoValue}>{orderDetails.vehicle.color}</Text>
+            <PhoneCall size={18} color="#7A89FF" />
+            <Text style={styles.infoLabel}>Contact #:</Text>
+            <Text style={styles.infoValue}>{orderDetails.locationDetails.phoneNumber}</Text>
           </View>
 
-          <View style={styles.infoRow}>
-            <Car size={18} color="#7A89FF" />
-            <Text style={styles.infoLabel}>License Plate:</Text>
-            <Text style={styles.infoValue}>{orderDetails.vehicle.licensePlate}</Text>
-          </View>
+          {orderDetails.locationDetails.additionalNotes && (
+            <View style={styles.notesContainer}>
+              <Text style={styles.notesLabel}>Additional Notes:</Text>
+              <Text style={styles.notesText}>{orderDetails.locationDetails.additionalNotes}</Text>
+            </View>
+          )}
         </View>
 
-        {/* Assigned Mechanic */}
+        {/* Assigned Mechanic - Updated Logic */}
         <View style={styles.sectionContainer}>
           <Text style={styles.sectionTitle}>Assigned Mechanic</Text>
           
-          <View style={styles.mechanicContainer}>
-            {orderDetails.assignedMechanic.photo ? (
-              <Image 
-                source={{ uri: orderDetails.assignedMechanic.photo }} 
-                style={styles.mechanicPhoto} 
-              />
-            ) : (
-              <MechanicAvatar />
-            )}
-            
-            <View style={styles.mechanicInfo}>
-              <Text style={styles.mechanicName}>{orderDetails.assignedMechanic.name}</Text>
-              <Text style={styles.mechanicDetail}>Experience: {orderDetails.assignedMechanic.experience}</Text>
-              <Text style={styles.mechanicDetail}>Rating: {orderDetails.assignedMechanic.rating}/5.0</Text>
-            </View>
-          </View>
+          {orderDetails.providerId && mechanicDetails ? (
+            <>
+              <View style={styles.mechanicContainer}>
+                {mechanicDetails.photo ? (
+                  <Image 
+                    source={{ uri: mechanicDetails.photo }} 
+                    style={styles.mechanicPhoto} 
+                  />
+                ) : (
+                  <MechanicAvatar />
+                )}
+                
+                <View style={styles.mechanicInfo}>
+                  <Text style={styles.mechanicName}>{mechanicDetails.name || 'N/A'}</Text>
+                  <Text style={styles.mechanicDetail}>Experience: {mechanicDetails.experience || 'N/A'}</Text>
+                  <Text style={styles.mechanicDetail}>Rating: {mechanicDetails.rating ? mechanicDetails.rating.toFixed(1) : 'N/A'}/5.0</Text>
+                </View>
+              </View>
 
-          <View style={styles.contactButtonsContainer}>
-            <Pressable style={styles.callButton}>
-              <PhoneCall size={20} color="#FFFFFF" />
-              <Text style={styles.contactButtonText}>Call</Text>
-            </Pressable>
-            
-            <Pressable style={styles.chatButton} onPress={handleChatPress}>
-              <MessageCircle size={20} color="#FFFFFF" />
-              <Text style={styles.contactButtonText}>Chat</Text>
-            </Pressable>
-          </View>
+              <View style={styles.contactButtonsContainer}>
+                 {mechanicDetails.phone && mechanicDetails.phone !== 'N/A' && (
+                    <Pressable style={styles.callButton} onPress={() => {/* Implement call functionality */}}>
+                        <PhoneCall size={20} color="#FFFFFF" />
+                        <Text style={styles.contactButtonText}>Call Mechanic</Text>
+                    </Pressable>
+                 )}
+                <Pressable style={styles.chatButton} onPress={handleChatPress} disabled={!orderDetails.providerId}>
+                  <MessageCircle size={20} color="#FFFFFF" />
+                  <Text style={styles.contactButtonText}>Chat with Mechanic</Text>
+                </Pressable>
+              </View>
+            </>
+          ) : (
+            <View style={styles.infoRow}>
+                <User size={18} color="#7A89FF" />
+                <Text style={styles.infoValue}>Searching for a mechanic...</Text>
+            </View>
+          )}
         </View>
 
         {/* Payment Information */}
@@ -228,11 +317,11 @@ export default function OrderDetailScreen() {
           
           <View style={styles.paymentContainer}>
             <Text style={styles.paymentLabel}>Total Amount:</Text>
-            <Text style={styles.paymentAmount}>${orderDetails.paymentAmount.toFixed(2)}</Text>
+            <Text style={styles.paymentAmount}>${orderDetails.totalPrice.toFixed(2)}</Text>
           </View>
           
           <Text style={styles.paymentStatus}>
-            {isActive ? 'Payment will be processed upon completion' : 'Payment processed'}
+            {isCompleted ? 'Payment processed' : 'Payment will be processed upon service completion'}
           </Text>
         </View>
       </ScrollView>
@@ -269,7 +358,19 @@ const styles = StyleSheet.create({
     color: '#FF3D71',
     fontSize: 16,
     marginBottom: 16,
-    fontFamily: 'Inter_400Regular',
+    fontFamily: 'Inter_500Medium',
+    textAlign: 'center',
+  },
+  goBackButton: {
+    backgroundColor: '#00F0FF',
+    paddingVertical: 12,
+    paddingHorizontal: 32,
+    borderRadius: 8,
+  },
+  goBackButtonText: {
+    color: '#030515',
+    fontSize: 16,
+    fontFamily: 'Inter_600SemiBold',
   },
   header: {
     flexDirection: 'row',
@@ -286,13 +387,8 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontFamily: 'Inter_600SemiBold',
   },
-  backButton: {
+  backButtonHeader: {
     padding: 4,
-  },
-  backButtonText: {
-    color: '#00F0FF',
-    fontSize: 16,
-    fontFamily: 'Inter_500Medium',
   },
   content: {
     flex: 1,
@@ -314,6 +410,11 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(56, 229, 77, 0.1)',
     borderLeftWidth: 4,
     borderLeftColor: '#38E54D',
+  },
+  cancelledStatusBanner: {
+    backgroundColor: 'rgba(255, 61, 113, 0.1)',
+    borderLeftWidth: 4,
+    borderLeftColor: '#FF3D71',
   },
   statusIconContainer: {
     marginRight: 16,
@@ -346,6 +447,12 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_600SemiBold',
     marginBottom: 16,
   },
+  serviceItemContainer: {
+    marginBottom: 12,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(42, 53, 85, 0.5)',
+  },
   infoRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -363,6 +470,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: 'Inter_400Regular',
     flex: 1,
+    flexWrap: 'wrap',
   },
   descriptionContainer: {
     marginTop: 8,
@@ -386,7 +494,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
     paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: '#2A3555',
+    borderTopColor: 'rgba(42, 53, 85, 0.5)',
   },
   notesLabel: {
     color: '#7A89FF',
@@ -399,13 +507,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: 'Inter_400Regular',
     fontStyle: 'italic',
-  },
-  colorCircle: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    borderWidth: 1,
-    borderColor: '#FFFFFF',
   },
   mechanicContainer: {
     flexDirection: 'row',
@@ -444,7 +545,7 @@ const styles = StyleSheet.create({
   },
   contactButtonsContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'space-around',
     gap: 12,
   },
   callButton: {

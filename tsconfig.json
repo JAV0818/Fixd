@@ -5,7 +5,8 @@
     "paths": {
       "@/*": ["./*"]
     },
-    "lib": ["ES2017", "DOM"]
+    "lib": ["ES2017", "DOM"],
+    "jsx": "react-native"
   },
   "include": [
     "**/*.ts",

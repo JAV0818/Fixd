@@ -115,6 +115,9 @@ export default function SignupScreen() {
                   placeholderTextColor="#7A89FF"
                   value={formData.firstName}
                   onChangeText={(text) => setFormData({ ...formData, firstName: text })}
+                  selectionColor={'#00F0FF'}
+                  autoCorrect={false}
+                  spellCheck={false}
                 />
               </View>
               <View style={[styles.inputContainer, { flex: 1 }]}>
@@ -125,6 +128,9 @@ export default function SignupScreen() {
                   placeholderTextColor="#7A89FF"
                   value={formData.lastName}
                   onChangeText={(text) => setFormData({ ...formData, lastName: text })}
+                  selectionColor={'#00F0FF'}
+                  autoCorrect={false}
+                  spellCheck={false}
                 />
               </View>
             </View>
@@ -139,6 +145,9 @@ export default function SignupScreen() {
                 onChangeText={(text) => setFormData({ ...formData, email: text })}
                 autoCapitalize="none"
                 keyboardType="email-address"
+                selectionColor={'#00F0FF'}
+                autoCorrect={false}
+                spellCheck={false}
               />
             </View>
 
@@ -151,6 +160,9 @@ export default function SignupScreen() {
                 value={formData.phone}
                 onChangeText={(text) => setFormData({ ...formData, phone: text })}
                 keyboardType="phone-pad"
+                selectionColor={'#00F0FF'}
+                autoCorrect={false}
+                spellCheck={false}
               />
             </View>
 
@@ -163,6 +175,9 @@ export default function SignupScreen() {
                 value={formData.password}
                 onChangeText={(text) => setFormData({ ...formData, password: text })}
                 secureTextEntry
+                selectionColor={'#00F0FF'}
+                autoCorrect={false}
+                spellCheck={false}
               />
             </View>
 
@@ -175,6 +190,9 @@ export default function SignupScreen() {
                 value={formData.confirmPassword}
                 onChangeText={(text) => setFormData({ ...formData, confirmPassword: text })}
                 secureTextEntry
+                selectionColor={'#00F0FF'}
+                autoCorrect={false}
+                spellCheck={false}
               />
             </View>
 
