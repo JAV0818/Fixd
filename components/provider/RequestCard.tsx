@@ -1,9 +1,11 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
-import { Calendar, MapPin, Check } from 'lucide-react-native';
+import { Calendar, MapPin, Check, User } from 'lucide-react-native';
 import { NavigationProp } from '@react-navigation/native';
 import { ProviderStackParamList } from '@/navigation/ProviderNavigator'; // Adjust path if needed
 import { RepairOrder } from '@/types/orders'; // Adjust path if needed
+import { firestore } from '@/lib/firebase'; // Added firestore import
+import { doc, getDoc } from 'firebase/firestore'; // Added getDoc import
 
 // Define props for the component
 interface RequestCardProps {
@@ -12,12 +14,41 @@ interface RequestCardProps {
 }
 
 const RequestCard: React.FC<RequestCardProps> = ({ item, navigation }) => {
+  const [customerName, setCustomerName] = useState('Customer');
+  const [customerInitials, setCustomerInitials] = useState('C');
+  const [customerImage, setCustomerImage] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchCustomerDetails = async () => {
+      if (item.customerId) {
+        try {
+          const userDocRef = doc(firestore, 'users', item.customerId);
+          const userDocSnap = await getDoc(userDocRef);
+          if (userDocSnap.exists()) {
+            const userData = userDocSnap.data();
+            const firstName = userData.firstName || '';
+            const lastName = userData.lastName || '';
+            setCustomerName(`${firstName} ${lastName}`.trim() || 'Customer');
+            setCustomerInitials(((firstName[0] || '') + (lastName[0] || '')).toUpperCase() || 'U');
+            setCustomerImage(userData.profilePictureUrl || null);
+          } else {
+            setCustomerName('Unknown User');
+            setCustomerInitials('U');
+          }
+        } catch (error) {
+          console.error("Error fetching customer details for card:", error);
+          setCustomerName('Error User');
+          setCustomerInitials('E');
+        }
+      }
+    };
+    fetchCustomerDetails();
+  }, [item.customerId]);
+
   // Format data for display (copied from RequestsScreen)
   const displayAddress = `${item.locationDetails.city}, ${item.locationDetails.state}`;
   const displayService = item.items.length > 0 ? item.items[0].name : 'Unknown Service';
   const displayDate = item.createdAt?.toDate().toLocaleDateString() || 'N/A';
-  const displayCustomerName = item.customerId.substring(0, 8) + '...'; // Placeholder
-  const placeholderAvatar = 'https://via.placeholder.com/48?text=User'; // Placeholder
 
   return (
     <TouchableOpacity 
@@ -29,9 +60,15 @@ const RequestCard: React.FC<RequestCardProps> = ({ item, navigation }) => {
       <View style={styles.cardLine} /> 
 
       <View style={styles.cardHeader}>
-        <Image source={{ uri: placeholderAvatar }} style={styles.avatar} />
+        {customerImage ? (
+          <Image source={{ uri: customerImage }} style={styles.avatar} />
+        ) : (
+          <View style={styles.avatarInitialsContainer}>
+            <Text style={styles.avatarInitialsText}>{customerInitials}</Text>
+          </View>
+        )}
         <View style={styles.customerInfo}>
-          <Text style={styles.customerName}>{displayCustomerName.toUpperCase()}</Text>
+          <Text style={styles.customerName}>{customerName.toUpperCase()}</Text>
           <Text style={styles.serviceName}>{displayService}</Text>
         </View>
         <View style={styles.statusContainer}>
@@ -100,8 +137,24 @@ const styles = StyleSheet.create({
     height: 48,
     borderRadius: 24,
     marginRight: 12,
-    borderWidth: 1, // Thinner border now line exists
-    borderColor: '#7A89FF', // Less prominent color
+    borderWidth: 1,
+    borderColor: '#7A89FF',
+  },
+  avatarInitialsContainer: { // New style for initials avatar
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    marginRight: 12,
+    backgroundColor: '#2A3555', // Darker background for initials
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#7A89FF',
+  },
+  avatarInitialsText: { // New style for initials text
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontFamily: 'Inter_600SemiBold',
   },
   customerInfo: {
     flex: 1,

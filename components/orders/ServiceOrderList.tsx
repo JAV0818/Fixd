@@ -12,13 +12,13 @@ import { AlertTriangle, Clock, CheckCircle } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '@/navigation/AppNavigator';
-import OrderCard, { OrderItem, OrderStatus } from './OrderCard';
+import OrderCard, { Order, OrderStatus } from './OrderCard';
 import ProgressBar from '../ui/ProgressBar';
 
 interface ServiceOrderListProps {
   title?: string;
   showTitle?: boolean;
-  initialOrders?: OrderItem[];
+  initialOrders?: Order[];
   isLoading?: boolean;
   error?: string;
   onRefresh?: () => Promise<void>;
@@ -31,7 +31,7 @@ interface ServiceOrderListProps {
 // Define structure for SectionList
 interface OrderSection {
   title: string;
-  data: OrderItem[];
+  data: Order[];
   status: OrderStatus | 'Active'; // Helper to identify section type
 }
 
@@ -74,11 +74,12 @@ const ServiceOrderList: React.FC<ServiceOrderListProps> = ({
 
   // Effect to group orders whenever initialOrders changes
   useEffect(() => {
-    const groupOrders = (ordersToGroup: OrderItem[]): OrderSection[] => {
-      const active: OrderItem[] = [];
-      const pending: OrderItem[] = [];
-      const completed: OrderItem[] = [];
-      const cancelled: OrderItem[] = [];
+    const groupOrders = (ordersToGroup: Order[]): OrderSection[] => {
+      const active: Order[] = [];
+      const pending: Order[] = [];
+      const scheduled: Order[] = [];
+      const completed: Order[] = [];
+      const cancelled: Order[] = [];
 
       ordersToGroup.forEach(order => {
         switch (order.status) {
@@ -86,9 +87,11 @@ const ServiceOrderList: React.FC<ServiceOrderListProps> = ({
             active.push(order);
             break;
           case 'Pending':
-          case 'Scheduled':
           case 'Waiting':
             pending.push(order);
+            break;
+          case 'Scheduled':
+            scheduled.push(order);
             break;
           case 'Completed':
             completed.push(order);
@@ -101,7 +104,8 @@ const ServiceOrderList: React.FC<ServiceOrderListProps> = ({
 
       const sections: OrderSection[] = [];
       if (active.length > 0) sections.push({ title: 'Active Orders', data: active, status: 'Active' });
-      if (pending.length > 0) sections.push({ title: 'Pending/Scheduled', data: pending, status: 'Pending' });
+      if (pending.length > 0) sections.push({ title: 'Pending Assignment', data: pending, status: 'Pending' });
+      if (scheduled.length > 0) sections.push({ title: 'Scheduled Services', data: scheduled, status: 'Scheduled' });
       if (completed.length > 0) sections.push({ title: 'Completed Orders', data: completed, status: 'Completed' });
       // Optionally add cancelled section
       // if (cancelled.length > 0) sections.push({ title: 'Cancelled Orders', data: cancelled, status: 'Cancelled' });
@@ -141,8 +145,8 @@ const ServiceOrderList: React.FC<ServiceOrderListProps> = ({
         // For active orders, go to mechanic chat
         navigation.navigate('MechanicChat', { 
           orderId, 
-          // Use providerName from the OrderItem type
-          mechanicName: order.providerName || 'Assigned Mechanic' 
+          // Use providerName from the OrderItem type - This should be Order type now, check if providerName is on Order
+          mechanicName: (order as any).providerName || 'Assigned Mechanic' // Casting to any temporarily if providerName is not directly on Order type
         });
       } else {
         // For past orders, show chat history
@@ -152,7 +156,7 @@ const ServiceOrderList: React.FC<ServiceOrderListProps> = ({
   };
 
   // Render each order item using OrderCard
-  const renderOrderItem = ({ item }: { item: OrderItem }) => (
+  const renderOrderItem = ({ item }: { item: Order }) => (
     <OrderCard
       order={item}
       onViewDetails={handleViewDetails}

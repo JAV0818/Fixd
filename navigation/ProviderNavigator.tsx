@@ -40,6 +40,7 @@ export default function ProviderNavigator() {
       <Stack.Screen name="RequestStart" component={RequestStartScreen} />
       <Stack.Screen name="RequestCancel" component={RequestCancelScreen} />
       <Stack.Screen name="RequestContact" component={RequestContactScreen} />
+      <Stack.Screen name="UpdateStatus" component={UpdateStatusScreen} />
     </Stack.Navigator>
   );
 } 
