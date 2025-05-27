@@ -91,6 +91,7 @@ const ServiceOrderList: React.FC<ServiceOrderListProps> = ({
             pending.push(order);
             break;
           case 'Scheduled':
+          case 'Accepted':
             scheduled.push(order);
             break;
           case 'Completed':

@@ -4,7 +4,7 @@ import { MapPin, Clock, Check, ChevronRight, MessageCircle, AlertCircle } from '
 import ProgressBar from '@/components/ui/ProgressBar';
 
 // Define the type for order items - align with Firestore data
-export type OrderStatus = 'Pending' | 'Scheduled' | 'Waiting' | 'In Progress' | 'Completed' | 'Cancelled' | 'Denied';
+export type OrderStatus = 'Pending' | 'Scheduled' | 'Waiting' | 'In Progress' | 'Completed' | 'Cancelled' | 'Denied' | 'Accepted';
 
 // Represents a single item within an order
 export type OrderItemDetail = {

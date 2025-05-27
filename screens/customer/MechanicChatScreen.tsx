@@ -30,7 +30,8 @@ type Message = {
   id: string;
   text: string;
   createdAt: Timestamp;
-  senderUid: string;
+  senderId: string;
+  sentBy: 'customer' | 'provider';
   // For potential image/attachment support
   attachment?: { 
     type: 'image' | 'document';
@@ -65,7 +66,7 @@ export default function MechanicChatScreen() {
     setLoading(true);
     setError(null);
 
-    const messagesRef = collection(firestore, 'chats', orderId, 'messages');
+    const messagesRef = collection(firestore, 'repairOrders', orderId, 'activeChat');
     const q = query(messagesRef, orderBy('createdAt', 'asc'));
 
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
@@ -114,28 +115,15 @@ export default function MechanicChatScreen() {
     setInputText(''); // Clear input immediately
     setSending(true);
 
-    const chatDocRef = doc(firestore, 'chats', orderId);
-    const messagesCollectionRef = collection(firestore, 'chats', orderId, 'messages');
+    const messagesCollectionRef = collection(firestore, 'repairOrders', orderId, 'activeChat');
 
     try {
-      // Ensure chat doc exists and customer is a participant (provider adds themselves on accept)
-      const chatDocSnap = await getDoc(chatDocRef);
-      let participants = [currentUser.uid]; // Start with current user
-      if (chatDocSnap.exists() && chatDocSnap.data().participants) {
-         participants = [...new Set([...chatDocSnap.data().participants, currentUser.uid])]; // Add user if not present
-      } else {
-         // Need provider ID if creating for first time - ideally provider creates it on accept
-         // For now, we proceed assuming provider created it
-         console.warn("Chat document might not exist yet, attempting to write message anyway.");
-      }
-      // Optional: Update participants if needed - uncomment if necessary
-      // await setDoc(chatDocRef, { participants }, { merge: true });
-
       // Add the new message
       await addDoc(messagesCollectionRef, {
-        senderUid: currentUser.uid,
+        senderId: currentUser.uid,
         text: messageText,
-        createdAt: serverTimestamp()
+        createdAt: serverTimestamp(),
+        sentBy: 'customer'
       });
 
       // Scroll to bottom after sending
@@ -205,7 +193,7 @@ export default function MechanicChatScreen() {
 
   const renderMessage = ({ item }: { item: Message }) => {
     // Check if the sender is the currently logged-in user
-    const isUser = item.senderUid === currentUser?.uid;
+    const isUser = item.senderId === currentUser?.uid;
 
     // Defensively check createdAt before rendering
     if (!item.createdAt?.toDate) { 

@@ -36,11 +36,12 @@ interface UserProfile {
 }
 
 // Define structure for Message document
-interface Message {
+interface PreAcceptanceChatMessage { // Renamed from Message
   id: string;
-  senderUid: string;
+  senderId: string; // Renamed from senderUid
   text: string;
   createdAt: Timestamp;
+  sentBy: 'customer' | 'provider'; // Added sentBy
 }
 
 type Props = NativeStackScreenProps<ProviderStackParamList, 'RequestContact'>;
@@ -48,7 +49,7 @@ type Props = NativeStackScreenProps<ProviderStackParamList, 'RequestContact'>;
 export default function RequestContactScreen({ navigation, route }: Props) {
   const { orderId } = route.params;
   const [message, setMessage] = useState('');
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<PreAcceptanceChatMessage[]>([]); // Updated type
   const [sending, setSending] = useState(false);
   const [order, setOrder] = useState<RepairOrder | null>(null);
   const [customer, setCustomer] = useState<UserProfile | null>(null);
@@ -112,7 +113,12 @@ export default function RequestContactScreen({ navigation, route }: Props) {
   useEffect(() => {
     if (!order) return; // Wait for order to load
 
-    const messagesRef = collection(firestore, 'chats', orderId, 'messages');
+    let chatCollectionPath = 'preAcceptanceChats'; // Default to pre-acceptance
+    if (order.status === 'Accepted' || order.status === 'InProgress') {
+      chatCollectionPath = 'activeChat';
+    }
+
+    const messagesRef = collection(firestore, 'repairOrders', orderId, chatCollectionPath);
     const q = query(messagesRef, orderBy('createdAt', 'asc'));
 
     const unsubscribeMessages = onSnapshot(q, (querySnapshot) => {
@@ -120,7 +126,7 @@ export default function RequestContactScreen({ navigation, route }: Props) {
       const fetchedMessages = querySnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
-      } as Message));
+      } as PreAcceptanceChatMessage)); // Updated type
       console.log("Fetched Messages:", fetchedMessages);
       setMessages(fetchedMessages);
       setLoading(false); // Stop loading after messages (and order/customer) are fetched
@@ -162,20 +168,20 @@ export default function RequestContactScreen({ navigation, route }: Props) {
     const messageText = message;
     setMessage(''); // Clear input immediately
 
-    const chatId = order.id;
-    const chatDocRef = doc(firestore, 'chats', chatId);
-    const messagesRef = collection(firestore, 'chats', chatId, 'messages');
+    let chatCollectionPath = 'preAcceptanceChats'; // Default to pre-acceptance
+    if (order && (order.status === 'Accepted' || order.status === 'InProgress')) {
+      chatCollectionPath = 'activeChat';
+    }
+    
+    const messagesRef = collection(firestore, 'repairOrders', orderId, chatCollectionPath);
 
     try {
-      console.log(`Ensuring chat doc exists: chats/${chatId}`);
-      await setDoc(chatDocRef, { 
-        participants: [order.customerId, currentUser.uid] 
-      }, { merge: true });
-      console.log(`Chat doc ensured. Adding message to chats/${chatId}/messages`);
+      console.log(`Adding message to repairOrders/${orderId}/${chatCollectionPath}`);
       await addDoc(messagesRef, {
-        senderUid: currentUser.uid,
+        senderId: currentUser.uid, // Renamed from senderUid
         text: messageText,
-        createdAt: serverTimestamp()
+        createdAt: serverTimestamp(),
+        sentBy: 'provider' // Added sentBy
       });
       console.log("Message added successfully.");
       
@@ -212,7 +218,7 @@ export default function RequestContactScreen({ navigation, route }: Props) {
   };
 
   const groupMessagesByDate = () => {
-    const groupedMessages: { date: string; data: Message[] }[] = [];
+    const groupedMessages: { date: string; data: PreAcceptanceChatMessage[] }[] = [];
     messages?.forEach((message) => {
       if (!message.createdAt?.toDate) {
         return; 
@@ -244,8 +250,8 @@ export default function RequestContactScreen({ navigation, route }: Props) {
     );
   };
 
-  const renderMessage = ({ item }: { item: Message }) => {
-    const isSentByMe = item.senderUid === currentUser?.uid;
+  const renderMessage = ({ item }: { item: PreAcceptanceChatMessage }) => {
+    const isSentByMe = item.senderId === currentUser?.uid; // Updated from senderUid
     if (!item.createdAt?.toDate) return null; 
     return (
       <View style={[styles.messageContainer, isSentByMe ? styles.userMessageContainer : styles.mechanicMessageContainer]}>
@@ -264,7 +270,7 @@ export default function RequestContactScreen({ navigation, route }: Props) {
     );
   };
 
-  const renderMessageGroup = ({ item }: { item: { date: string; data: Message[] } }) => {
+  const renderMessageGroup = ({ item }: { item: { date: string; data: PreAcceptanceChatMessage[] } }) => {
     return (
       <View>
         {renderDateSeparator(item.date)}

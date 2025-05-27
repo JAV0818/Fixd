@@ -236,7 +236,7 @@ export default function RepairOrdersScreen() {
             <View style={styles.actionButtons}>
               <Pressable 
                 style={styles.actionButton}
-                onPress={() => navigation.navigate('UpdateStatus', { orderId: item.id })}
+                onPress={() => navigation.navigate('Requests', { screen: 'UpdateStatus', params: { orderId: item.id } })}
               >
                 <Text style={styles.actionButtonText}>UPDATE STATUS</Text>
               </Pressable>

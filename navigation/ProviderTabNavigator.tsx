@@ -3,6 +3,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Home, User, PenTool as Tool, Activity, Bell } from 'lucide-react-native';
 import { View, StyleSheet, Animated, Easing } from 'react-native';
 import { getFocusedRouteNameFromRoute, RouteProp } from '@react-navigation/native';
+import { NavigatorScreenParams } from '@react-navigation/native';
 
 // Import provider screens
 import ProviderDashboardScreen from '../screens/provider/ProviderDashboardScreen';
@@ -10,10 +11,10 @@ import ProviderProfileScreen from '../screens/provider/ProviderProfileScreen';
 import RepairOrdersScreen from '../screens/provider/RepairOrdersScreen';
 import RequestsScreen from '../screens/provider/RequestsScreen';
 // Import the ProviderNavigator stack
-import ProviderNavigator from './ProviderNavigator';
+import ProviderNavigator, { ProviderStackParamList } from './ProviderNavigator';
 
 export type ProviderTabParamList = {
-  Requests: undefined;
+  Requests: NavigatorScreenParams<ProviderStackParamList> | undefined;
   RepairOrders: undefined;
   Profile: undefined;
 };

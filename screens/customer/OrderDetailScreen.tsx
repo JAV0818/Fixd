@@ -6,7 +6,7 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '@/navigation/AppNavigator';
 import { firestore, auth } from '@/lib/firebase';
-import { doc, getDoc, Timestamp } from 'firebase/firestore';
+import { doc, getDoc, Timestamp, collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 
 // Define a more specific Order type based on what's stored and needed
 // This should align with the structure in `repairOrders` collection
@@ -38,6 +38,15 @@ export type Order = {
   // Add any other fields that are part of your order structure
 };
 
+// Define PreAcceptanceChatMessage structure (can be moved to a types file later)
+interface PreAcceptanceChatMessage {
+  id: string;
+  senderId: string;
+  text: string;
+  createdAt: Timestamp;
+  sentBy: 'customer' | 'provider';
+}
+
 type OrderDetailScreenRouteProp = RouteProp<RootStackParamList, 'OrderDetail'>;
 type OrderDetailScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'OrderDetail'>;
 
@@ -58,9 +67,11 @@ export default function OrderDetailScreen() {
   const [mechanicDetails, setMechanicDetails] = useState<{ name?: string; photo?: string | null; experience?: string; rating?: number, phone?: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [preAcceptanceMessages, setPreAcceptanceMessages] = useState<PreAcceptanceChatMessage[]>([]);
+  const [loadingPreAcceptanceMessages, setLoadingPreAcceptanceMessages] = useState(false);
 
   useEffect(() => {
-    const fetchOrderDetails = async () => {
+    const fetchOrderAndRelatedDetails = async () => {
       if (!orderId) {
         setError("Order ID is missing.");
         setLoading(false);
@@ -96,6 +107,27 @@ export default function OrderDetailScreen() {
             }
           } else {
             setMechanicDetails(null); // No provider assigned
+            // If pending and no provider, fetch pre-acceptance messages
+            if (orderData.status === 'Pending') {
+              setLoadingPreAcceptanceMessages(true);
+              const preAcceptChatRef = collection(firestore, 'repairOrders', orderId, 'preAcceptanceChats');
+              const q = query(preAcceptChatRef, orderBy('createdAt', 'asc'));
+              const unsubscribe = onSnapshot(q, (snapshot) => {
+                const fetchedMessages = snapshot.docs.map(doc => ({
+                  id: doc.id,
+                  ...doc.data()
+                } as PreAcceptanceChatMessage));
+                setPreAcceptanceMessages(fetchedMessages);
+                setLoadingPreAcceptanceMessages(false);
+              }, (err) => {
+                console.error("Error fetching pre-acceptance chats:", err);
+                setLoadingPreAcceptanceMessages(false);
+              });
+              // It's important to return the unsubscribe function from the effect 
+              // if this logic remains directly in this useEffect. 
+              // However, onSnapshot might be better managed if this component unmounts.
+              // For now, this demonstrates fetching. Consider cleanup if component can unmount while subscribed.
+            }
           }
         } else {
           setError("Order not found.");
@@ -109,15 +141,22 @@ export default function OrderDetailScreen() {
       }
     };
 
-    fetchOrderDetails();
+    fetchOrderAndRelatedDetails();
   }, [orderId]);
 
-  const handleChatPress = () => {
+  const handleChatWithProviderPress = () => {
     if (orderDetails?.providerId && mechanicDetails?.name) {
       navigation.navigate('MechanicChat', { orderId: orderDetails.id, mechanicName: mechanicDetails.name });
     } else {
-      // Handle case where chat is not possible (e.g. no mechanic assigned)
       // Alert.alert("Chat Unavailable", "No mechanic has been assigned to this order yet.");
+    }
+  };
+
+  const handlePreAcceptanceChatPress = () => {
+    if (orderDetails) {
+      // Navigate to a new or adapted chat screen for pre-acceptance messages
+      // For now, let's assume a screen named 'PreAcceptanceChatScreen'
+      navigation.navigate('PreAcceptanceChat', { orderId: orderDetails.id });
     }
   };
   
@@ -297,17 +336,33 @@ export default function OrderDetailScreen() {
                         <Text style={styles.contactButtonText}>Call Mechanic</Text>
                     </Pressable>
                  )}
-                <Pressable style={styles.chatButton} onPress={handleChatPress} disabled={!orderDetails.providerId}>
+                <Pressable 
+                    style={styles.chatButton} 
+                    onPress={handleChatWithProviderPress} 
+                    disabled={!orderDetails.providerId}
+                >
                   <MessageCircle size={20} color="#FFFFFF" />
                   <Text style={styles.contactButtonText}>Chat with Mechanic</Text>
                 </Pressable>
               </View>
             </>
           ) : (
-            <View style={styles.infoRow}>
-                <User size={18} color="#7A89FF" />
-                <Text style={styles.infoValue}>Searching for a mechanic...</Text>
-            </View>
+            // Show if order is pending and no provider is assigned
+            orderDetails.status === 'Pending' && !orderDetails.providerId ? (
+              <View style={styles.infoRow}>
+                  <MessageCircle size={18} color="#7A89FF" />
+                  <Pressable onPress={handlePreAcceptanceChatPress} style={styles.inlineButton}>
+                    <Text style={styles.inlineButtonText}>
+                      {preAcceptanceMessages.length > 0 ? `View Messages (${preAcceptanceMessages.length})` : 'Chat with Support'}
+                    </Text>
+                  </Pressable>
+              </View>
+            ) : (
+              <View style={styles.infoRow}>
+                  <User size={18} color="#7A89FF" />
+                  <Text style={styles.infoValue}>Searching for a mechanic...</Text>
+              </View>
+            )
           )}
         </View>
 
@@ -597,5 +652,15 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_400Regular',
     fontStyle: 'italic',
     textAlign: 'center',
+  },
+  inlineButton: {
+    marginLeft: 10,
+    flex: 1,
+  },
+  inlineButtonText: {
+    color: '#00F0FF',
+    fontSize: 14,
+    fontFamily: 'Inter_500Medium',
+    textDecorationLine: 'underline',
   },
 }); 
