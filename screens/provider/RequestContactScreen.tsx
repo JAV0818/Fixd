@@ -368,7 +368,7 @@ export default function RequestContactScreen({ navigation, route }: Props) {
       
       <KeyboardAvoidingView 
         behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={100}
+        keyboardVerticalOffset={Platform.OS === "ios" ? insets.top + 47 + 10 : 0}
         style={{ flex: 1 }}
       >
          {/* Message List using FlatList directly */}
@@ -401,7 +401,7 @@ export default function RequestContactScreen({ navigation, route }: Props) {
              colors={['#121827', '#0A0F1E']}
              style={[
                styles.inputContainer,
-               { paddingBottom: Platform.OS === 'ios' ? Math.max(insets.bottom, 16) : 16 }
+               { paddingBottom: Platform.OS === 'ios' ? Math.max(insets.bottom, 8) : 8 }
              ]}
            >
              <Pressable style={styles.attachButton}>

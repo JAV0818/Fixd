@@ -101,6 +101,27 @@ export default function RepairOrdersScreen() {
     );
   }
 
+  if (getFilteredOrders().length === 0) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <View style={styles.headerTop}>
+            <Text style={styles.title}>REPAIR QUEUE</Text>
+            <Pressable 
+              style={styles.iconButton}
+              onPress={() => setShowNotifications(!showNotifications)}
+            >
+              <Bell size={24} color="#00F0FF" />
+            </Pressable>
+          </View>
+        </View>
+        <View style={styles.centeredContainer}>
+          <Text style={styles.emptyQueueText}>No repairs to report, get to work!</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
@@ -235,7 +256,7 @@ export default function RepairOrdersScreen() {
             <View style={styles.actionButtons}>
               <Pressable 
                 style={styles.actionButton}
-                onPress={() => navigation.navigate('RequestStart', { orderId: item.id })}
+                onPress={() => navigation.navigate('Requests', { screen: 'RequestStart', params: { orderId: item.id } })}
               >
                 <Text style={styles.actionButtonText}>START</Text>
               </Pressable>
@@ -247,7 +268,7 @@ export default function RepairOrdersScreen() {
               </Pressable>
               <Pressable 
                 style={[styles.actionButton, styles.secondaryButton]}
-                onPress={() => navigation.navigate('RequestContact', { orderId: item.id })}
+                onPress={() => navigation.navigate('Requests', { screen: 'RequestContact', params: { orderId: item.id } })}
               >
                 <Text style={styles.secondaryButtonText}>CONTACT CUSTOMER</Text>
               </Pressable>
@@ -444,11 +465,13 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     paddingVertical: 12,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   actionButtonText: {
     color: '#00F0FF',
     fontSize: 12,
     fontFamily: 'Inter_600SemiBold',
+    textAlign: 'center',
   },
   secondaryButton: {
     backgroundColor: 'rgba(122, 137, 255, 0.1)',
@@ -458,6 +481,7 @@ const styles = StyleSheet.create({
     color: '#7A89FF',
     fontSize: 12,
     fontFamily: 'Inter_600SemiBold',
+    textAlign: 'center',
   },
   centeredContainer: {
     flex: 1,
@@ -475,5 +499,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: 'Inter_600SemiBold',
     marginTop: 16,
+  },
+  emptyQueueText: {
+    color: '#7A89FF',
+    fontSize: 18,
+    fontFamily: 'Inter_600SemiBold',
+    textAlign: 'center',
+    paddingHorizontal: 20,
   },
 }); 

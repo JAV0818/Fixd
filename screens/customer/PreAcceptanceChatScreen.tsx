@@ -280,7 +280,7 @@ export default function PreAcceptanceChatScreen({ navigation, route }: Props) {
       
       <KeyboardAvoidingView 
         behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={Platform.OS === "ios" ? insets.top + 50 : 0} // Adjust offset as needed
+        keyboardVerticalOffset={Platform.OS === "ios" ? insets.top + 60 : 0} // Increased offset slightly for iOS
         style={{ flex: 1 }}
       >
          <FlatList
@@ -309,8 +309,9 @@ export default function PreAcceptanceChatScreen({ navigation, route }: Props) {
           <LinearGradient
              colors={['#121827', '#0A0F1E']} // Input area gradient
              style={[
-               styles.inputToolbar, // Renamed from inputContainer for clarity
-               { paddingBottom: Platform.OS === 'ios' ? Math.max(insets.bottom, 16) : 16 }
+               styles.inputToolbar, 
+               // Ensure bottom padding is consistently applied, KeyboardAvoidingView adjusts from here
+               { paddingBottom: Platform.OS === 'ios' ? Math.max(insets.bottom, 10) : 10 }
              ]}
            >
              <Pressable style={styles.utilityButton}>

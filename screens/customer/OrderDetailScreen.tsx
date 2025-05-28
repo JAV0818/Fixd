@@ -71,6 +71,8 @@ export default function OrderDetailScreen() {
   const [loadingPreAcceptanceMessages, setLoadingPreAcceptanceMessages] = useState(false);
 
   useEffect(() => {
+    let unsubscribePreAcceptance: (() => void) | undefined = undefined;
+
     const fetchOrderAndRelatedDetails = async () => {
       if (!orderId) {
         setError("Order ID is missing.");
@@ -112,7 +114,8 @@ export default function OrderDetailScreen() {
               setLoadingPreAcceptanceMessages(true);
               const preAcceptChatRef = collection(firestore, 'repairOrders', orderId, 'preAcceptanceChats');
               const q = query(preAcceptChatRef, orderBy('createdAt', 'asc'));
-              const unsubscribe = onSnapshot(q, (snapshot) => {
+              // Assign to the outer scope variable
+              unsubscribePreAcceptance = onSnapshot(q, (snapshot) => {
                 const fetchedMessages = snapshot.docs.map(doc => ({
                   id: doc.id,
                   ...doc.data()
@@ -123,10 +126,6 @@ export default function OrderDetailScreen() {
                 console.error("Error fetching pre-acceptance chats:", err);
                 setLoadingPreAcceptanceMessages(false);
               });
-              // It's important to return the unsubscribe function from the effect 
-              // if this logic remains directly in this useEffect. 
-              // However, onSnapshot might be better managed if this component unmounts.
-              // For now, this demonstrates fetching. Consider cleanup if component can unmount while subscribed.
             }
           }
         } else {
@@ -142,6 +141,14 @@ export default function OrderDetailScreen() {
     };
 
     fetchOrderAndRelatedDetails();
+
+    // Cleanup function
+    return () => {
+      // No explicit unsubscribe for orderDocSnap or providerDocSnap as they are single getDoc calls
+      if (unsubscribePreAcceptance) {
+        unsubscribePreAcceptance();
+      }
+    };
   }, [orderId]);
 
   const handleChatWithProviderPress = () => {

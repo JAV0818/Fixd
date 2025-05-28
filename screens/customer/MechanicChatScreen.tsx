@@ -302,96 +302,104 @@ export default function MechanicChatScreen() {
         <View style={{ width: 40 }} />
       </LinearGradient>
 
-      {/* Messages List */}
-      <FlatList
-        ref={flatListRef}
-        data={groupMessagesByDate()}
-        renderItem={renderMessageGroup}
-        keyExtractor={item => item.date}
-        contentContainerStyle={styles.messagesList}
-        showsVerticalScrollIndicator={false}
-      />
-      
-      {/* Loading indicator */}
-      {sending && (
-        <View style={styles.loadingContainer}>
-          <LinearGradient
-            colors={['rgba(0, 240, 255, 0.2)', 'rgba(122, 137, 255, 0.2)']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.loadingBubble}
-          >
-            <ActivityIndicator size="small" color="#00F0FF" />
-            <Text style={styles.loadingText}>Mechanic is typing</Text>
-            <View style={styles.typingDots}>
-              <View style={styles.typingDot} />
-              <View style={[styles.typingDot, styles.typingDotMiddle]} />
-              <View style={styles.typingDot} />
-            </View>
-          </LinearGradient>
-        </View>
-      )}
-
-      {/* Input Area */}
-      <LinearGradient
-        colors={['#121827', '#0A0F1E']}
-        style={[
-          styles.inputContainer,
-          { paddingBottom: Platform.OS === 'ios' ? Math.max(insets.bottom, 16) : 16 }
-        ]}
+      {/* Wrap FlatList and Input Area in KeyboardAvoidingView */}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={{ flex: 1 }} // Ensure KAV takes up remaining space
+        keyboardVerticalOffset={Platform.OS === "ios" ? (insets.top + 60) : 0} // Header height + some padding
       >
-        <Pressable style={styles.attachButton}>
-          <LinearGradient
-            colors={['#7A89FF', '#5A6AD0']}
-            style={styles.iconButton}
-          >
-            <Paperclip size={18} color="#FFFFFF" />
-          </LinearGradient>
-        </Pressable>
+        {/* Messages List */}
+        <FlatList
+          ref={flatListRef}
+          data={groupMessagesByDate()}
+          renderItem={renderMessageGroup}
+          keyExtractor={item => item.date}
+          contentContainerStyle={styles.messagesList}
+          showsVerticalScrollIndicator={false}
+        />
         
-        <View style={styles.textInputContainer}>
-          <TextInput
-            style={styles.textInput}
-            placeholder="Type a message..."
-            placeholderTextColor="#6E7191"
-            value={inputText}
-            onChangeText={setInputText}
-            multiline
-          />
-        </View>
-        
-        <View style={styles.rightButtons}>
-          {inputText.length === 0 ? (
-            <>
-              <Pressable style={styles.mediaButton}>
+        {/* Loading indicator */}
+        {sending && (
+          <View style={styles.loadingContainer}>
+            <LinearGradient
+              colors={['rgba(0, 240, 255, 0.2)', 'rgba(122, 137, 255, 0.2)']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.loadingBubble}
+            >
+              <ActivityIndicator size="small" color="#00F0FF" />
+              <Text style={styles.loadingText}>Mechanic is typing</Text>
+              <View style={styles.typingDots}>
+                <View style={styles.typingDot} />
+                <View style={[styles.typingDot, styles.typingDotMiddle]} />
+                <View style={styles.typingDot} />
+              </View>
+            </LinearGradient>
+          </View>
+        )}
+
+        {/* Input Area */}
+        <LinearGradient
+          colors={['#121827', '#0A0F1E']}
+          style={[
+            styles.inputContainer,
+            // Use a smaller, consistent padding for the input bar itself
+            { paddingBottom: Platform.OS === 'ios' ? Math.max(insets.bottom, 10) : 10 }
+          ]}
+        >
+          <Pressable style={styles.attachButton}>
+            <LinearGradient
+              colors={['#7A89FF', '#5A6AD0']}
+              style={styles.iconButton}
+            >
+              <Paperclip size={18} color="#FFFFFF" />
+            </LinearGradient>
+          </Pressable>
+          
+          <View style={styles.textInputContainer}>
+            <TextInput
+              style={styles.textInput}
+              placeholder="Type a message..."
+              placeholderTextColor="#6E7191"
+              value={inputText}
+              onChangeText={setInputText}
+              multiline
+            />
+          </View>
+          
+          <View style={styles.rightButtons}>
+            {inputText.length === 0 ? (
+              <>
+                <Pressable style={styles.mediaButton}>
+                  <LinearGradient
+                    colors={['#7A89FF', '#5A6AD0']}
+                    style={styles.iconButton}
+                  >
+                    <ImageIcon size={18} color="#FFFFFF" />
+                  </LinearGradient>
+                </Pressable>
+                <Pressable style={styles.mediaButton}>
+                  <LinearGradient
+                    colors={['#7A89FF', '#5A6AD0']}
+                    style={styles.iconButton}
+                  >
+                    <Mic size={18} color="#FFFFFF" />
+                  </LinearGradient>
+                </Pressable>
+              </>
+            ) : (
+              <Pressable style={styles.sendButton} onPress={handleSendMessage}>
                 <LinearGradient
-                  colors={['#7A89FF', '#5A6AD0']}
-                  style={styles.iconButton}
+                  colors={['#00C2FF', '#0080FF']}
+                  style={styles.sendGradient}
                 >
-                  <ImageIcon size={18} color="#FFFFFF" />
+                  <Send size={18} color="#FFFFFF" />
                 </LinearGradient>
               </Pressable>
-              <Pressable style={styles.mediaButton}>
-                <LinearGradient
-                  colors={['#7A89FF', '#5A6AD0']}
-                  style={styles.iconButton}
-                >
-                  <Mic size={18} color="#FFFFFF" />
-                </LinearGradient>
-              </Pressable>
-            </>
-          ) : (
-            <Pressable style={styles.sendButton} onPress={handleSendMessage}>
-              <LinearGradient
-                colors={['#00C2FF', '#0080FF']}
-                style={styles.sendGradient}
-              >
-                <Send size={18} color="#FFFFFF" />
-              </LinearGradient>
-            </Pressable>
-          )}
-        </View>
-      </LinearGradient>
+            )}
+          </View>
+        </LinearGradient>
+      </KeyboardAvoidingView>
     </Animated.View>
   );
 }

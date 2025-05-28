@@ -34,11 +34,11 @@ export default function RequestStartScreen({ navigation, route }: Props) {
       setLoading(false);
       Alert.alert(
         "Service Started",
-        "You have successfully started this service request. Navigate to the service location to begin.",
+        "You have successfully started this service request. Proceed with vehicle inspection.",
         [
           { 
             text: "OK", 
-            onPress: () => navigation.navigate('Requests')
+            onPress: () => navigation.navigate('Inspection', { orderId })
           }
         ]
       );

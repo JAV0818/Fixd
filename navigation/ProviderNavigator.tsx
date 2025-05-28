@@ -11,6 +11,7 @@ import RequestContactScreen from '../screens/provider/RequestContactScreen';
 import UpdateStatusScreen from '../screens/provider/UpdateStatusScreen';
 import PerformanceDetailsScreen from '../screens/provider/PerformanceDetailsScreen';
 import AccountSettingsScreen from '../screens/provider/AccountSettingsScreen';
+import InspectionScreen from '../screens/provider/InspectionScreen';
 
 export type ProviderStackParamList = {
   ProviderDashboard: undefined;
@@ -21,6 +22,7 @@ export type ProviderStackParamList = {
   RequestCancel: { orderId: string };
   RequestContact: { orderId: string };
   UpdateStatus: { orderId: string };
+  Inspection: { orderId: string };
   PerformanceDetails: undefined;
   AccountSettings: undefined;
 };
@@ -41,6 +43,7 @@ export default function ProviderNavigator() {
       <Stack.Screen name="RequestCancel" component={RequestCancelScreen} />
       <Stack.Screen name="RequestContact" component={RequestContactScreen} />
       <Stack.Screen name="UpdateStatus" component={UpdateStatusScreen} />
+      <Stack.Screen name="Inspection" component={InspectionScreen} />
     </Stack.Navigator>
   );
 } 
