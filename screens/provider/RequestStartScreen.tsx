@@ -38,7 +38,7 @@ export default function RequestStartScreen({ navigation, route }: Props) {
         [
           { 
             text: "OK", 
-            onPress: () => navigation.navigate('Inspection', { orderId })
+            onPress: () => navigation.navigate('InspectionChecklist', { orderId })
           }
         ]
       );
