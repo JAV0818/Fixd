@@ -5,7 +5,6 @@ import { Bell, PenTool as Tool, Clock, Activity, Filter, Search } from 'lucide-r
 import NotificationPanel from '../../components/NotificationPanel';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { ProviderStackParamList } from '@/navigation/ProviderNavigator';
 import { auth, firestore } from '@/lib/firebase';
 import { collection, query, where, onSnapshot, orderBy, Timestamp } from 'firebase/firestore';
 import { RepairOrder } from '@/types/orders';
@@ -13,7 +12,7 @@ import { RepairOrder } from '@/types/orders';
 export default function RepairOrdersScreen() {
   const [showNotifications, setShowNotifications] = useState(false);
   const [activeFilter, setActiveFilter] = useState<'all' | 'Accepted' | 'InProgress' | 'Completed' | 'Cancelled'>('all');
-  const navigation = useNavigation<NativeStackNavigationProp<ProviderStackParamList>>();
+  const navigation = useNavigation<any>();
   const [orders, setOrders] = useState<RepairOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -234,6 +233,12 @@ export default function RepairOrdersScreen() {
             </View>
             
             <View style={styles.actionButtons}>
+              <Pressable 
+                style={styles.actionButton}
+                onPress={() => navigation.navigate('RequestStart', { orderId: item.id })}
+              >
+                <Text style={styles.actionButtonText}>START</Text>
+              </Pressable>
               <Pressable 
                 style={styles.actionButton}
                 onPress={() => navigation.navigate('Requests', { screen: 'UpdateStatus', params: { orderId: item.id } })}
