@@ -29,20 +29,13 @@ export default function RequestStartScreen({ navigation, route }: Props) {
   const handleStartService = () => {
     setLoading(true);
     
-    // Simulate API call
-    setTimeout(() => {
+    // Simulate API call / status update if needed here
+    // For now, directly navigate
+    setTimeout(() => { // Keep timeout to simulate some processing if desired
       setLoading(false);
-      Alert.alert(
-        "Service Started",
-        "You have successfully started this service request. Proceed with vehicle inspection.",
-        [
-          { 
-            text: "OK", 
-            onPress: () => navigation.navigate('InspectionChecklist', { orderId })
-          }
-        ]
-      );
-    }, 1500);
+      // Directly navigate without the alert
+      navigation.navigate('InspectionChecklist', { orderId });
+    }, 500); // Reduced timeout slightly
   };
 
   return (
