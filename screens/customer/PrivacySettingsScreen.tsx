@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, Switch, TextInput } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, Pressable, Switch, TextInput, ActivityIndicator, Alert } from 'react-native';
 // import { useRouter } from 'expo-router';
 import { 
   ArrowLeft, 
@@ -11,213 +11,428 @@ import {
   Eye, 
   EyeOff,
   Mail,
-  Share2 as Share
+  Share2 as Share,
+  UserMinus,
+  ChevronRight
 } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '@/navigation/AppNavigator';
+import { auth, firestore } from '@/lib/firebase';
+import { doc, getDoc, updateDoc, setDoc, deleteDoc } from 'firebase/firestore';
+import { 
+  EmailAuthProvider, 
+  reauthenticateWithCredential, 
+  updatePassword as firebaseUpdatePassword, 
+  deleteUser as firebaseDeleteUser 
+} from 'firebase/auth';
+
+// START ADDED HELPER COMPONENT DEFINITIONS
+interface SectionHeaderProps {
+  title: string;
+  icon?: React.ReactNode; // Optional icon
+}
+
+const SectionHeader: React.FC<SectionHeaderProps> = ({ title, icon }) => (
+  <View style={styles.sectionHeaderContainer}>
+    {icon}
+    <Text style={styles.sectionHeaderTitle}>{title}</Text>
+  </View>
+);
+
+interface SwitchRowProps {
+  icon: React.ReactNode;
+  label: string;
+  description: string;
+  value: boolean;
+  onValueChange: (value: boolean) => void;
+  isSaving?: boolean;
+}
+
+const SwitchRow: React.FC<SwitchRowProps> = ({ icon, label, description, value, onValueChange, isSaving }) => (
+  <Pressable style={styles.settingRow} onPress={() => onValueChange(!value)} disabled={isSaving}>
+    <View style={styles.settingContent}>
+      {icon}
+      <View style={styles.textContainer}>
+        <Text style={styles.settingLabel}>{label}</Text>
+        <Text style={styles.settingDescription}>{description}</Text>
+      </View>
+    </View>
+    <View style={styles.switchContainer}>
+      {isSaving ? (
+        <ActivityIndicator size="small" color="#00F0FF" />
+      ) : (
+        <Switch
+          value={value}
+          onValueChange={onValueChange}
+          trackColor={{ false: '#2A3555', true: 'rgba(0, 240, 255, 0.3)' }}
+          thumbColor={value ? '#00F0FF' : '#7A89FF'}
+          ios_backgroundColor="#2A3555"
+        />
+      )}
+    </View>
+  </Pressable>
+);
+// END ADDED HELPER COMPONENT DEFINITIONS
+
+interface UserSettings {
+  locationTrackingEnabled?: boolean;
+  pushNotificationsEnabled?: boolean;
+  emailNotificationsEnabled?: boolean;
+  twoFactorAuthEnabled?: boolean; // Simplified for now
+  shareUsageDataEnabled?: boolean;
+}
 
 // Note: Renamed component slightly to avoid conflict if imported alongside ProfileScreen
 export default function PrivacySettingsScreen() { 
   // const router = useRouter();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [showPassword, setShowPassword] = useState(false);
-  const [settings, setSettings] = useState({
-    locationTracking: true,
-    pushNotifications: true,
-    emailNotifications: true,
-    twoFactorAuth: false,
-    shareData: true,
-  });
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [settings, setSettings] = useState<UserSettings>({});
+  const [loadingSettings, setLoadingSettings] = useState(true);
+  const [isSavingSetting, setIsSavingSetting] = useState<Record<string, boolean>>({}); // To track saving state for each setting
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
 
-  const handleSavePassword = () => {
-    // Handle password change
+  useEffect(() => {
+    const fetchSettings = async () => {
+      setLoadingSettings(true);
+      const user = auth.currentUser;
+      if (user) {
+        const userDocRef = doc(firestore, 'users', user.uid);
+        try {
+          const userDoc = await getDoc(userDocRef);
+          if (userDoc.exists()) {
+            const data = userDoc.data();
+            setSettings({
+              locationTrackingEnabled: data.locationTrackingEnabled ?? true,
+              pushNotificationsEnabled: data.pushNotificationsEnabled ?? true,
+              emailNotificationsEnabled: data.emailNotificationsEnabled ?? true,
+              twoFactorAuthEnabled: data.twoFactorAuthEnabled ?? false,
+              shareUsageDataEnabled: data.shareUsageDataEnabled ?? true,
+            });
+          } else {
+            // User document doesn't exist, or settings are not there. Use defaults.
+            setSettings({
+              locationTrackingEnabled: true,
+              pushNotificationsEnabled: true,
+              emailNotificationsEnabled: true,
+              twoFactorAuthEnabled: false,
+              shareUsageDataEnabled: true,
+            });
+          }
+        } catch (error) {
+          console.error("Error fetching user settings:", error);
+          Alert.alert("Error", "Could not load your settings. Using defaults.");
+          // Fallback to defaults on error
+          setSettings({
+              locationTrackingEnabled: true,
+              pushNotificationsEnabled: true,
+              emailNotificationsEnabled: true,
+              twoFactorAuthEnabled: false,
+              shareUsageDataEnabled: true,
+            });
+        }
+      }
+      setLoadingSettings(false);
+    };
+    fetchSettings();
+  }, []);
+
+  const handleUpdateSetting = async (settingName: keyof UserSettings, value: boolean) => {
+    setSettings(prev => ({ ...prev, [settingName]: value }));
+    setIsSavingSetting(prev => ({ ...prev, [settingName]: true }));
+
+    const user = auth.currentUser;
+    if (user) {
+      const userDocRef = doc(firestore, 'users', user.uid);
+      try {
+        // Using setDoc with merge: true to create/update fields without overwriting the whole doc
+        await setDoc(userDocRef, { [settingName]: value }, { merge: true });
+      } catch (error) {
+        console.error(`Error updating ${settingName}:`, error);
+        Alert.alert("Save Error", `Could not save ${settingName.replace("Enabled", "")} preference.`);
+        // Revert UI on error
+        setSettings(prev => ({ ...prev, [settingName]: !value })); 
+      }
+    }
+    setIsSavingSetting(prev => ({ ...prev, [settingName]: false }));
   };
+
+  const reauthenticate = async (password: string) => {
+    const user = auth.currentUser;
+    if (!user || !user.email) {
+      Alert.alert("Error", "User not found or email missing.");
+      return false;
+    }
+    const credential = EmailAuthProvider.credential(user.email, password);
+    try {
+      await reauthenticateWithCredential(user, credential);
+      return true;
+    } catch (error: any) {
+      console.error("Reauthentication failed:", error);
+      Alert.alert("Authentication Failed", error.message || "Could not verify your current password. Please try again.");
+      return false;
+    }
+  };
+
+  const handleSavePassword = async () => {
+    if (!currentPassword) {
+      Alert.alert("Missing Field", "Please enter your current password.");
+      return;
+    }
+    if (!newPassword || newPassword.length < 6) {
+        Alert.alert("Invalid New Password", "New password must be at least 6 characters long.");
+        return;
+    }
+    if (newPassword !== confirmPassword) {
+        Alert.alert("Password Mismatch", "New passwords do not match.");
+        return;
+    }
+
+    setIsUpdatingPassword(true);
+    const reauthSuccess = await reauthenticate(currentPassword);
+    if (!reauthSuccess) {
+      setIsUpdatingPassword(false);
+      return;
+    }
+
+    const user = auth.currentUser;
+    if (user) {
+      try {
+        await firebaseUpdatePassword(user, newPassword);
+        Alert.alert("Success", "Your password has been updated successfully.");
+        setCurrentPassword('');
+        setNewPassword('');
+        setConfirmPassword('');
+      } catch (error: any) {
+        console.error("Password update failed:", error);
+        Alert.alert("Password Update Error", error.message || "Could not update your password. Please try again.");
+      }
+    }
+    setIsUpdatingPassword(false);
+  };
+  
+  const handleDeleteAccount = async () => {
+    Alert.alert(
+      "Delete Account",
+      "This is a permanent action. You will be asked to confirm your current password to proceed. Are you sure you want to delete your account?",
+      [
+        { text: "Cancel", style: "cancel", onPress: () => setIsDeletingAccount(false) },
+        { 
+          text: "Confirm & Delete", 
+          style: "destructive", 
+          onPress: async () => {
+            // Prompt for current password again for this sensitive action
+            Alert.prompt(
+              "Confirm Deletion",
+              "Please enter your current password to delete your account.",
+              async (passwordInput) => {
+                if (passwordInput === null) { // User cancelled the prompt
+                  setIsDeletingAccount(false);
+                  return;
+                }
+                if (!passwordInput) {
+                  Alert.alert("Password Required", "You must enter your current password to delete your account.");
+                  setIsDeletingAccount(false);
+                  return;
+                }
+
+                setIsDeletingAccount(true);
+                const reauthSuccess = await reauthenticate(passwordInput);
+                if (!reauthSuccess) {
+                  setIsDeletingAccount(false);
+                  return;
+                }
+
+                const user = auth.currentUser;
+                if (user) {
+                  try {
+                    const userId = user.uid;
+                    // Delete Firebase Auth user
+                    await firebaseDeleteUser(user);
+                    // Delete Firestore user document
+                    const userDocRef = doc(firestore, 'users', userId);
+                    await deleteDoc(userDocRef);
+                    
+                    Alert.alert("Account Deleted", "Your account has been successfully deleted.");
+                    // Navigate to Login screen
+                    navigation.reset({
+                      index: 0,
+                      routes: [{ name: 'Login' }], // Assuming 'Login' is the name of your login screen route
+                    });
+                  } catch (error: any) {
+                    console.error("Account deletion failed:", error);
+                    Alert.alert("Deletion Error", error.message || "Could not delete your account. Please try again.");
+                  }
+                }
+                setIsDeletingAccount(false);
+              },
+              'secure-text' // Input type for password
+            );
+          }
+        }
+      ]
+    );
+  };
+
+  if (loadingSettings) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+            <Pressable onPress={() => navigation.goBack()} style={styles.backButton} disabled={isUpdatingPassword || isDeletingAccount}>
+                <ArrowLeft size={24} color="#00F0FF" />
+            </Pressable>
+            <Text style={styles.title}>PRIVACY & SECURITY</Text>
+            <View style={{ width: 40 }} /> 
+        </View>
+        <View style={styles.centeredMessageContainer}>
+          <ActivityIndicator size="large" color="#00F0FF" />
+          <Text style={styles.loadingText}>Loading settings...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Pressable 
-          onPress={() => navigation.goBack()}
-          style={styles.backButton}
-        >
+        <Pressable onPress={() => navigation.goBack()} style={styles.backButton} disabled={isUpdatingPassword || isDeletingAccount}>
           <ArrowLeft size={24} color="#00F0FF" />
         </Pressable>
         <Text style={styles.title}>PRIVACY & SECURITY</Text>
         <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView style={styles.content}>
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Shield size={20} color="#00F0FF" />
-            <Text style={styles.sectionTitle}>ACCOUNT SECURITY</Text>
+      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollViewContent}>
+        {/* Account Security Section */}
+        <SectionHeader title="ACCOUNT SECURITY" />
+        <Pressable style={styles.settingRow} onPress={() => navigation.navigate('UpdateEmail')}>
+          <View style={styles.settingContent}>
+            <Mail size={20} color="#00F0FF" style={styles.icon} />
+            <View style={styles.textContainer}>
+              <Text style={styles.settingLabel}>Update Email</Text>
+              <Text style={styles.settingDescription}>Change the email address associated with your account.</Text>
+            </View>
           </View>
-
-          <View style={styles.passwordSection}>
-            <Text style={styles.label}>Current Password</Text>
-            <View style={styles.passwordInput}>
-              <TextInput
-                style={styles.input}
-                value={currentPassword}
-                onChangeText={setCurrentPassword}
-                secureTextEntry={!showPassword}
-                placeholder="Enter current password"
-                placeholderTextColor="#7A89FF"
-              />
-              <Pressable onPress={() => setShowPassword(!showPassword)}>
-                {showPassword ? (
-                  <EyeOff size={20} color="#7A89FF" />
-                ) : (
-                  <Eye size={20} color="#7A89FF" />
-                )}
-              </Pressable>
-            </View>
-
-            <Text style={styles.label}>New Password</Text>
-            <View style={styles.passwordInput}>
-              <TextInput
-                style={styles.input}
-                value={newPassword}
-                onChangeText={setNewPassword}
-                secureTextEntry={!showPassword}
-                placeholder="Enter new password"
-                placeholderTextColor="#7A89FF"
-              />
-            </View>
-
-            <Text style={styles.label}>Confirm New Password</Text>
-            <View style={styles.passwordInput}>
-              <TextInput
-                style={styles.input}
-                value={confirmPassword}
-                onChangeText={setConfirmPassword}
-                secureTextEntry={!showPassword}
-                placeholder="Confirm new password"
-                placeholderTextColor="#7A89FF"
-              />
-            </View>
-
-            <Pressable style={styles.saveButton} onPress={handleSavePassword}>
-              <Text style={styles.saveButtonText}>UPDATE PASSWORD</Text>
+          <ChevronRight size={20} color="#7A89FF" />
+        </Pressable>
+        
+        {/* Change Password Sub-Section */}
+        <View style={styles.subSection}>
+          <Text style={styles.label}>Current Password</Text>
+          <View style={styles.passwordInput}>
+            <TextInput
+              style={styles.input}
+              value={currentPassword}
+              onChangeText={setCurrentPassword}
+              secureTextEntry={!showPassword}
+              placeholder="Enter current password"
+              placeholderTextColor="#7A89FF"
+              autoCapitalize="none"
+              editable={!isUpdatingPassword && !isDeletingAccount}
+            />
+            <Pressable onPress={() => setShowPassword(!showPassword)} disabled={isUpdatingPassword || isDeletingAccount}>
+              {showPassword ? (
+                <EyeOff size={20} color="#7A89FF" />
+              ) : (
+                <Eye size={20} color="#7A89FF" />
+              )}
             </Pressable>
           </View>
 
-          <View style={styles.settingItem}>
-            <View style={styles.settingContent}>
-              <Key size={20} color="#00F0FF" />
-              <View>
-                <Text style={styles.settingTitle}>Two-Factor Authentication</Text>
-                <Text style={styles.settingDescription}>
-                  Add an extra layer of security to your account
-                </Text>
-              </View>
-            </View>
-            <Switch
-              value={settings.twoFactorAuth}
-              onValueChange={(value) => setSettings({ ...settings, twoFactorAuth: value })}
-              trackColor={{ false: '#2A3555', true: 'rgba(0, 240, 255, 0.3)' }}
-              thumbColor={settings.twoFactorAuth ? '#00F0FF' : '#7A89FF'}
+          <Text style={styles.label}>New Password (min. 6 characters)</Text>
+          <View style={styles.passwordInput}>
+            <TextInput
+              style={styles.input}
+              value={newPassword}
+              onChangeText={setNewPassword}
+              secureTextEntry={!showNewPassword}
+              placeholder="Enter new password"
+              placeholderTextColor="#7A89FF"
+              autoCapitalize="none"
+              editable={!isUpdatingPassword && !isDeletingAccount}
             />
+            <Pressable onPress={() => setShowNewPassword(!showNewPassword)} disabled={isUpdatingPassword || isDeletingAccount}>
+              {showNewPassword ? (
+                <EyeOff size={20} color="#7A89FF" />
+              ) : (
+                <Eye size={20} color="#7A89FF" />
+              )}
+            </Pressable>
           </View>
-        </View>
 
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Bell size={20} color="#00F0FF" />
-            <Text style={styles.sectionTitle}>NOTIFICATIONS</Text>
-          </View>
-
-          <View style={styles.settingItem}>
-            <View style={styles.settingContent}>
-              <Smartphone size={20} color="#00F0FF" />
-              <View>
-                <Text style={styles.settingTitle}>Push Notifications</Text>
-                <Text style={styles.settingDescription}>
-                  Receive updates about your services
-                </Text>
-              </View>
-            </View>
-            <Switch
-              value={settings.pushNotifications}
-              onValueChange={(value) => setSettings({ ...settings, pushNotifications: value })}
-              trackColor={{ false: '#2A3555', true: 'rgba(0, 240, 255, 0.3)' }}
-              thumbColor={settings.pushNotifications ? '#00F0FF' : '#7A89FF'}
+          <Text style={styles.label}>Confirm New Password</Text>
+          <View style={styles.passwordInput}>
+            <TextInput
+              style={styles.input}
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+              secureTextEntry={!showConfirmPassword}
+              placeholder="Confirm new password"
+              placeholderTextColor="#7A89FF"
+              autoCapitalize="none"
+              editable={!isUpdatingPassword && !isDeletingAccount}
             />
+            <Pressable onPress={() => setShowConfirmPassword(!showConfirmPassword)} disabled={isUpdatingPassword || isDeletingAccount}>
+              {showConfirmPassword ? (
+                <EyeOff size={20} color="#7A89FF" />
+              ) : (
+                <Eye size={20} color="#7A89FF" />
+              )}
+            </Pressable>
           </View>
 
-          <View style={styles.settingItem}>
-            <View style={styles.settingContent}>
-              <Mail size={20} color="#00F0FF" />
-              <View>
-                <Text style={styles.settingTitle}>Email Notifications</Text>
-                <Text style={styles.settingDescription}>
-                  Receive service updates via email
-                </Text>
-              </View>
-            </View>
-            <Switch
-              value={settings.emailNotifications}
-              onValueChange={(value) => setSettings({ ...settings, emailNotifications: value })}
-              trackColor={{ false: '#2A3555', true: 'rgba(0, 240, 255, 0.3)' }}
-              thumbColor={settings.emailNotifications ? '#00F0FF' : '#7A89FF'}
-            />
-          </View>
-        </View>
-
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <MapPin size={20} color="#00F0FF" />
-            <Text style={styles.sectionTitle}>LOCATION & DATA</Text>
-          </View>
-
-          <View style={styles.settingItem}>
-            <View style={styles.settingContent}>
-              <MapPin size={20} color="#00F0FF" />
-              <View>
-                <Text style={styles.settingTitle}>Location Tracking</Text>
-                <Text style={styles.settingDescription}>
-                  Allow tracking for better service
-                </Text>
-              </View>
-            </View>
-            <Switch
-              value={settings.locationTracking}
-              onValueChange={(value) => setSettings({ ...settings, locationTracking: value })}
-              trackColor={{ false: '#2A3555', true: 'rgba(0, 240, 255, 0.3)' }}
-              thumbColor={settings.locationTracking ? '#00F0FF' : '#7A89FF'}
-            />
-          </View>
-
-          <View style={styles.settingItem}>
-            <View style={styles.settingContent}>
-              <Share size={20} color="#00F0FF" />
-              <View>
-                <Text style={styles.settingTitle}>Share Usage Data</Text>
-                <Text style={styles.settingDescription}>
-                  Help us improve our services
-                </Text>
-              </View>
-            </View>
-            <Switch
-              value={settings.shareData}
-              onValueChange={(value) => setSettings({ ...settings, shareData: value })}
-              trackColor={{ false: '#2A3555', true: 'rgba(0, 240, 255, 0.3)' }}
-              thumbColor={settings.shareData ? '#00F0FF' : '#7A89FF'}
-            />
-          </View>
-        </View>
-
-        <View style={styles.dangerZone}>
-          <Text style={styles.dangerTitle}>DANGER ZONE</Text>
-          <Pressable style={styles.deleteButton}>
-            <Text style={styles.deleteButtonText}>DELETE ACCOUNT</Text>
+          <Pressable style={[styles.saveButton, (isUpdatingPassword || isDeletingAccount) && styles.disabledButton]} onPress={handleSavePassword} disabled={isUpdatingPassword || isDeletingAccount}>
+            {isUpdatingPassword ? (
+              <ActivityIndicator color="#0A0F1E" />
+            ) : (
+              <Text style={styles.saveButtonText}>UPDATE PASSWORD</Text>
+            )}
           </Pressable>
         </View>
+
+        {/* Notification Settings Section */}
+        <SectionHeader title="NOTIFICATION SETTINGS" />
+        <SwitchRow 
+          icon={<Bell size={20} color="#00F0FF" />}
+          label="Push Notifications"
+          description="Receive alerts for order updates and messages."
+          value={settings.pushNotificationsEnabled ?? true}
+          onValueChange={(val) => handleUpdateSetting('pushNotificationsEnabled', val)}
+          isSaving={isSavingSetting.pushNotificationsEnabled}
+        />
+        <SwitchRow 
+          icon={<Mail size={20} color="#00F0FF" />} // Using Mail icon as placeholder
+          label="Email Notifications"
+          description="Receive order summaries and promotions via email."
+          value={settings.emailNotificationsEnabled ?? true}
+          onValueChange={(val) => handleUpdateSetting('emailNotificationsEnabled', val)}
+          isSaving={isSavingSetting.emailNotificationsEnabled}
+        />
+
+        {/* Account Actions Section */}
+        <SectionHeader title="ACCOUNT ACTIONS" />
+        <Pressable style={styles.settingRow} onPress={handleDeleteAccount} disabled={isDeletingAccount}>
+          <View style={styles.settingContent}>
+            <UserMinus size={20} color="#FF3D71" style={styles.icon} />
+            <View style={styles.textContainer}>
+              <Text style={styles.settingLabel}>Delete Account</Text>
+              <Text style={styles.settingDescription}>Permanently delete your account and all associated data.</Text>
+            </View>
+          </View>
+          {isDeletingAccount ? (
+            <ActivityIndicator color="#FF3D71" />
+          ) : (
+            <ChevronRight size={20} color="#FF3D71" />
+          )}
+        </Pressable>
       </ScrollView>
     </SafeAreaView>
   );
@@ -251,27 +466,59 @@ const styles = StyleSheet.create({
     color: '#00F0FF',
     letterSpacing: 2,
   },
-  content: {
+  scrollView: {
     flex: 1,
   },
-  section: {
+  scrollViewContent: {
     padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#2A3555',
+    gap: 24,
   },
-  sectionHeader: {
+  sectionHeaderContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
     gap: 8,
+    marginBottom: 16,
   },
-  sectionTitle: {
+  sectionHeaderTitle: {
     fontSize: 16,
     fontFamily: 'Inter_700Bold',
     color: '#00F0FF',
     letterSpacing: 2,
+    textTransform: 'uppercase',
   },
-  passwordSection: {
+  settingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(122, 137, 255, 0.1)',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 12,
+  },
+  settingContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  icon: {
+    marginRight: 12,
+  },
+  textContainer: {
+    flex: 1,
+  },
+  settingLabel: {
+    fontSize: 16,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#00F0FF',
+    marginBottom: 4,
+  },
+  settingDescription: {
+    fontSize: 14,
+    fontFamily: 'Inter_400Regular',
+    color: '#7A89FF',
+  },
+  subSection: {
     gap: 16,
     marginBottom: 24,
   },
@@ -312,54 +559,23 @@ const styles = StyleSheet.create({
     color: '#00F0FF',
     letterSpacing: 2,
   },
-  settingItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: 'rgba(122, 137, 255, 0.1)',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 12,
-  },
-  settingContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
+  centeredMessageContainer: {
     flex: 1,
-  },
-  settingTitle: {
-    fontSize: 16,
-    fontFamily: 'Inter_600SemiBold',
-    color: '#00F0FF',
-    marginBottom: 4,
-  },
-  settingDescription: {
-    fontSize: 14,
-    fontFamily: 'Inter_400Regular',
-    color: '#7A89FF',
-  },
-  dangerZone: {
-    padding: 16,
-    gap: 16,
-  },
-  dangerTitle: {
-    fontSize: 16,
-    fontFamily: 'Inter_700Bold',
-    color: '#FF3D71',
-    letterSpacing: 2,
-  },
-  deleteButton: {
-    backgroundColor: 'rgba(255, 61, 113, 0.1)',
-    padding: 16,
-    borderRadius: 8,
+    justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#FF3D71',
+    padding: 20,
   },
-  deleteButtonText: {
-    fontSize: 14,
-    fontFamily: 'Inter_600SemiBold',
-    color: '#FF3D71',
-    letterSpacing: 2,
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: '#7A89FF',
+    fontFamily: 'Inter_500Medium',
+  },
+  disabledButton: {
+    opacity: 0.6,
+  },
+  switchContainer: {
+    minWidth: 50,
+    alignItems: 'flex-end',
   },
 }); 

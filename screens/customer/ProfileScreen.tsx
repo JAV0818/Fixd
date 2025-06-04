@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, Image, ActivityIndicator, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Car, PenTool as Tool, Clock, Shield, Settings, ChevronRight, LogOut, User } from 'lucide-react-native';
+import { Car, PenTool as Tool, Clock, Shield, Settings, ChevronRight, LogOut, User, Star } from 'lucide-react-native';
 import { logout } from '@/lib/auth';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -18,6 +18,26 @@ interface CustomerProfile {
   ordersPlaced?: number;
   // averageRating?: number; // Decide if needed
 }
+
+// Insert helper to safely convert various timestamp representations to a JS Date
+const toDateSafe = (value: any): Date | null => {
+  if (!value) return null;
+  // Firestore Timestamp (has toDate method)
+  if (typeof value.toDate === 'function') {
+    return value.toDate();
+  }
+  // Firestore timestamp object with seconds field
+  if (typeof value.seconds === 'number') {
+    return new Date(value.seconds * 1000);
+  }
+  // Already a Date instance
+  if (value instanceof Date) {
+    return value;
+  }
+  // Attempt string/number conversion
+  const date = new Date(value);
+  return isNaN(date.getTime()) ? null : date;
+};
 
 export default function ProfileScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -87,9 +107,12 @@ export default function ProfileScreen() {
   const initials = `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
   // const orders = profileData.ordersPlaced || 0;
   // const rating = profileData.averageRating?.toFixed(1) || 'N/A'; // Decide on rating display
-  const memberSinceDate = profileData.createdAt?.toDate();
-  const memberSinceMonth = memberSinceDate?.toLocaleDateString('en-US', { month: 'short' }).toUpperCase() || 'N/A';
-  const memberSinceYear = memberSinceDate?.getFullYear().toString() || '';
+  // Safely derive the "member since" date parts without assuming Firestore Timestamp structure
+  const memberSinceDate = toDateSafe(profileData.createdAt);
+  const memberSinceMonth = memberSinceDate
+    ? memberSinceDate.toLocaleDateString('en-US', { month: 'short' }).toUpperCase()
+    : 'N/A';
+  const memberSinceYear = memberSinceDate ? memberSinceDate.getFullYear().toString() : '';
 
   const renderProfileAvatar = () => {
     // Simplified: Only show initials or fallback
@@ -137,11 +160,23 @@ export default function ProfileScreen() {
               <Text style={styles.statLabel}>ORDERS</Text>
             </View>
             <View style={styles.statDivider} />
-            {/* <View style={styles.statItem}>
-              <Text style={styles.statValue}>{rating}</Text>
-              <Text style={styles.statLabel}>RATING</Text> 
+            <View style={styles.statItem}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                {Array.from({ length: 5 }).map((_, index) => (
+                  <Star
+                    key={index}
+                    size={16}
+                    // Replace 3 with actual averageRating when available
+                    color={index < 3 ? '#FFC700' : '#4A5588'} 
+                    fill={index < 3 ? '#FFC700' : 'none'} 
+                  />
+                ))}
+              </View>
+              {/* Replace '3.0' with actual averageRating when available */}
+              <Text style={[styles.statValue, {fontSize: 16, color: '#FFC700' }]}>{'3.0'}</Text> 
+              <Text style={styles.statLabel}>RATING</Text>
             </View>
-            <View style={styles.statDivider} /> */}
+            <View style={styles.statDivider} />
             <View style={styles.statItem}>
               <Text style={styles.statValue}>{memberSinceMonth}</Text>
               <Text style={styles.memberYear}>{memberSinceYear}</Text>

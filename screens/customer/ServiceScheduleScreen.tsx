@@ -1,29 +1,230 @@
-import React from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, Pressable, SectionList, ActivityIndicator, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowLeft } from 'lucide-react-native';
+import { ArrowLeft, Calendar, CheckCircle, XCircle, Clock, Wrench, AlertTriangle } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '@/navigation/AppNavigator';
-import ScheduleData from '@/components/services/ScheduleData';
+import { auth, firestore } from '@/lib/firebase';
+import { collection, query, where, onSnapshot, orderBy, Timestamp } from 'firebase/firestore';
+import { RepairOrder } from '@/types/orders'; // Assuming this type is appropriate
+
+interface OrderSection {
+  title: string;
+  data: RepairOrder[];
+}
+
+// Simple Order Card Component (can be expanded or moved to a separate file later)
+const OrderCard = ({ item, onPress }: { item: RepairOrder, onPress: () => void }) => {
+  const getStatusColor = () => {
+    switch (item.status) {
+      case 'Completed': return '#34C759';
+      case 'Cancelled': return '#FF3D71';
+      case 'InProgress': return '#00F0FF';
+      case 'Accepted':
+      case 'Scheduled': return '#7A89FF';
+      default: return '#A0AEC0'; // Pending or other
+    }
+  };
+
+  const getStatusIcon = () => {
+    switch (item.status) {
+      case 'Completed': return <CheckCircle size={18} color={getStatusColor()} />;
+      case 'Cancelled': return <XCircle size={18} color={getStatusColor()} />;
+      case 'InProgress':
+      case 'Accepted':
+      case 'Scheduled': return <Clock size={18} color={getStatusColor()} />;
+      default: return <AlertTriangle size={18} color={getStatusColor()} />;
+    }
+  };
+
+  return (
+    <Pressable style={styles.card} onPress={onPress}>
+      <View style={styles.cardHeader}>
+        <Wrench size={20} color={getStatusColor()} />
+        <Text style={styles.cardTitle}>{item.items[0]?.name || 'Service Details N/A'}</Text>
+      </View>
+      <View style={styles.cardRow}>
+        <Text style={styles.cardLabel}>Status:</Text>
+        <View style={styles.statusBadge}>
+          {getStatusIcon()}
+          <Text style={[styles.cardValue, { color: getStatusColor(), marginLeft: 6 }]}>
+            {item.status.toUpperCase()}
+          </Text>
+        </View>
+      </View>
+      <View style={styles.cardRow}>
+        <Text style={styles.cardLabel}>Date:</Text>
+        <Text style={styles.cardValue}>
+          {item.createdAt?.toDate().toLocaleDateString() || 'N/A'}
+        </Text>
+      </View>
+      {item.providerName && (
+        <View style={styles.cardRow}>
+          <Text style={styles.cardLabel}>Provider:</Text>
+          <Text style={styles.cardValue}>{item.providerName}</Text>
+        </View>
+      )}
+      <View style={styles.cardRow}>
+        <Text style={styles.cardLabel}>Total:</Text>
+        <Text style={[styles.cardValue, styles.priceValue]}>${item.totalPrice?.toFixed(2) || '0.00'}</Text>
+      </View>
+    </Pressable>
+  );
+};
 
 export default function ServiceScheduleScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const [sections, setSections] = useState<OrderSection[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const fetchOrders = () => {
+    const user = auth.currentUser;
+    if (!user) {
+      setError("Please log in to view your schedule.");
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    const ordersRef = collection(firestore, 'repairOrders');
+    const q = query(
+      ordersRef,
+      where('customerId', '==', user.uid),
+      orderBy('createdAt', 'desc')
+    );
+
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+      const fetchedOrders: RepairOrder[] = [];
+      querySnapshot.forEach((doc) => {
+        fetchedOrders.push({ id: doc.id, ...doc.data() } as RepairOrder);
+      });
+
+      const upcoming: RepairOrder[] = [];
+      const past: RepairOrder[] = [];
+
+      fetchedOrders.forEach(order => {
+        if (['Accepted', 'Scheduled', 'InProgress'].includes(order.status)) {
+          upcoming.push(order);
+        } else if (['Completed', 'Cancelled'].includes(order.status)) {
+          past.push(order);
+        } else { 
+          // Consider if Pending orders should go to upcoming or a separate category
+          upcoming.push(order); // Defaulting Pending to upcoming for now
+        }
+      });
+      
+      const newSections: OrderSection[] = [];
+      if (upcoming.length > 0) {
+        newSections.push({ title: 'Upcoming/Active Services', data: upcoming });
+      }
+      if (past.length > 0) {
+        newSections.push({ title: 'Past Services', data: past });
+      }
+
+      setSections(newSections);
+      setLoading(false);
+      setRefreshing(false);
+    }, (err) => {
+      console.error("Error fetching orders:", err);
+      setError("Failed to load your service schedule. Please try again.");
+      setLoading(false);
+      setRefreshing(false);
+    });
+
+    return unsubscribe;
+  };
+
+  useEffect(() => {
+    const unsubscribe = fetchOrders();
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, []);
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchOrders(); // Re-fetch data
+  };
+  
+  const handleOrderPress = (orderId: string) => {
+    navigation.navigate('OrderDetail', { orderId });
+  };
+
+  if (loading && !refreshing) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+         <View style={styles.header}>
+          <Pressable onPress={() => navigation.goBack()} style={styles.backButton}>
+            <ArrowLeft size={24} color="#00F0FF" />
+          </Pressable>
+          <Text style={styles.title}>SERVICE SCHEDULE</Text>
+          <View style={{ width: 40 }} />
+        </View>
+        <View style={styles.centeredMessageContainer}>
+          <ActivityIndicator size="large" color="#00F0FF" />
+          <Text style={styles.loadingText}>Loading Your Schedule...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (error) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={styles.header}>
+          <Pressable onPress={() => navigation.goBack()} style={styles.backButton}>
+            <ArrowLeft size={24} color="#00F0FF" />
+          </Pressable>
+          <Text style={styles.title}>SERVICE SCHEDULE</Text>
+          <View style={{ width: 40 }} />
+        </View>
+        <View style={styles.centeredMessageContainer}>
+          <AlertTriangle size={40} color="#FF3D71" />
+          <Text style={styles.errorText}>{error}</Text>
+          <Pressable style={styles.retryButton} onPress={fetchOrders}>
+              <Text style={styles.retryButtonText}>Try Again</Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <Pressable 
-          onPress={() => navigation.goBack()}
-          style={styles.backButton}
-        >
+        <Pressable onPress={() => navigation.goBack()} style={styles.backButton}>
           <ArrowLeft size={24} color="#00F0FF" />
         </Pressable>
         <Text style={styles.title}>SERVICE SCHEDULE</Text>
         <View style={{ width: 40 }} />
       </View>
       
-      <ScheduleData showLoading={false} />
+      {sections.length === 0 && !loading ? (
+          <View style={styles.centeredMessageContainer}>
+            <Calendar size={40} color="#7A89FF" />
+            <Text style={styles.emptyMessageText}>You have no scheduled services or past orders.</Text>
+         </View>
+      ) : (
+        <SectionList
+          sections={sections}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => <OrderCard item={item} onPress={() => handleOrderPress(item.id)} />}
+          renderSectionHeader={({ section: { title } }) => (
+            <Text style={styles.sectionHeader}>{title.toUpperCase()}</Text>
+          )}
+          contentContainerStyle={styles.listContentContainer}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={["#00F0FF"]} tintColor="#00F0FF"/>
+          }
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -51,9 +252,109 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   title: {
-    fontSize: 20,
+    fontSize: 18, // Reduced size slightly to fit better
     fontFamily: 'Inter_700Bold',
     color: '#00F0FF',
-    letterSpacing: 2,
+    letterSpacing: 1.5, // Adjusted spacing
+  },
+  centeredMessageContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: '#7A89FF',
+    fontFamily: 'Inter_500Medium',
+  },
+  errorText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: '#FF3D71',
+    fontFamily: 'Inter_500Medium',
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  emptyMessageText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: '#7A89FF',
+    fontFamily: 'Inter_500Medium',
+    textAlign: 'center',
+  },
+  retryButton: {
+    backgroundColor: '#00F0FF',
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    marginTop:10,
+  },
+  retryButtonText: {
+    color: '#0A0F1E',
+    fontSize: 14,
+    fontFamily: 'Inter_600SemiBold',
+  },
+  listContentContainer: {
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+  },
+  sectionHeader: {
+    fontSize: 14,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#7A89FF',
+    paddingVertical: 12,
+    paddingTop: 20,
+    backgroundColor: '#0A0F1E',
+    letterSpacing: 1,
+  },
+  // OrderCard Styles
+  card: {
+    backgroundColor: '#1A2138', // Slightly darker card
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#2A3555', 
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  cardTitle: {
+    fontSize: 16,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#E0EFFF',
+    marginLeft: 10,
+    flex: 1, 
+  },
+  cardRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  cardLabel: {
+    fontSize: 13,
+    fontFamily: 'Inter_500Medium',
+    color: '#7A89FF',
+  },
+  cardValue: {
+    fontSize: 13,
+    fontFamily: 'Inter_400Regular',
+    color: '#E0EFFF',
+  },
+  priceValue: {
+    fontFamily: 'Inter_600SemiBold',
+    color: '#00F0FF',
+  },
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 3,
+    paddingHorizontal: 6,
+    borderRadius: 6,
   },
 }); 

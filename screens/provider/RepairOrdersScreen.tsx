@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, Image, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, Image, ActivityIndicator, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Bell, PenTool as Tool, Clock, Activity, Filter, Search } from 'lucide-react-native';
 import NotificationPanel from '../../components/NotificationPanel';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { auth, firestore } from '@/lib/firebase';
-import { collection, query, where, onSnapshot, orderBy, Timestamp } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, orderBy, Timestamp, doc, updateDoc } from 'firebase/firestore';
 import { RepairOrder } from '@/types/orders';
 
 export default function RepairOrdersScreen() {
@@ -16,6 +16,7 @@ export default function RepairOrdersScreen() {
   const [orders, setOrders] = useState<RepairOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     const currentUser = auth.currentUser;
@@ -32,7 +33,7 @@ export default function RepairOrdersScreen() {
     const q = query(
       ordersRef,
       where('providerId', '==', currentUser.uid),
-      where('status', 'in', ['Accepted', 'InProgress']),
+      where('status', 'in', ['Accepted', 'InProgress', 'Completed', 'Cancelled']),
       orderBy('createdAt', 'desc')
     );
 
@@ -54,6 +55,23 @@ export default function RepairOrdersScreen() {
 
     return () => unsubscribe();
   }, []);
+
+  const handleInitiateService = async (orderId: string) => {
+    setActionLoading(prev => ({ ...prev, [orderId]: true }));
+    try {
+      const orderRef = doc(firestore, 'repairOrders', orderId);
+      await updateDoc(orderRef, {
+        status: 'InProgress',
+        startedAt: new Date(),
+      });
+      navigation.navigate('Requests', { screen: 'RequestStart', params: { orderId: orderId } });
+    } catch (err) {
+      console.error("Error initiating service:", err);
+      Alert.alert("Error", "Could not start service. Please try again.");
+    } finally {
+      setActionLoading(prev => ({ ...prev, [orderId]: false }));
+    }
+  };
 
   const getFilteredOrders = () => {
     if (activeFilter === 'all') return orders;
@@ -101,27 +119,6 @@ export default function RepairOrdersScreen() {
     );
   }
 
-  if (getFilteredOrders().length === 0) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.header}>
-          <View style={styles.headerTop}>
-            <Text style={styles.title}>REPAIR QUEUE</Text>
-            <Pressable 
-              style={styles.iconButton}
-              onPress={() => setShowNotifications(!showNotifications)}
-            >
-              <Bell size={24} color="#00F0FF" />
-            </Pressable>
-          </View>
-        </View>
-        <View style={styles.centeredContainer}>
-          <Text style={styles.emptyQueueText}>No repairs to report, get to work!</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
@@ -132,7 +129,6 @@ export default function RepairOrdersScreen() {
             onPress={() => setShowNotifications(!showNotifications)}
           >
             <Bell size={24} color="#00F0FF" />
-            <View style={styles.notificationDot} />
           </Pressable>
         </View>
         
@@ -202,81 +198,108 @@ export default function RepairOrdersScreen() {
         </View>
       </View>
 
-      <ScrollView 
-        style={styles.content} 
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 100 }}
-      >
-        {getFilteredOrders().map((item) => {
-          const placeholderAvatar = 'https://via.placeholder.com/48?text=User';
-          const displayCustomerName = item.customerId.substring(0, 8) + '...';
-          const displayVehicle = item.items[0]?.vehicleDisplay || 'Vehicle not specified';
-          const displayService = item.items[0]?.name || 'Service not specified';
-          const displayLocation = `${item.locationDetails.address}, ${item.locationDetails.city}`;
-          const displayNotes = item.locationDetails.additionalNotes || 'No additional notes provided.';
+      {getFilteredOrders().length === 0 ? (
+        <View style={styles.centeredContainer}>
+          <Text style={styles.emptyStateText}>
+            No orders found for "{activeFilter === 'all' ? 'All Orders' : getStatusLabel(activeFilter as RepairOrder['status'])}"
+          </Text>
+        </View>
+      ) : (
+        <ScrollView 
+          style={styles.content} 
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingBottom: 100 }}
+        >
+          {getFilteredOrders().map((item) => {
+            const customerPhotoToDisplay = item.customerPhotoURL || `https://via.placeholder.com/48/0A0F1E/FFFFFF?text=${item.customerName ? item.customerName.charAt(0).toUpperCase() : 'U'}`;
+            const displayCustomerName = item.customerName || 'Customer';
+            const displayVehicle = item.items[0]?.vehicleDisplay || 'Vehicle not specified';
+            const displayService = item.items[0]?.name || 'Service not specified';
+            const displayLocation = item.locationDetails ? `${item.locationDetails.address}, ${item.locationDetails.city}` : 'Location not set';
+            const displayNotes = item.locationDetails?.additionalNotes || 'No additional notes provided.';
 
-          return (
-          <Pressable key={item.id} style={styles.orderCard}>
-            <View style={styles.orderHeader}>
-              <View style={styles.customerInfo}>
-                <Image source={{ uri: placeholderAvatar }} style={styles.customerImage} />
-                <View>
-                  <Text style={styles.customerName}>{displayCustomerName.toUpperCase()}</Text>
-                  <Text style={styles.vehicleText}>{displayVehicle}</Text>
+            const isButtonLoading = actionLoading[item.id];
+
+            return (
+            <Pressable key={item.id} style={styles.orderCard}>
+              <View style={styles.orderHeader}>
+                <View style={styles.customerInfo}>
+                  <Image source={{ uri: customerPhotoToDisplay }} style={styles.customerImage} />
+                  <View>
+                    <Text style={styles.customerName}>{displayCustomerName.toUpperCase()}</Text>
+                    <Text style={styles.vehicleText}>{displayVehicle}</Text>
+                  </View>
+                </View>
+                <View style={[
+                  styles.statusBadge,
+                  { backgroundColor: `${getStatusColor(item.status)}20` }
+                ]}>
+                  <Text style={[
+                    styles.statusText,
+                    { color: getStatusColor(item.status) }
+                  ]}>
+                    {getStatusLabel(item.status)}
+                  </Text>
                 </View>
               </View>
-              <View style={[
-                styles.statusBadge,
-                { backgroundColor: `${getStatusColor(item.status)}20` }
-              ]}>
-                <Text style={[
-                  styles.statusText,
-                  { color: getStatusColor(item.status) }
-                ]}>
-                  {getStatusLabel(item.status)}
-                </Text>
+              
+              <View style={styles.serviceInfo}>
+                <View style={styles.serviceIconContainer}>
+                  <Tool size={24} color="#00F0FF" />
+                </View>
+                <View style={styles.serviceDetails}>
+                  <Text style={styles.serviceTitle}>{displayService}</Text>
+                </View>
               </View>
-            </View>
-            
-            <View style={styles.serviceInfo}>
-              <View style={styles.serviceIconContainer}>
-                <Tool size={24} color="#00F0FF" />
+              
+              <View style={styles.notesContainer}>
+                <Text style={styles.notesLabel}>LOCATION & NOTES:</Text>
+                <Text style={styles.notesText}>{displayLocation}</Text>
+                <Text style={styles.notesText}>{displayNotes}</Text>
               </View>
-              <View style={styles.serviceDetails}>
-                <Text style={styles.serviceTitle}>{displayService}</Text>
+              
+              <View style={styles.actionButtons}>
+                {item.status === 'Accepted' && (
+                  <Pressable 
+                    style={[styles.actionButton, isButtonLoading && styles.disabledButton]}
+                    onPress={() => !isButtonLoading && handleInitiateService(item.id)}
+                    disabled={isButtonLoading}
+                  >
+                    {isButtonLoading ? (
+                      <ActivityIndicator color="#00F0FF" size="small" />
+                    ) : (
+                      <Text style={styles.actionButtonText}>START SERVICE</Text>
+                    )}
+                  </Pressable>
+                )}
+                {item.status === 'InProgress' && (
+                  <Pressable 
+                    style={styles.actionButton}
+                    onPress={() => navigation.navigate('Requests', { screen: 'RequestStart', params: { orderId: item.id } })}
+                  >
+                    <Text style={styles.actionButtonText}>VIEW DETAILS</Text>
+                  </Pressable>
+                )}
+                <Pressable 
+                  style={[styles.actionButton, (item.status !== 'Accepted' && item.status !== 'InProgress') && styles.disabledButton]}
+                  onPress={() => (item.status === 'Accepted' || item.status === 'InProgress') && navigation.navigate('Requests', { screen: 'UpdateStatus', params: { orderId: item.id } })}
+                  disabled={item.status !== 'Accepted' && item.status !== 'InProgress'}
+                >
+                  <Text style={styles.actionButtonText}>UPDATE STATUS</Text>
+                </Pressable>
+                <Pressable 
+                  style={[styles.actionButton, styles.secondaryButton, (item.status !== 'Accepted' && item.status !== 'InProgress') && styles.disabledButton]}
+                  onPress={() => (item.status === 'Accepted' || item.status === 'InProgress') && navigation.navigate('Requests', { screen: 'RequestContact', params: { orderId: item.id } })}
+                  disabled={item.status !== 'Accepted' && item.status !== 'InProgress'}
+                >
+                  <Text style={styles.secondaryButtonText}>CONTACT CUSTOMER</Text>
+                </Pressable>
               </View>
-            </View>
-            
-            <View style={styles.notesContainer}>
-              <Text style={styles.notesLabel}>LOCATION & NOTES:</Text>
-              <Text style={styles.notesText}>{displayLocation}</Text>
-              <Text style={styles.notesText}>{displayNotes}</Text>
-            </View>
-            
-            <View style={styles.actionButtons}>
-              <Pressable 
-                style={styles.actionButton}
-                onPress={() => navigation.navigate('Requests', { screen: 'RequestStart', params: { orderId: item.id } })}
-              >
-                <Text style={styles.actionButtonText}>START</Text>
-              </Pressable>
-              <Pressable 
-                style={styles.actionButton}
-                onPress={() => navigation.navigate('Requests', { screen: 'UpdateStatus', params: { orderId: item.id } })}
-              >
-                <Text style={styles.actionButtonText}>UPDATE STATUS</Text>
-              </Pressable>
-              <Pressable 
-                style={[styles.actionButton, styles.secondaryButton]}
-                onPress={() => navigation.navigate('Requests', { screen: 'RequestContact', params: { orderId: item.id } })}
-              >
-                <Text style={styles.secondaryButtonText}>CONTACT CUSTOMER</Text>
-              </Pressable>
-            </View>
-          </Pressable>
+            </Pressable>
+            )}
           )}
-        )}
-      </ScrollView>
+        </ScrollView>
+      )}
 
       {showNotifications && (
         <NotificationPanel
@@ -483,6 +506,9 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_600SemiBold',
     textAlign: 'center',
   },
+  disabledButton: {
+    opacity: 0.5,
+  },
   centeredContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -500,10 +526,10 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_600SemiBold',
     marginTop: 16,
   },
-  emptyQueueText: {
+  emptyStateText: {
     color: '#7A89FF',
-    fontSize: 18,
-    fontFamily: 'Inter_600SemiBold',
+    fontSize: 16,
+    fontFamily: 'Inter_500Medium',
     textAlign: 'center',
     paddingHorizontal: 20,
   },

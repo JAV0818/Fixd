@@ -14,26 +14,37 @@ import {
   Dimensions,
   Pressable,
   Animated,
+  Modal,
+  Linking,
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/AppNavigator'; // Changed from ProviderStackParamList
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft, Send, Paperclip, Image as ImageIcon, Mic } from 'lucide-react-native';
+import { ArrowLeft, Send, Paperclip, Image as ImageIcon, Camera, File, Download, X } from 'lucide-react-native';
 import { RepairOrder } from '@/types/orders'; // Assuming this type is general enough
-import { auth, firestore } from '@/lib/firebase';
+import { auth, firestore, storage } from '@/lib/firebase';
 import {
   doc, getDoc, onSnapshot, collection, query, orderBy, addDoc,
   serverTimestamp, Timestamp
 } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'; // Added for image upload
+import * as ImagePicker from 'expo-image-picker'; // Added for image picking
+import * as DocumentPicker from 'expo-document-picker';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 
 // Define structure for PreAcceptanceChatMessage (same as in RequestContactScreen)
 interface PreAcceptanceChatMessage {
   id: string;
   senderId: string;
-  text: string;
+  text?: string; // Make text optional for attachment-only messages
   createdAt: Timestamp;
   sentBy: 'customer' | 'provider';
+  attachmentUrl?: string; // New field for attachment URL
+  attachmentType?: 'image' | 'document' | 'camera'; // New field for attachment type
+  attachmentName?: string; // New field for file names
+  attachmentSize?: number; // New field for file sizes
 }
 
 // Define structure for the other user (could be a generic provider or specific one)
@@ -49,10 +60,11 @@ export default function PreAcceptanceChatScreen({ navigation, route }: Props) {
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState<PreAcceptanceChatMessage[]>([]);
   const [sending, setSending] = useState(false);
+  const [uploadingAttachment, setUploadingAttachment] = useState(false);
   const [order, setOrder] = useState<RepairOrder | null>(null);
-  // const [otherUserDetails, setOtherUserDetails] = useState<OtherUser | null>(null); // To store details of the provider if needed
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showAttachmentModal, setShowAttachmentModal] = useState(false);
   const flatListRef = useRef<FlatList>(null);
   const currentUser = auth.currentUser;
   const insets = useSafeAreaInsets();
@@ -121,8 +133,129 @@ export default function PreAcceptanceChatScreen({ navigation, route }: Props) {
     }).start();
   }, []);
 
+  // Enhanced image picker with camera option
+  const handlePickImage = async () => {
+    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permissionResult.granted) {
+      Alert.alert("Permission Denied", "Permission to access camera roll is required!");
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: false,
+      quality: 0.7,
+      allowsMultipleSelection: true, // Enable multiple selection
+    });
+
+    if (!result.canceled && result.assets && result.assets.length > 0) {
+      for (const asset of result.assets) {
+        await handleSendAttachment(asset.uri, 'image', asset.fileName || 'image.jpg', asset.fileSize);
+      }
+    }
+    setShowAttachmentModal(false);
+  };
+
+  // New camera capture function
+  const handleTakePhoto = async () => {
+    const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permissionResult.granted) {
+      Alert.alert("Permission Denied", "Permission to access camera is required!");
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      allowsEditing: false,
+      quality: 0.7,
+    });
+
+    if (!result.canceled && result.assets && result.assets.length > 0) {
+      const asset = result.assets[0];
+      await handleSendAttachment(asset.uri, 'camera', asset.fileName || 'photo.jpg', asset.fileSize);
+    }
+    setShowAttachmentModal(false);
+  };
+
+  // New document picker function
+  const handlePickDocument = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain'],
+        copyToCacheDirectory: true,
+        multiple: true, // Allow multiple files
+      });
+
+      if (!result.canceled && result.assets) {
+        for (const asset of result.assets) {
+          await handleSendAttachment(asset.uri, 'document', asset.name, asset.size);
+        }
+      }
+    } catch (error) {
+      console.error("Error picking document:", error);
+      Alert.alert("Error", "Could not pick document.");
+    }
+    setShowAttachmentModal(false);
+  };
+  
+  // Enhanced send attachment function
+  const handleSendAttachment = async (uri: string, type: 'image' | 'document' | 'camera', fileName?: string, fileSize?: number) => {
+    if (!currentUser || !order) return;
+
+    setUploadingAttachment(true);
+    try {
+      const response = await fetch(uri);
+      const blob = await response.blob();
+      
+      // Validate file size (10MB limit)
+      if (blob.size > 10 * 1024 * 1024) {
+        Alert.alert("File Too Large", "Please select a file smaller than 10MB.");
+        return;
+      }
+
+      const fileExtension = fileName?.split('.').pop() || (type === 'image' || type === 'camera' ? 'jpg' : 'pdf');
+      const uploadFileName = `${Date.now()}-${currentUser.uid}-${fileName || `file.${fileExtension}`}`;
+      const attachmentRef = ref(storage, `chatAttachments/preAcceptance/${orderId}/${uploadFileName}`);
+      
+      await uploadBytes(attachmentRef, blob);
+      const downloadURL = await getDownloadURL(attachmentRef);
+
+      const messagesRef = collection(firestore, 'repairOrders', orderId, 'preAcceptanceChats');
+      await addDoc(messagesRef, {
+        senderId: currentUser.uid,
+        attachmentUrl: downloadURL,
+        attachmentType: type,
+        attachmentName: fileName || `${type}.${fileExtension}`,
+        attachmentSize: fileSize || blob.size,
+        createdAt: serverTimestamp(),
+        sentBy: 'customer',
+        text: '',
+      });
+      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+    } catch (error) {
+      console.error("Error sending attachment:", error);
+      Alert.alert("Error", "Could not send attachment.");
+    } finally {
+      setUploadingAttachment(false);
+    }
+  };
+
+  // Helper function to format file size
+  const formatFileSize = (bytes?: number) => {
+    if (!bytes) return '';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  // Helper function to get file icon
+  const getFileIcon = (type?: string, fileName?: string) => {
+    if (type === 'image' || type === 'camera') return ImageIcon;
+    if (fileName?.toLowerCase().includes('.pdf')) return File;
+    return File;
+  };
+
   const handleSendMessage = async () => {
-    if (!message.trim() || !currentUser || !order) {
+    if ((!message.trim() && !uploadingAttachment) || !currentUser || !order) { // Ensure not sending empty if no attachment either
         return;
     }
     
@@ -135,9 +268,9 @@ export default function PreAcceptanceChatScreen({ navigation, route }: Props) {
     try {
       await addDoc(messagesRef, {
         senderId: currentUser.uid,
-        text: messageText,
+        text: messageText, // Only text if no attachment process is active for this send
         createdAt: serverTimestamp(),
-        sentBy: 'customer' // Key change: message sent by customer
+        sentBy: 'customer' 
       });
       setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
     } catch (error) {
@@ -189,11 +322,12 @@ export default function PreAcceptanceChatScreen({ navigation, route }: Props) {
     );
   };
 
-  const renderMessageItem = ({ item }: { item: PreAcceptanceChatMessage }) => { // Renamed from renderMessage
+  const renderMessageItem = ({ item }: { item: PreAcceptanceChatMessage }) => {
     const isSentByMe = item.senderId === currentUser?.uid;
-    // For customer, 'isSentByMe' means sentBy: 'customer'.
-    // If item.sentBy === 'provider', it's from the other side.
-    if (!item.createdAt?.toDate) return null; 
+    if (!item.createdAt?.toDate) return null;
+    
+    const FileIconComponent = getFileIcon(item.attachmentType, item.attachmentName);
+
     return (
       <View style={[styles.messageContainer, isSentByMe ? styles.userMessageContainer : styles.otherUserMessageContainer]}>
         <LinearGradient
@@ -201,13 +335,74 @@ export default function PreAcceptanceChatScreen({ navigation, route }: Props) {
           start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
           style={[styles.messageBubble, isSentByMe ? styles.userMessageBubble : styles.otherUserMessageBubble]}
         >
-          <Text style={[styles.messageText, isSentByMe ? styles.userMessageText : styles.otherUserMessageText]}>{item.text}</Text>
+          {item.text ? (
+            <Text style={[styles.messageText, isSentByMe ? styles.userMessageText : styles.otherUserMessageText]}>
+              {item.text}
+            </Text>
+          ) : null}
+          
+          {/* Image Attachments */}
+          {item.attachmentUrl && (item.attachmentType === 'image' || item.attachmentType === 'camera') && (
+            <Pressable onPress={() => handleImagePress(item.attachmentUrl!)}>
+              <Image source={{ uri: item.attachmentUrl }} style={styles.chatImageAttachment} resizeMode="cover" />
+              {item.attachmentSize && (
+                <Text style={styles.attachmentSize}>{formatFileSize(item.attachmentSize)}</Text>
+              )}
+            </Pressable>
+          )}
+          
+          {/* Document Attachments */}
+          {item.attachmentUrl && item.attachmentType === 'document' && (
+            <Pressable style={styles.documentAttachment} onPress={() => handleDocumentPress(item.attachmentUrl!, item.attachmentName!)}>
+              <FileIconComponent size={24} color={isSentByMe ? "#FFFFFF" : "#00F0FF"} />
+              <View style={styles.documentInfo}>
+                <Text style={[styles.documentName, isSentByMe ? styles.userMessageText : styles.otherUserMessageText]}>
+                  {item.attachmentName || 'Document'}
+                </Text>
+                {item.attachmentSize && (
+                  <Text style={styles.documentSize}>{formatFileSize(item.attachmentSize)}</Text>
+                )}
+              </View>
+              <Download size={16} color={isSentByMe ? "#FFFFFF" : "#7A89FF"} />
+            </Pressable>
+          )}
+          
           <View style={styles.messageFooter}>
-            <Text style={[styles.messageTimestamp, isSentByMe ? styles.userTimestamp : styles.otherUserTimestamp]}>{formatTime(item.createdAt.toDate())}</Text>
+            <Text style={[styles.messageTimestamp, isSentByMe ? styles.userTimestamp : styles.otherUserTimestamp]}>
+              {formatTime(item.createdAt.toDate())}
+            </Text>
           </View>
         </LinearGradient>
       </View>
     );
+  };
+
+  // Handle image press for full screen view
+  const handleImagePress = (imageUrl: string) => {
+    // You can implement a full-screen image viewer here
+    Alert.alert("Image View", "Full screen image viewer - implement with react-native-image-zoom-viewer or similar");
+  };
+
+  // Handle document press for download/view
+  const handleDocumentPress = async (documentUrl: string, fileName: string) => {
+    try {
+      const localUri = FileSystem.cacheDirectory + fileName.replace(/[^a-zA-Z0-9.]/g, '_'); // Sanitize filename
+      
+      console.log('Downloading document from:', documentUrl);
+      console.log('Saving document to:', localUri);
+
+      const { uri } = await FileSystem.downloadAsync(documentUrl, localUri);
+      console.log('Downloaded to:', uri);
+
+      if (!(await Sharing.isAvailableAsync())) {
+        Alert.alert("Sharing not available", "Sharing is not available on your device.");
+        return;
+      }
+      await Sharing.shareAsync(uri, { dialogTitle: fileName, mimeType: 'application/octet-stream' });
+    } catch (error) {
+      console.error("Error handling document press:", error);
+      Alert.alert("Error", "Could not open or download document. Please try again.");
+    }
   };
 
   const renderMessageGroup = ({ item }: { item: { date: string; data: PreAcceptanceChatMessage[] } }) => {
@@ -306,56 +501,111 @@ export default function PreAcceptanceChatScreen({ navigation, route }: Props) {
              </View>
           )}
 
+          {/* Input Area */}
           <LinearGradient
-             colors={['#121827', '#0A0F1E']} // Input area gradient
-             style={[
-               styles.inputToolbar, 
-               // Ensure bottom padding is consistently applied, KeyboardAvoidingView adjusts from here
-               { paddingBottom: Platform.OS === 'ios' ? Math.max(insets.bottom, 10) : 10 }
-             ]}
-           >
-             <Pressable style={styles.utilityButton}>
-               <LinearGradient colors={['#7A89FF', '#5A6AD0']} style={styles.iconButtonWrapper}>
-                   <Paperclip size={18} color="#FFFFFF" />
-               </LinearGradient>
-             </Pressable>
-             <View style={styles.textInputWrapper}> 
-               <TextInput
-                 style={styles.messageTextInput} // Renamed from textInput
-                 placeholder="Type your message..." // Customer-centric placeholder
-                 placeholderTextColor="#6E7191"
-                 value={message}
-                 onChangeText={setMessage}
-                 multiline
-               />
-             </View>
-             <View style={styles.inputActionButtons}>
-               {message.length === 0 ? (
-                 <>
-                   <Pressable style={styles.utilityButton}>
-                     <LinearGradient colors={['#7A89FF', '#5A6AD0']} style={styles.iconButtonWrapper}>
-                         <ImageIcon size={18} color="#FFFFFF" />
-                     </LinearGradient>
-                   </Pressable>
-                   <Pressable style={styles.utilityButton}>
-                     <LinearGradient colors={['#7A89FF', '#5A6AD0']} style={styles.iconButtonWrapper}>
-                         <Mic size={18} color="#FFFFFF" />
-                     </LinearGradient>
-                   </Pressable>
-                 </>
-               ) : (
-                 <Pressable 
-                   style={styles.sendIconWrapper} // Renamed from sendButton
-                   onPress={handleSendMessage}
-                   disabled={sending}
-                 >
-                   <LinearGradient colors={['#00C2FF', '#0080FF']} style={styles.sendGradientWrapper}>
-                       <Send size={18} color="#FFFFFF" />
-                   </LinearGradient>
-                 </Pressable>
-               )}
-             </View>
-           </LinearGradient>
+            colors={['#121827', '#0A0F1E']}
+            style={[
+              styles.inputToolbar,
+              { paddingBottom: Platform.OS === 'ios' ? Math.max(insets.bottom, 10) : 10 }
+            ]}
+          >
+            <Pressable 
+              style={styles.utilityButton} 
+              onPress={() => setShowAttachmentModal(true)} 
+              disabled={uploadingAttachment || sending}
+            >
+              <LinearGradient colors={['#7A89FF', '#5A6AD0']} style={styles.iconButtonWrapper}>
+                <Paperclip size={18} color={uploadingAttachment || sending ? "#555" : "#FFFFFF"} />
+              </LinearGradient>
+            </Pressable>
+            <View style={styles.textInputWrapper}> 
+              <TextInput
+                style={styles.messageTextInput}
+                placeholder="Type your message..."
+                placeholderTextColor="#6E7191"
+                value={message}
+                onChangeText={setMessage}
+                multiline
+              />
+            </View>
+            <View style={styles.inputActionButtons}>
+              {message.length === 0 ? (
+                <>
+                  <Pressable style={styles.utilityButton} onPress={handleTakePhoto} disabled={uploadingAttachment || sending}>
+                    <LinearGradient colors={['#7A89FF', '#5A6AD0']} style={styles.iconButtonWrapper}>
+                      <Camera size={18} color={uploadingAttachment || sending ? "#555" : "#FFFFFF"} />
+                    </LinearGradient>
+                  </Pressable>
+                </>
+              ) : (
+                <Pressable 
+                  style={styles.sendIconWrapper}
+                  onPress={handleSendMessage}
+                  disabled={sending || uploadingAttachment || !message.trim()}
+                >
+                  <LinearGradient colors={['#00C2FF', '#0080FF']} style={styles.sendGradientWrapper}>
+                    <Send size={18} color="#FFFFFF" />
+                  </LinearGradient>
+                </Pressable>
+              )}
+            </View>
+          </LinearGradient>
+
+          {/* Attachment Selection Modal */}
+          <Modal
+            visible={showAttachmentModal}
+            transparent={true}
+            animationType="slide"
+            onRequestClose={() => setShowAttachmentModal(false)}
+          >
+            <View style={styles.modalOverlay}>
+              <View style={styles.modalContent}>
+                <LinearGradient
+                  colors={['#1A2138', '#0A0F1E']}
+                  style={styles.modalGradient}
+                >
+                  <View style={styles.modalHeader}>
+                    <Text style={styles.modalTitle}>Select Attachment</Text>
+                    <Pressable onPress={() => setShowAttachmentModal(false)} style={styles.closeButton}>
+                      <X size={24} color="#FFFFFF" />
+                    </Pressable>
+                  </View>
+                  
+                  <View style={styles.attachmentOptions}>
+                    <Pressable style={styles.attachmentOption} onPress={handleTakePhoto}>
+                      <LinearGradient colors={['#00C2FF', '#0080FF']} style={styles.optionIcon}>
+                        <Camera size={24} color="#FFFFFF" />
+                      </LinearGradient>
+                      <View style={styles.optionText}>
+                        <Text style={styles.optionTitle}>Camera</Text>
+                        <Text style={styles.optionDescription}>Take a photo</Text>
+                      </View>
+                    </Pressable>
+                    
+                    <Pressable style={styles.attachmentOption} onPress={handlePickImage}>
+                      <LinearGradient colors={['#7A89FF', '#5A6AD0']} style={styles.optionIcon}>
+                        <ImageIcon size={24} color="#FFFFFF" />
+                      </LinearGradient>
+                      <View style={styles.optionText}>
+                        <Text style={styles.optionTitle}>Photo Library</Text>
+                        <Text style={styles.optionDescription}>Choose from gallery</Text>
+                      </View>
+                    </Pressable>
+                    
+                    <Pressable style={styles.attachmentOption} onPress={handlePickDocument}>
+                      <LinearGradient colors={['#FF6B6B', '#E74C3C']} style={styles.optionIcon}>
+                        <File size={24} color="#FFFFFF" />
+                      </LinearGradient>
+                      <View style={styles.optionText}>
+                        <Text style={styles.optionTitle}>Document</Text>
+                        <Text style={styles.optionDescription}>PDF, Word, Text files</Text>
+                      </View>
+                    </Pressable>
+                  </View>
+                </LinearGradient>
+              </View>
+            </View>
+          </Modal>
       </KeyboardAvoidingView>
     </Animated.View>
   );
@@ -491,6 +741,13 @@ const styles = StyleSheet.create({
   otherUserTimestamp: {
     color: '#7A89FF',
   },
+  chatImageAttachment: { // New style for image attachments
+    width: 200, // Or use Dimensions to make it responsive
+    height: 200,
+    borderRadius: 10,
+    marginTop: 5,
+    marginBottom: 5,
+  },
   // Sending indicator
   sendingIndicatorContainer: {
     alignItems: 'flex-end', // Align to right for sent messages
@@ -565,5 +822,104 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  documentAttachment: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+    borderWidth: 1,
+    borderColor: '#2A3555',
+    borderRadius: 10,
+  },
+  documentInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  documentName: {
+    flex: 1,
+    fontSize: 15,
+    fontFamily: 'Inter_400Regular',
+  },
+  documentSize: {
+    fontSize: 12,
+    fontFamily: 'Inter_400Regular',
+    color: '#7A89FF',
+  },
+  attachmentSize: {
+    fontSize: 12,
+    fontFamily: 'Inter_400Regular',
+    color: '#7A89FF',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: '#0A0F1E',
+    borderRadius: 20,
+    margin: 20,
+    width: '90%',
+    maxWidth: 400,
+  },
+  modalGradient: {
+    borderRadius: 20,
+    padding: 0,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#2A3555',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontFamily: 'Inter_700Bold',
+    color: '#FFFFFF',
+  },
+  closeButton: {
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  attachmentOptions: {
+    padding: 20,
+    gap: 16,
+  },
+  attachmentOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    backgroundColor: 'rgba(42, 53, 85, 0.3)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#2A3555',
+  },
+  optionIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  optionText: {
+    marginLeft: 16,
+    flex: 1,
+  },
+  optionTitle: {
+    fontSize: 16,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#FFFFFF',
+    marginBottom: 4,
+  },
+  optionDescription: {
+    fontSize: 13,
+    fontFamily: 'Inter_400Regular',
+    color: '#7A89FF',
   },
 }); 

@@ -12,19 +12,21 @@ import UpdateStatusScreen from '../screens/provider/UpdateStatusScreen';
 import PerformanceDetailsScreen from '../screens/provider/PerformanceDetailsScreen';
 import AccountSettingsScreen from '../screens/provider/AccountSettingsScreen';
 import InspectionChecklistScreen from '../screens/provider/InspectionChecklistScreen';
+import CreateCustomChargeScreen from '../screens/provider/CreateCustomChargeScreen';
 
 export type ProviderStackParamList = {
   ProviderDashboard: undefined;
   ProviderProfile: undefined;
   RequestDetail: { orderId: string };
   Requests: undefined;
-  RequestStart: { orderId: string };
+  RequestStart: { orderId: string; inspectionCompleted?: boolean };
   RequestCancel: { orderId: string };
   RequestContact: { orderId: string };
   UpdateStatus: { orderId: string };
   InspectionChecklist: { orderId: string };
   PerformanceDetails: undefined;
   AccountSettings: undefined;
+  CreateCustomCharge: undefined;
 };
 
 const Stack = createNativeStackNavigator<ProviderStackParamList>();
@@ -44,6 +46,7 @@ export default function ProviderNavigator() {
       <Stack.Screen name="RequestContact" component={RequestContactScreen} />
       <Stack.Screen name="UpdateStatus" component={UpdateStatusScreen} />
       <Stack.Screen name="InspectionChecklist" component={InspectionChecklistScreen} />
+      <Stack.Screen name="CreateCustomCharge" component={CreateCustomChargeScreen} />
     </Stack.Navigator>
   );
 } 

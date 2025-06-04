@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, User, Bell, Lock, HelpCircle, LogOut, ChevronRight } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList } from '@/navigation/AppNavigator';
+import { ProfileStackParamList } from '@/navigation/ProviderTabNavigator';
 
 type SettingsSectionProps = {
   title: string;
@@ -13,7 +13,7 @@ type SettingsSectionProps = {
 
 const SettingsSection = ({ title, children }: SettingsSectionProps) => (
   <View style={styles.section}>
-    <Text style={styles.sectionTitle}>{title}</Text>
+    <Text style={styles.sectionTitle}>{title.toUpperCase()}</Text>
     <View style={styles.sectionContent}>{children}</View>
   </View>
 );
@@ -27,112 +27,129 @@ type SettingsItemProps = {
 };
 
 const SettingsItem = ({ icon, title, subtitle, rightElement, onPress }: SettingsItemProps) => (
-  <TouchableOpacity style={styles.settingsItem} onPress={onPress}>
+  <TouchableOpacity style={styles.settingsItem} onPress={onPress} disabled={!onPress}>
     <View style={styles.settingsItemIcon}>{icon}</View>
     <View style={styles.settingsItemContent}>
       <Text style={styles.settingsItemTitle}>{title}</Text>
       {subtitle && <Text style={styles.settingsItemSubtitle}>{subtitle}</Text>}
     </View>
     <View style={styles.settingsItemRight}>
-      {rightElement || <ChevronRight size={20} color="#999" />}
+      {rightElement ? rightElement : (onPress ? <ChevronRight size={20} color="#7A89FF" /> : null)}
     </View>
   </TouchableOpacity>
 );
 
 const AccountSettingsScreen = () => {
-  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const navigation = useNavigation<NativeStackNavigationProp<ProfileStackParamList>>();
   const [notificationsEnabled, setNotificationsEnabled] = React.useState(true);
+  const [emailNotificationsEnabled, setEmailNotificationsEnabled] = React.useState(false);
   const [locationEnabled, setLocationEnabled] = React.useState(true);
 
+  const handleProfileInfo = () => console.log("Navigate to Profile Information Edit");
+  const handleBusinessDetails = () => console.log("Navigate to Business Details Edit");
+  const handleChangePassword = () => console.log("Navigate to Change Password");
+  const handlePrivacyPolicy = () => console.log("Navigate to Privacy Policy");
+  const handleHelpCenter = () => console.log("Navigate to Help Center");
+  const handleContactSupport = () => console.log("Navigate to Contact Support");
+  const handleLogout = () => {
+    console.log("Logout action");
+  };
+
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <ArrowLeft size={24} color="#000" />
+          <ArrowLeft size={24} color="#00F0FF" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Account Settings</Text>
-        <View style={{ width: 24 }} />
+        <Text style={styles.headerTitle}>ACCOUNT SETTINGS</Text>
+        <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView style={styles.content}>
-        <SettingsSection title="Personal Information">
+      <ScrollView style={styles.contentContainer} showsVerticalScrollIndicator={false}>
+        <SettingsSection title="Personal & Business">
           <SettingsItem
-            icon={<User size={24} color="#2196F3" />}
+            icon={<User size={20} color="#00F0FF" />}
             title="Profile Information"
-            subtitle="Update your name, email, and phone number"
-            onPress={() => {}}
+            subtitle="Name, contact, public details"
+            onPress={handleProfileInfo}
           />
           <SettingsItem
-            icon={<User size={24} color="#2196F3" />}
+            icon={<User size={20} color="#00F0FF" />}
             title="Business Details"
-            subtitle="Manage your service offerings and business info"
-            onPress={() => {}}
+            subtitle="Service offerings, business address"
+            onPress={handleBusinessDetails}
           />
         </SettingsSection>
 
         <SettingsSection title="Notifications">
           <SettingsItem
-            icon={<Bell size={24} color="#FF9800" />}
+            icon={<Bell size={20} color="#00F0FF" />}
             title="Push Notifications"
             rightElement={
               <Switch
                 value={notificationsEnabled}
                 onValueChange={setNotificationsEnabled}
-                trackColor={{ false: '#ccc', true: '#2196F3' }}
+                trackColor={{ false: '#2A3555', true: 'rgba(0, 240, 255, 0.3)' }}
+                thumbColor={notificationsEnabled ? '#00F0FF' : '#7A89FF'}
               />
             }
           />
           <SettingsItem
-            icon={<Bell size={24} color="#FF9800" />}
+            icon={<Bell size={20} color="#00F0FF" />}
             title="Email Notifications"
-            subtitle="Receive updates and summaries via email"
-            onPress={() => {}}
+            rightElement={
+              <Switch
+                value={emailNotificationsEnabled}
+                onValueChange={setEmailNotificationsEnabled}
+                trackColor={{ false: '#2A3555', true: 'rgba(0, 240, 255, 0.3)' }}
+                thumbColor={emailNotificationsEnabled ? '#00F0FF' : '#7A89FF'}
+              />
+            }
           />
         </SettingsSection>
 
         <SettingsSection title="Privacy & Security">
           <SettingsItem
-            icon={<Lock size={24} color="#4CAF50" />}
+            icon={<Lock size={20} color="#00F0FF" />}
             title="Change Password"
-            subtitle="Update your account password"
-            onPress={() => {}}
+            onPress={handleChangePassword}
           />
           <SettingsItem
-            icon={<Lock size={24} color="#4CAF50" />}
+            icon={<Lock size={20} color="#00F0FF" />}
             title="Location Services"
+            subtitle="Manage location data usage"
             rightElement={
               <Switch
                 value={locationEnabled}
                 onValueChange={setLocationEnabled}
-                trackColor={{ false: '#ccc', true: '#2196F3' }}
+                trackColor={{ false: '#2A3555', true: 'rgba(0, 240, 255, 0.3)' }}
+                thumbColor={locationEnabled ? '#00F0FF' : '#7A89FF'}
               />
             }
           />
           <SettingsItem
-            icon={<Lock size={24} color="#4CAF50" />}
+            icon={<Lock size={20} color="#00F0FF" />}
             title="Privacy Policy"
-            onPress={() => {}}
+            onPress={handlePrivacyPolicy}
           />
         </SettingsSection>
 
         <SettingsSection title="Support">
           <SettingsItem
-            icon={<HelpCircle size={24} color="#673AB7" />}
+            icon={<HelpCircle size={20} color="#00F0FF" />}
             title="Help Center"
-            subtitle="FAQs and troubleshooting guides"
-            onPress={() => {}}
+            onPress={handleHelpCenter}
           />
           <SettingsItem
-            icon={<HelpCircle size={24} color="#673AB7" />}
+            icon={<HelpCircle size={20} color="#00F0FF" />}
             title="Contact Support"
-            subtitle="Get help with your account or services"
-            onPress={() => {}}
+            onPress={handleContactSupport}
           />
         </SettingsSection>
 
-        <TouchableOpacity style={styles.logoutButton} onPress={() => {}}>
-          <LogOut size={20} color="#fff" />
-          <Text style={styles.logoutText}>Log Out</Text>
+        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+          <LogOut size={20} color="#FF3D71" />
+          <Text style={styles.logoutText}>LOG OUT</Text>
         </TouchableOpacity>
 
         <Text style={styles.versionText}>Version 1.0.0</Text>
@@ -144,7 +161,7 @@ const AccountSettingsScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#0A0F1E',
   },
   header: {
     flexDirection: 'row',
@@ -152,64 +169,73 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: '#fff',
+    backgroundColor: 'rgba(10, 15, 30, 0.9)',
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    borderBottomColor: '#2A3555',
   },
   backButton: {
-    padding: 8,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0, 240, 255, 0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   headerTitle: {
     fontSize: 18,
-    fontWeight: '600',
+    fontFamily: 'Inter_700Bold',
+    color: '#00F0FF',
+    letterSpacing: 1.5,
   },
-  content: {
+  contentContainer: {
     flex: 1,
-    padding: 16,
+    paddingHorizontal: 16,
   },
   section: {
-    marginBottom: 24,
+    marginTop: 20,
+    marginBottom: 12,
   },
   sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#666',
-    marginBottom: 8,
-    paddingHorizontal: 4,
+    fontSize: 14,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#7A89FF',
+    marginBottom: 12,
+    letterSpacing: 1,
+    paddingLeft: 8,
   },
   sectionContent: {
-    backgroundColor: '#fff',
+    backgroundColor: '#121827',
     borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#2A3555',
     overflow: 'hidden',
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
   },
   settingsItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 14,
+    paddingVertical: 16,
     paddingHorizontal: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    borderBottomColor: 'rgba(42, 53, 85, 0.5)',
   },
   settingsItemIcon: {
     marginRight: 16,
+    width: 24,
+    alignItems: 'center',
   },
   settingsItemContent: {
     flex: 1,
   },
   settingsItemTitle: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#333',
+    fontSize: 15,
+    fontFamily: 'Inter_500Medium',
+    color: '#E0EFFF',
   },
   settingsItemSubtitle: {
     fontSize: 13,
-    color: '#777',
-    marginTop: 2,
+    fontFamily: 'Inter_400Regular',
+    color: '#7A89FF',
+    marginTop: 3,
   },
   settingsItemRight: {
     marginLeft: 8,
@@ -218,27 +244,28 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#f44336',
-    borderRadius: 8,
-    paddingVertical: 12,
-    marginBottom: 24,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    backgroundColor: 'rgba(255, 61, 113, 0.1)',
+    borderRadius: 10,
+    paddingVertical: 16,
+    marginTop: 24,
+    marginBottom: 16,
+    marginHorizontal: 8,
+    borderWidth: 1,
+    borderColor: '#FF3D71',
   },
   logoutText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-    marginLeft: 8,
+    color: '#FF3D71',
+    fontSize: 15,
+    fontFamily: 'Inter_600SemiBold',
+    marginLeft: 10,
+    letterSpacing: 1,
   },
   versionText: {
     fontSize: 12,
-    color: '#999',
+    fontFamily: 'Inter_400Regular',
+    color: '#7A89FF',
     textAlign: 'center',
-    marginBottom: 24,
+    paddingVertical: 24,
   },
 });
 

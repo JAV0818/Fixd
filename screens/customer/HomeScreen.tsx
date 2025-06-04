@@ -1,18 +1,20 @@
-import { View, Text, ScrollView, StyleSheet, Image, Pressable, TextInput, FlatList, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Image, Pressable, TextInput, FlatList, ActivityIndicator, Alert, TouchableOpacity } from 'react-native';
 import { Search, Bell, Star, Wrench, Clock, MapPin, Zap, Car, Navigation, ShoppingCart, PlusCircle } from 'lucide-react-native';
 import { useState, useEffect } from 'react';
 import NotificationPanel from '../../components/NotificationPanel';
 // import { useRouter } from 'expo-router';
 import { useNavigation } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '@/navigation/AppNavigator'; // We need Root here to navigate outside tabs
+import { HomeStackParamList } from '../../navigation/CustomerNavigator'; // Added import
 import { useSafeAreaInsets } from 'react-native-safe-area-context'; // Import the hook
 import { useCart } from '@/contexts/CartContext'; // Import cart context
 // Import the individual card components
 import EmergencyServiceCard, { EmergencyServiceProps } from '@/components/services/EmergencyServiceCard';
 import ServiceCard, { ServiceItemProps } from '@/components/services/ServiceCard'; // Assuming ServiceCard uses ServiceItemProps
 import { auth, firestore } from '@/lib/firebase'; // Import Firebase
-import { collection, query, where, onSnapshot } from 'firebase/firestore'; // Import Firestore query functions
+import { collection, query, where, onSnapshot, orderBy } from 'firebase/firestore'; // Import Firestore query functions
+import { CustomCharge } from '../../types/customCharges'; // Import CustomCharge type
 
 // Define Service Category structure locally now
 interface ServiceCategory {
@@ -91,15 +93,40 @@ interface Vehicle {
   // Add other fields like vin, licensePlate, color etc. as needed
 }
 
-export default function HomeScreen() {
+// Helper function to get status style
+const getStatusStyle = (status: CustomCharge['status']) => {
+  switch (status) {
+    case 'PendingApproval':
+      return styles.statusPendingApproval;
+    case 'ApprovedAndPendingPayment':
+      return styles.statusApproved; // Assuming you'll add this style
+    case 'Paid':
+      return styles.statusPaid; // Assuming you'll add this style
+    case 'DeclinedByCustomer':
+      return styles.statusDeclined;
+    case 'CancelledByMechanic':
+      return styles.statusCancelled;
+    default:
+      return {}; // Default empty style or a generic one
+  }
+};
+
+// Define Props type for HomeScreen
+type HomeScreenProps = NativeStackScreenProps<HomeStackParamList, 'Home'>;
+
+export default function HomeScreen({ navigation }: HomeScreenProps) {
   // const router = useRouter();
-  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const rootNavigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const insets = useSafeAreaInsets(); // Get safe area insets
   const { state: cartState, dispatch: cartDispatch } = useCart(); // Get cart state AND dispatch
   const [showNotifications, setShowNotifications] = useState(false);
   const [userVehicles, setUserVehicles] = useState<Vehicle[]>([]);
   const [loadingVehicles, setLoadingVehicles] = useState(true);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null); // State for selected vehicle
+
+  // New state for custom charges
+  const [pendingCustomCharges, setPendingCustomCharges] = useState<CustomCharge[]>([]);
+  const [loadingCustomCharges, setLoadingCustomCharges] = useState(true);
 
   // Fetch user vehicles (example using onSnapshot for real-time updates)
   useEffect(() => {
@@ -134,8 +161,44 @@ export default function HomeScreen() {
     return () => unsubscribe(); 
   }, []); // Run once on mount
 
+  // New useEffect to fetch pending custom charges
+  useEffect(() => {
+    const user = auth.currentUser;
+    if (!user) {
+      setLoadingCustomCharges(false);
+      setPendingCustomCharges([]); // Clear charges if user logs out
+      return; // Not logged in
+    }
+
+    const chargesRef = collection(firestore, 'customCharges');
+    const q = query(
+      chargesRef,
+      where('customerId', '==', user.uid),
+      where('status', '==', 'PendingApproval'),
+      orderBy('createdAt', 'desc')
+    );
+
+    setLoadingCustomCharges(true);
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+      const fetchedCharges: CustomCharge[] = [];
+      querySnapshot.forEach((doc) => {
+        fetchedCharges.push({ id: doc.id, ...doc.data() } as CustomCharge);
+      });
+      setPendingCustomCharges(fetchedCharges);
+      setLoadingCustomCharges(false);
+      console.log("Fetched pending custom charges: ", fetchedCharges.length);
+    }, (error) => {
+      console.error("Error fetching pending custom charges: ", error);
+      setLoadingCustomCharges(false);
+      Alert.alert("Error", "Could not load pending custom charges.");
+    });
+
+    // Clean up listener on unmount
+    return () => unsubscribe();
+  }, [auth.currentUser]); // Re-run if user changes
+
   const handleCartPress = () => {
-    navigation.navigate('Cart');
+    rootNavigation.navigate('Cart');
   };
 
   // Reverted handleServiceSelect to navigate, not add directly to cart
@@ -154,7 +217,7 @@ export default function HomeScreen() {
     
     // Always navigate to ServiceDetail, passing serviceId and vehicleId
     // We no longer differentiate BatteryJumpStart here, let ServiceDetail handle it or create specific screens later
-    navigation.navigate('ServiceDetail', { id: serviceId, vehicleId: vehicleIdToPass });
+    rootNavigation.navigate('ServiceDetail', { id: serviceId, vehicleId: vehicleIdToPass });
     
     // Remove direct cart dispatch logic
     /* 
@@ -194,7 +257,7 @@ export default function HomeScreen() {
   };
 
   const handleAddVehicle = () => {
-    navigation.navigate('AddVehicle'); // Navigate to the new screen
+    rootNavigation.navigate('AddVehicle');
   };
 
   // Render item for vehicle list - Now Pressable and indicates selection
@@ -211,6 +274,35 @@ export default function HomeScreen() {
         </Text>
         {/* Add options like delete or edit later */}
       </Pressable>
+    );
+  };
+
+  // New: Render item for pending custom charges list
+  const renderPendingChargeItem = ({ item }: { item: CustomCharge }) => {
+    const handlePress = () => {
+      if (item.id) { // Check if item.id is defined
+        console.log("Navigate to CustomChargeDetailScreen with ID:", item.id);
+        navigation.navigate('CustomChargeDetail', { customChargeId: item.id }); // This now uses the correct navigation prop
+      } else {
+        console.error("Cannot navigate to CustomChargeDetail: charge ID is undefined.");
+        Alert.alert("Error", "Cannot open charge details: Charge ID is missing.");
+      }
+    };
+
+    return (
+      <TouchableOpacity style={styles.pendingChargeItem} onPress={handlePress}>
+        <View style={styles.pendingChargeHeader}>
+            <Text style={styles.pendingChargeMechanic}>{item.mechanicName || 'Mechanic'}</Text>
+            <Text style={styles.pendingChargeDate}>
+              {item.createdAt?.toDate ? item.createdAt.toDate().toLocaleDateString() : 'Date N/A'}
+            </Text>
+        </View>
+        <Text style={styles.pendingChargeDescription} numberOfLines={2}>{item.description || 'No description provided.'}</Text>
+        <Text style={styles.pendingChargePrice}>Total: ${item.price?.toFixed(2) || 'N/A'}</Text>
+        <Text style={[styles.pendingChargeStatus, getStatusStyle(item.status)]}>
+          Status: {item.status}
+        </Text>
+      </TouchableOpacity>
     );
   };
 
@@ -283,6 +375,32 @@ export default function HomeScreen() {
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        {/* New Section: Pending Custom Charges */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>CUSTOM QUOTES</Text>
+            {/* Optional: Icon or count badge here */}
+            {pendingCustomCharges.length > 0 && (
+                <View style={styles.notificationBadge}> 
+                    <Text style={styles.notificationBadgeText}>{pendingCustomCharges.length}</Text>
+                </View>
+            )}
+          </View>
+          {loadingCustomCharges ? (
+            <ActivityIndicator color="#00F0FF" style={{ marginVertical: 20 }} />
+          ) : pendingCustomCharges.length > 0 ? (
+            <FlatList
+              data={pendingCustomCharges}
+              renderItem={renderPendingChargeItem}
+              keyExtractor={(item) => item.id!}
+              // style={styles.pendingChargesList} // Add if specific list styling is needed
+              scrollEnabled={false} // Parent ScrollView handles scrolling
+            />
+          ) : (
+            <Text style={styles.noPendingChargesText}>You have no pending custom quotes at the moment.</Text>
+          )}
+        </View>
+
         {/* Emergency Services Section */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
@@ -497,5 +615,83 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_400Regular',
     textAlign: 'center',
     marginVertical: 10,
+  },
+  noPendingChargesText: {
+    color: '#7A89FF',
+    fontSize: 14,
+    fontFamily: 'Inter_400Regular',
+    textAlign: 'center',
+    paddingVertical: 20,
+  },
+  pendingChargeItem: {
+    backgroundColor: '#1A2138', // Similar to vehicle item cards
+    borderRadius: 12,
+    padding: 15,
+    marginBottom: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: '#00F0FF', // Accent color
+  },
+  pendingChargeHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  pendingChargeMechanic: {
+    fontSize: 16,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#FFFFFF',
+  },
+  pendingChargeDate: {
+    fontSize: 12,
+    fontFamily: 'Inter_400Regular',
+    color: '#AEAEAE',
+  },
+  pendingChargeDescription: {
+    fontSize: 14,
+    fontFamily: 'Inter_400Regular',
+    color: '#E0E0E0',
+    marginBottom: 8,
+  },
+  pendingChargePrice: {
+    fontSize: 15,
+    fontFamily: 'Inter_700Bold',
+    color: '#FFFFFF',
+    marginBottom: 8,
+    textAlign: 'right',
+  },
+  pendingChargeStatus: {
+    fontSize: 13,
+    fontFamily: 'Inter_500Medium',
+    textAlign: 'right',
+  },
+  statusPendingApproval: {
+    color: '#FFB800', // Orange/Yellow for pending
+  },
+  statusApproved: { // Example - Add to your styles
+    color: '#4CAF50', // Green for approved
+  },
+  statusPaid: { // Example - Add to your styles
+    color: '#2196F3', // Blue for paid
+  },
+  statusDeclined: { // Example - Add to your styles
+    color: '#F44336', // Red for declined
+  },
+  statusCancelled: { // Example - Add to your styles
+    color: '#9E9E9E', // Grey for cancelled
+  },
+  notificationBadge: { // Re-using cartBadge style for consistency for now
+    backgroundColor: '#FF3D71', // Or a different color for quotes
+    borderRadius: 10,
+    minWidth: 18,
+    height: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 5,
+  },
+  notificationBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontFamily: 'Inter_600SemiBold',
+    textAlign: 'center',
   },
 }); 

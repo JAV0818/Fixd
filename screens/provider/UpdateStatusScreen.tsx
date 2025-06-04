@@ -1,45 +1,279 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowLeft, CheckCircle, Circle, Loader } from 'lucide-react-native';
+import { ArrowLeft, CheckCircle, Circle, Loader, User, MapPin, Wrench } from 'lucide-react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ProviderStackParamList } from '@/navigation/ProviderNavigator';
 import { RepairOrder } from '@/types/orders';
+import { auth, firestore } from '@/lib/firebase';
+import { doc, getDoc, updateDoc, serverTimestamp, increment } from 'firebase/firestore';
 
 type Props = NativeStackScreenProps<ProviderStackParamList, 'UpdateStatus'>;
 
-// Define possible statuses
-const STATUS_OPTIONS: Array<RepairOrder['status']> = [
-  // 'Pending', // Provider shouldn't set back to Pending manually?
-  'Accepted',
-  'InProgress',
-  'Completed',
-  'Cancelled'
+// Define possible statuses with descriptions
+type StatusValue = 'Accepted' | 'InProgress' | 'Completed' | 'Cancelled';
+
+const STATUS_OPTIONS: Array<{
+  value: StatusValue;
+  label: string;
+  description: string;
+  canUpdateTo: StatusValue[];
+}> = [
+  {
+    value: 'Accepted',
+    label: 'Accepted',
+    description: 'Order has been accepted and is scheduled',
+    canUpdateTo: ['InProgress', 'Cancelled']
+  },
+  {
+    value: 'InProgress',
+    label: 'In Progress',
+    description: 'Service is currently being performed',
+    canUpdateTo: ['Completed', 'Cancelled']
+  },
+  {
+    value: 'Completed',
+    label: 'Completed',
+    description: 'Service has been completed successfully',
+    canUpdateTo: []
+  },
+  {
+    value: 'Cancelled',
+    label: 'Cancelled',
+    description: 'Order has been cancelled',
+    canUpdateTo: []
+  }
 ];
+
+interface OrderDetails {
+  id: string;
+  customerName?: string;
+  status: RepairOrder['status'];
+  serviceName?: string;
+  locationAddress?: string;
+  createdAt?: any;
+}
 
 export default function UpdateStatusScreen({ navigation, route }: Props) {
   const { orderId } = route.params;
-  // In a real app, fetch the current status for this orderId
-  const [currentStatus, setCurrentStatus] = useState('Scheduled'); 
-  const [selectedStatus, setSelectedStatus] = useState(currentStatus);
+  const [orderDetails, setOrderDetails] = useState<OrderDetails | null>(null);
+  const [selectedStatus, setSelectedStatus] = useState<RepairOrder['status'] | null>(null);
   const [updating, setUpdating] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleUpdateStatus = () => {
-    if (selectedStatus === currentStatus) {
+  useEffect(() => {
+    fetchOrderDetails();
+  }, [orderId]);
+
+  const fetchOrderDetails = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const orderRef = doc(firestore, 'repairOrders', orderId);
+      const orderSnap = await getDoc(orderRef);
+
+      if (!orderSnap.exists()) {
+        setError("Order not found.");
+        return;
+      }
+
+      const orderData = orderSnap.data() as RepairOrder;
+      
+      // Verify that this order belongs to the current provider
+      if (orderData.providerId !== auth.currentUser?.uid) {
+        setError("You don't have permission to update this order.");
+        return;
+      }
+
+      // Fetch customer details if available
+      let customerName = 'Unknown Customer';
+      if (orderData.customerId) {
+        try {
+          const customerRef = doc(firestore, 'users', orderData.customerId);
+          const customerSnap = await getDoc(customerRef);
+          if (customerSnap.exists()) {
+            const customerData = customerSnap.data();
+            customerName = `${customerData.firstName || ''} ${customerData.lastName || ''}`.trim();
+          }
+        } catch (customerError) {
+          console.warn("Could not fetch customer details:", customerError);
+        }
+      }
+
+      const details: OrderDetails = {
+        id: orderId,
+        customerName,
+        status: orderData.status,
+        serviceName: orderData.items?.[0]?.name || 'Service',
+        locationAddress: orderData.locationDetails?.address || 'Address not specified',
+        createdAt: orderData.createdAt
+      };
+
+      setOrderDetails(details);
+      setSelectedStatus(orderData.status);
+    } catch (err) {
+      console.error("Error fetching order details:", err);
+      setError("Failed to load order details.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getAvailableStatuses = () => {
+    if (!orderDetails) return [];
+    
+    const currentOption = STATUS_OPTIONS.find(option => option.value === orderDetails.status);
+    if (!currentOption) return STATUS_OPTIONS;
+    
+    // Return current status + statuses it can transition to
+    const availableValues = [currentOption.value, ...currentOption.canUpdateTo];
+    return STATUS_OPTIONS.filter(option => availableValues.includes(option.value));
+  };
+
+  const validateStatusTransition = (fromStatus: RepairOrder['status'], toStatus: RepairOrder['status']): boolean => {
+    if (fromStatus === toStatus) return true;
+    
+    const currentOption = STATUS_OPTIONS.find(option => option.value === fromStatus);
+    return currentOption ? currentOption.canUpdateTo.includes(toStatus as StatusValue) : false;
+  };
+
+  const handleUpdateStatus = async () => {
+    if (!orderDetails || !selectedStatus) return;
+    
+    if (selectedStatus === orderDetails.status) {
       Alert.alert("No Change", "The status has not been changed.");
       return;
     }
-    
-    setUpdating(true);
-    // Simulate API call to update status
-    setTimeout(() => {
-      setUpdating(false);
-      // In a real app, update the currentStatus based on API response
-      setCurrentStatus(selectedStatus); 
-      Alert.alert("Status Updated", `Order status changed to ${selectedStatus}.`);
-      navigation.goBack(); // Navigate back after successful update
-    }, 1000); 
+
+    if (!validateStatusTransition(orderDetails.status, selectedStatus)) {
+      Alert.alert(
+        "Invalid Status Change", 
+        `Cannot change status from ${orderDetails.status} to ${selectedStatus}.`
+      );
+      return;
+    }
+
+    // Show confirmation for certain status changes
+    if (selectedStatus === 'Cancelled') {
+      Alert.alert(
+        "Confirm Cancellation",
+        "Are you sure you want to cancel this order? This action cannot be undone.",
+        [
+          { text: "No", style: "cancel" },
+          { text: "Yes, Cancel", style: "destructive", onPress: () => performStatusUpdate() }
+        ]
+      );
+      return;
+    }
+
+    if (selectedStatus === 'Completed') {
+      Alert.alert(
+        "Confirm Completion",
+        "Are you sure you want to mark this service as completed?",
+        [
+          { text: "No", style: "cancel" },
+          { text: "Yes, Complete", onPress: () => performStatusUpdate() }
+        ]
+      );
+      return;
+    }
+
+    performStatusUpdate();
   };
+
+  const performStatusUpdate = async () => {
+    if (!orderDetails || !selectedStatus) return;
+
+    setUpdating(true);
+    try {
+      const orderRef = doc(firestore, 'repairOrders', orderId);
+      const updateData: any = {
+        status: selectedStatus,
+        updatedAt: serverTimestamp()
+      };
+
+      // Add specific timestamps for certain status changes
+      if (selectedStatus === 'InProgress' && orderDetails.status !== 'InProgress') {
+        updateData.startedAt = serverTimestamp();
+      } else if (selectedStatus === 'Completed' && orderDetails.status !== 'Completed') {
+        updateData.completedAt = serverTimestamp();
+        
+        // Update provider's job completion count
+        if (auth.currentUser) {
+          const providerRef = doc(firestore, 'users', auth.currentUser.uid);
+          await updateDoc(providerRef, {
+            numberOfJobsCompleted: increment(1)
+          });
+        }
+      } else if (selectedStatus === 'Cancelled' && orderDetails.status !== 'Cancelled') {
+        updateData.cancelledAt = serverTimestamp();
+      }
+
+      await updateDoc(orderRef, updateData);
+
+      Alert.alert(
+        "Status Updated", 
+        `Order status has been changed to ${selectedStatus}.`,
+        [
+          {
+            text: "OK",
+            onPress: () => navigation.goBack()
+          }
+        ]
+      );
+
+      // Update local state
+      setOrderDetails(prev => prev ? { ...prev, status: selectedStatus } : null);
+
+    } catch (error) {
+      console.error("Error updating order status:", error);
+      Alert.alert("Error", "Failed to update order status. Please try again.");
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+            <ArrowLeft size={24} color="#00F0FF" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>UPDATE STATUS</Text>
+          <View style={{ width: 24 }} />
+        </View>
+        <View style={styles.centeredContainer}>
+          <ActivityIndicator size="large" color="#00F0FF" />
+          <Text style={styles.loadingText}>Loading order details...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (error || !orderDetails) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+            <ArrowLeft size={24} color="#00F0FF" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>UPDATE STATUS</Text>
+          <View style={{ width: 24 }} />
+        </View>
+        <View style={styles.centeredContainer}>
+          <Text style={styles.errorText}>{error || "Order details not available."}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={fetchOrderDetails}>
+            <Text style={styles.retryButtonText}>Try Again</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  const availableStatuses = getAvailableStatuses();
 
   return (
     <SafeAreaView style={styles.container}>
@@ -47,51 +281,75 @@ export default function UpdateStatusScreen({ navigation, route }: Props) {
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <ArrowLeft size={24} color="#00F0FF" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>UPDATE ORDER STATUS</Text>
-        <View style={{ width: 24 }} /> 
+        <Text style={styles.headerTitle}>UPDATE STATUS</Text>
+        <View style={{ width: 24 }} />
       </View>
 
       <View style={styles.content}>
-        <Text style={styles.infoText}>Order ID: {orderId}</Text>
-        <Text style={styles.infoText}>Current Status: {currentStatus}</Text>
-        
-        <Text style={styles.selectTitle}>Select New Status:</Text>
-        
+        {/* Order Summary */}
+        <View style={styles.orderSummary}>
+          <Text style={styles.summaryTitle}>ORDER DETAILS</Text>
+          <View style={styles.summaryRow}>
+            <User size={16} color="#7A89FF" />
+            <Text style={styles.summaryText}>{orderDetails.customerName}</Text>
+          </View>
+          <View style={styles.summaryRow}>
+            <Wrench size={16} color="#7A89FF" />
+            <Text style={styles.summaryText}>{orderDetails.serviceName}</Text>
+          </View>
+          <View style={styles.summaryRow}>
+            <MapPin size={16} color="#7A89FF" />
+            <Text style={styles.summaryText}>{orderDetails.locationAddress}</Text>
+          </View>
+        </View>
+
+        {/* Current Status */}
+        <View style={styles.currentStatusContainer}>
+          <Text style={styles.currentStatusLabel}>CURRENT STATUS</Text>
+          <Text style={styles.currentStatusValue}>{orderDetails.status.toUpperCase()}</Text>
+        </View>
+
+        {/* Status Options */}
+        <Text style={styles.selectTitle}>SELECT NEW STATUS</Text>
         <View style={styles.statusOptionsContainer}>
-          {STATUS_OPTIONS.map((status) => (
+          {availableStatuses.map((statusOption) => (
             <TouchableOpacity 
-              key={status} 
+              key={statusOption.value} 
               style={styles.statusOption}
-              onPress={() => setSelectedStatus(status)}
+              onPress={() => setSelectedStatus(statusOption.value)}
               disabled={updating}
             >
-              {selectedStatus === status ? (
+              {selectedStatus === statusOption.value ? (
                 <CheckCircle size={20} color="#00F0FF" />
               ) : (
                 <Circle size={20} color="#7A89FF" />
               )}
-              <Text 
-                style={[
-                  styles.statusLabel,
-                  selectedStatus === status && styles.selectedStatusLabel
-                ]}
-              >
-                {status}
-              </Text>
+              <View style={styles.statusContent}>
+                <Text 
+                  style={[
+                    styles.statusLabel,
+                    selectedStatus === statusOption.value && styles.selectedStatusLabel
+                  ]}
+                >
+                  {statusOption.label.toUpperCase()}
+                </Text>
+                <Text style={styles.statusDescription}>{statusOption.description}</Text>
+              </View>
             </TouchableOpacity>
           ))}
         </View>
 
+        {/* Update Button */}
         <TouchableOpacity 
           style={[
             styles.updateButton, 
-            (selectedStatus === currentStatus || updating) && styles.disabledButton
+            (selectedStatus === orderDetails.status || updating) && styles.disabledButton
           ]} 
           onPress={handleUpdateStatus}
-          disabled={selectedStatus === currentStatus || updating}
+          disabled={selectedStatus === orderDetails.status || updating}
         >
           {updating ? (
-            <Loader size={20} color="#0A0F1E" style={styles.loaderIcon} />
+            <ActivityIndicator size="small" color="#0A0F1E" />
           ) : (
             <Text style={styles.updateButtonText}>UPDATE STATUS</Text>
           )}
@@ -128,18 +386,53 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 24,
   },
-  infoText: {
+  orderSummary: {
+    backgroundColor: 'rgba(26, 33, 56, 1)',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 24,
+  },
+  summaryTitle: {
+    fontSize: 14,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#00F0FF',
+    letterSpacing: 1,
+    marginBottom: 12,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  summaryText: {
     fontSize: 14,
     fontFamily: 'Inter_400Regular',
     color: '#FFFFFF',
-    marginBottom: 8,
-    opacity: 0.8,
+    marginLeft: 8,
+    flex: 1,
+  },
+  currentStatusContainer: {
+    backgroundColor: 'rgba(26, 33, 56, 1)',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 24,
+  },
+  currentStatusLabel: {
+    fontSize: 12,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#7A89FF',
+    letterSpacing: 1,
+    marginBottom: 4,
+  },
+  currentStatusValue: {
+    fontSize: 16,
+    fontFamily: 'Inter_700Bold',
+    color: '#00F0FF',
   },
   selectTitle: {
-    fontSize: 16,
+    fontSize: 14,
     fontFamily: 'Inter_600SemiBold',
-    color: '#00F0FF',
-    marginTop: 24,
+    color: '#FFFFFF',
     marginBottom: 16,
     letterSpacing: 1,
   },
@@ -151,21 +444,31 @@ const styles = StyleSheet.create({
   },
   statusOption: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     paddingVertical: 14,
     paddingHorizontal: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#2A3555',
   },
-  statusLabel: {
-    fontSize: 16,
-    fontFamily: 'Inter_500Medium',
-    color: '#FFFFFF',
+  statusContent: {
+    flex: 1,
     marginLeft: 12,
   },
-  selectedStatusLabel: {
+  statusLabel: {
+    fontSize: 16,
     fontFamily: 'Inter_600SemiBold',
+    color: '#FFFFFF',
+    marginBottom: 4,
+  },
+  selectedStatusLabel: {
     color: '#00F0FF',
+  },
+  statusDescription: {
+    fontSize: 12,
+    fontFamily: 'Inter_400Regular',
+    color: '#FFFFFF',
+    opacity: 0.7,
+    lineHeight: 16,
   },
   updateButton: {
     backgroundColor: '#00F0FF',
@@ -173,7 +476,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 'auto', // Push to bottom
+    marginTop: 'auto',
   },
   updateButtonText: {
     fontSize: 16,
@@ -184,11 +487,35 @@ const styles = StyleSheet.create({
   disabledButton: {
     backgroundColor: 'rgba(0, 240, 255, 0.5)',
   },
-  loaderIcon: {
-    animationName: 'spin',
-    animationDuration: '1s',
-    animationIterationCount: 'infinite',
-    animationTimingFunction: 'linear',
+  centeredContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
   },
-  // Add keyframes for spinning animation if needed, typically done via native animation modules
+  loadingText: {
+    fontSize: 16,
+    fontFamily: 'Inter_400Regular',
+    color: '#7A89FF',
+    marginTop: 16,
+    textAlign: 'center',
+  },
+  errorText: {
+    fontSize: 16,
+    fontFamily: 'Inter_500Medium',
+    color: '#FF3D71',
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  retryButton: {
+    backgroundColor: '#00F0FF',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    fontSize: 16,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#0A0F1E',
+  },
 }); 

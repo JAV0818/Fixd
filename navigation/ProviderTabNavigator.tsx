@@ -1,5 +1,6 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Home, User, PenTool as Tool, Activity, Bell } from 'lucide-react-native';
 import { View, StyleSheet, Animated, Easing } from 'react-native';
 import { getFocusedRouteNameFromRoute, RouteProp } from '@react-navigation/native';
@@ -10,13 +11,35 @@ import ProviderDashboardScreen from '../screens/provider/ProviderDashboardScreen
 import ProviderProfileScreen from '../screens/provider/ProviderProfileScreen';
 import RepairOrdersScreen from '../screens/provider/RepairOrdersScreen';
 import RequestsScreen from '../screens/provider/RequestsScreen';
+import PerformanceDetailsScreen from '../screens/provider/PerformanceDetailsScreen';
+import AccountSettingsScreen from '../screens/provider/AccountSettingsScreen';
+
 // Import the ProviderNavigator stack
 import ProviderNavigator, { ProviderStackParamList } from './ProviderNavigator';
+
+// Define ParamList for the Profile Stack
+export type ProfileStackParamList = {
+  ProviderProfile: undefined;
+  PerformanceDetails: undefined;
+  AccountSettings: undefined;
+};
+
+const ProfileStackNavigator = createNativeStackNavigator<ProfileStackParamList>();
+
+function ProfileStack() {
+  return (
+    <ProfileStackNavigator.Navigator screenOptions={{ headerShown: false }}>
+      <ProfileStackNavigator.Screen name="ProviderProfile" component={ProviderProfileScreen} />
+      <ProfileStackNavigator.Screen name="PerformanceDetails" component={PerformanceDetailsScreen} />
+      <ProfileStackNavigator.Screen name="AccountSettings" component={AccountSettingsScreen} />
+    </ProfileStackNavigator.Navigator>
+  );
+}
 
 export type ProviderTabParamList = {
   Requests: NavigatorScreenParams<ProviderStackParamList> | undefined;
   RepairOrders: undefined;
-  Profile: undefined;
+  Profile: NavigatorScreenParams<ProfileStackParamList> | undefined;
 };
 
 const Tab = createBottomTabNavigator<ProviderTabParamList>();
@@ -178,7 +201,7 @@ export default function ProviderTabNavigator() {
               display: 'flex' as 'flex', // Default display
           };
           const routeName = getFocusedRouteNameFromRoute(route) ?? 'Requests';
-          const hideOnScreens = ['RequestContact', 'RequestDetail', 'RequestStart', 'RequestCancel']; 
+          const hideOnScreens = ['RequestContact', 'RequestDetail', 'RequestStart', 'RequestCancel', 'UpdateStatus', 'InspectionChecklist']; 
           if (hideOnScreens.includes(routeName)) {
               return { tabBarLabel: 'REQUESTS', tabBarStyle: { ...defaultStyle, display: 'none' } };
           }
@@ -186,7 +209,7 @@ export default function ProviderTabNavigator() {
         }}
       />
       <Tab.Screen name="RepairOrders" component={RepairOrdersScreen} options={{ tabBarLabel: 'REPAIR QUEUE' }} />
-      <Tab.Screen name="Profile" component={ProviderProfileScreen} />
+      <Tab.Screen name="Profile" component={ProfileStack} />
     </Tab.Navigator>
   );
 }

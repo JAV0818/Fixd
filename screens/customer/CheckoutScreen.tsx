@@ -105,6 +105,8 @@ export default function CheckoutScreen() {
 
     const newOrder = {
       customerId: user.uid,
+      customerName: user.displayName || 'Customer',
+      customerPhotoURL: user.photoURL || null,
       items: cartState.items.map(item => ({
         id: item.id,
         name: item.name,

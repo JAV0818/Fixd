@@ -11,16 +11,24 @@ import {
   ActivityIndicator,
   Animated,
   Dimensions,
-  Alert
+  Alert,
+  Image as RNImage,
+  Modal,
+  Linking,
 } from 'react-native';
-import { ArrowLeft, Send, Paperclip, Image as ImageIcon, Mic, CheckCheck } from 'lucide-react-native';
+import { ArrowLeft, Send, Paperclip, Image as ImageIcon, Mic, CheckCheck, Camera, File, Download, X } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '@/navigation/AppNavigator';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Timestamp, collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, doc, setDoc, getDoc } from 'firebase/firestore';
-import { auth, firestore } from '@/lib/firebase';
+import { auth, firestore, storage } from '@/lib/firebase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 
 type MechanicChatScreenRouteProp = RouteProp<RootStackParamList, 'MechanicChat'>;
 type MechanicChatScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'MechanicChat'>;
@@ -28,15 +36,14 @@ type MechanicChatScreenNavigationProp = NativeStackNavigationProp<RootStackParam
 // Message type definition
 type Message = {
   id: string;
-  text: string;
+  text?: string;
   createdAt: Timestamp;
   senderId: string;
   sentBy: 'customer' | 'provider';
-  // For potential image/attachment support
-  attachment?: { 
-    type: 'image' | 'document';
-    url: string;
-  };
+  attachmentUrl?: string;
+  attachmentType?: 'image' | 'document' | 'camera';
+  attachmentName?: string;
+  attachmentSize?: number;
 };
 
 export default function MechanicChatScreen() {
@@ -49,6 +56,8 @@ export default function MechanicChatScreen() {
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [uploadingAttachment, setUploadingAttachment] = useState(false);
+  const [showAttachmentModal, setShowAttachmentModal] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
   const flatListRef = useRef<FlatList>(null);
@@ -105,26 +114,174 @@ export default function MechanicChatScreen() {
     }).start();
   }, []);
 
+  // Enhanced image picker with multiple selection
+  const handlePickImage = async () => {
+    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permissionResult.granted) {
+      Alert.alert("Permission Denied", "Permission to access camera roll is required!");
+      return;
+    }
+    
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: false,
+      quality: 0.7,
+      allowsMultipleSelection: true,
+    });
+    
+    if (!result.canceled && result.assets && result.assets.length > 0) {
+      for (const asset of result.assets) {
+        await handleSendAttachment(asset.uri, 'image', asset.fileName || 'image.jpg', asset.fileSize);
+      }
+    }
+    setShowAttachmentModal(false);
+  };
+
+  // Camera capture function
+  const handleTakePhoto = async () => {
+    const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permissionResult.granted) {
+      Alert.alert("Permission Denied", "Permission to access camera is required!");
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      allowsEditing: false,
+      quality: 0.7,
+    });
+
+    if (!result.canceled && result.assets && result.assets.length > 0) {
+      const asset = result.assets[0];
+      await handleSendAttachment(asset.uri, 'camera', asset.fileName || 'photo.jpg', asset.fileSize);
+    }
+    setShowAttachmentModal(false);
+  };
+
+  // Document picker function
+  const handlePickDocument = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain'],
+        copyToCacheDirectory: true,
+        multiple: true,
+      });
+
+      if (!result.canceled && result.assets) {
+        for (const asset of result.assets) {
+          await handleSendAttachment(asset.uri, 'document', asset.name, asset.size);
+        }
+      }
+    } catch (error) {
+      console.error("Error picking document:", error);
+      Alert.alert("Error", "Could not pick document.");
+    }
+    setShowAttachmentModal(false);
+  };
+
+  // Enhanced send attachment function
+  const handleSendAttachment = async (uri: string, type: 'image' | 'document' | 'camera', fileName?: string, fileSize?: number) => {
+    if (!currentUser || !orderId) return;
+    setUploadingAttachment(true);
+    try {
+      const response = await fetch(uri);
+      const blob = await response.blob();
+      
+      // Validate file size (10MB limit)
+      if (blob.size > 10 * 1024 * 1024) {
+        Alert.alert("File Too Large", "Please select a file smaller than 10MB.");
+        return;
+      }
+
+      const fileExtension = fileName?.split('.').pop() || (type === 'image' || type === 'camera' ? 'jpg' : 'pdf');
+      const uploadFileName = `${Date.now()}-${currentUser.uid}-${fileName || `file.${fileExtension}`}`;
+      const attachmentRef = ref(storage, `chatAttachments/activeChat/${orderId}/${uploadFileName}`);
+      
+      await uploadBytes(attachmentRef, blob);
+      const downloadURL = await getDownloadURL(attachmentRef);
+
+      const messagesCollectionRef = collection(firestore, 'repairOrders', orderId, 'activeChat');
+      await addDoc(messagesCollectionRef, {
+        senderId: currentUser.uid,
+        attachmentUrl: downloadURL,
+        attachmentType: type,
+        attachmentName: fileName || `${type}.${fileExtension}`,
+        attachmentSize: fileSize || blob.size,
+        createdAt: serverTimestamp(),
+        sentBy: 'customer',
+        text: '',
+      });
+      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+    } catch (error) {
+      console.error("Error sending attachment:", error);
+      Alert.alert("Error", "Could not send attachment.");
+    } finally {
+      setUploadingAttachment(false);
+    }
+  };
+
+  // Helper functions
+  const formatFileSize = (bytes?: number) => {
+    if (!bytes) return '';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const getFileIcon = (type?: string, fileName?: string) => {
+    if (type === 'image' || type === 'camera') return ImageIcon;
+    if (fileName?.toLowerCase().includes('.pdf')) return File;
+    return File;
+  };
+
+  const handleImagePress = (imageUrl: string) => {
+    Alert.alert("Image View", "Full screen image viewer - implement with react-native-image-zoom-viewer or similar");
+  };
+
+  const handleDocumentPress = async (documentUrl: string, fileName: string) => {
+    try {
+      const localUri = FileSystem.cacheDirectory + fileName.replace(/[^a-zA-Z0-9.]/g, '_'); // Sanitize filename
+      
+      console.log('Downloading document from:', documentUrl);
+      console.log('Saving document to:', localUri);
+
+      const { uri } = await FileSystem.downloadAsync(documentUrl, localUri);
+      console.log('Downloaded to:', uri);
+
+      if (!(await Sharing.isAvailableAsync())) {
+        Alert.alert("Sharing not available", "Sharing is not available on your device.");
+        return;
+      }
+      await Sharing.shareAsync(uri, { dialogTitle: fileName, mimeType: 'application/octet-stream' });
+    } catch (error) {
+      console.error("Error handling document press:", error);
+      Alert.alert("Error", "Could not open or download document. Please try again.");
+    }
+  };
+
   const handleSendMessage = async () => {
-    if (!inputText.trim() || !currentUser || !orderId) {
+    if ((!inputText.trim() && !uploadingAttachment) || !currentUser || !orderId) {
         console.log("Send message preconditions not met (text, user, orderId)");
         return;
     }
     
     const messageText = inputText.trim();
     setInputText(''); // Clear input immediately
-    setSending(true);
+    setSending(true); // Combined with uploadingAttachment for disabling input/buttons
 
     const messagesCollectionRef = collection(firestore, 'repairOrders', orderId, 'activeChat');
 
     try {
-      // Add the new message
-      await addDoc(messagesCollectionRef, {
-        senderId: currentUser.uid,
-        text: messageText,
-        createdAt: serverTimestamp(),
-        sentBy: 'customer'
-      });
+      // Add the new message if there is text
+      if (messageText) {
+        await addDoc(messagesCollectionRef, {
+          senderId: currentUser.uid,
+          text: messageText,
+          createdAt: serverTimestamp(),
+          sentBy: 'customer'
+        });
+      }
+      // If an attachment was sent, it would have already created a message entry.
+      // This function is now primarily for text messages or if text is combined with a PENDING attachment (not implemented here).
 
       // Scroll to bottom after sending
       setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
@@ -200,6 +357,8 @@ export default function MechanicChatScreen() {
       return null; 
     }
     
+    const FileIconComponent = getFileIcon(item.attachmentType, item.attachmentName);
+    
     return (
       <View style={[
         styles.messageContainer, 
@@ -214,12 +373,41 @@ export default function MechanicChatScreen() {
             isUser ? styles.userMessageBubble : styles.mechanicMessageBubble,
           ]}
         >
-          <Text style={[
-            styles.messageText,
-            isUser ? styles.userMessageText : styles.mechanicMessageText
-          ]}>
-            {item.text}
-          </Text>
+          {item.text ? (
+            <Text style={[
+              styles.messageText,
+              isUser ? styles.userMessageText : styles.mechanicMessageText
+            ]}>
+              {item.text}
+            </Text>
+          ) : null}
+          
+          {/* Image Attachments */}
+          {item.attachmentUrl && (item.attachmentType === 'image' || item.attachmentType === 'camera') && (
+            <Pressable onPress={() => handleImagePress(item.attachmentUrl!)}>
+              <RNImage source={{ uri: item.attachmentUrl }} style={styles.chatImageAttachment} resizeMode="cover" />
+              {item.attachmentSize && (
+                <Text style={styles.attachmentSize}>{formatFileSize(item.attachmentSize)}</Text>
+              )}
+            </Pressable>
+          )}
+          
+          {/* Document Attachments */}
+          {item.attachmentUrl && item.attachmentType === 'document' && (
+            <Pressable style={styles.documentAttachment} onPress={() => handleDocumentPress(item.attachmentUrl!, item.attachmentName!)}>
+              <FileIconComponent size={24} color={isUser ? "#FFFFFF" : "#00F0FF"} />
+              <View style={styles.documentInfo}>
+                <Text style={[styles.documentName, isUser ? styles.userMessageText : styles.mechanicMessageText]}>
+                  {item.attachmentName || 'Document'}
+                </Text>
+                {item.attachmentSize && (
+                  <Text style={styles.documentSize}>{formatFileSize(item.attachmentSize)}</Text>
+                )}
+              </View>
+              <Download size={16} color={isUser ? "#FFFFFF" : "#7A89FF"} />
+            </Pressable>
+          )}
+          
           <View style={styles.messageFooter}>
             <Text style={[
               styles.messageTimestamp,
@@ -227,7 +415,6 @@ export default function MechanicChatScreen() {
             ]}>
               {formatTime(item.createdAt.toDate())}
             </Text>
-            {/* Read status removed - Implement later if needed */}
           </View>
         </LinearGradient>
       </View>
@@ -343,16 +530,19 @@ export default function MechanicChatScreen() {
           colors={['#121827', '#0A0F1E']}
           style={[
             styles.inputContainer,
-            // Use a smaller, consistent padding for the input bar itself
             { paddingBottom: Platform.OS === 'ios' ? Math.max(insets.bottom, 10) : 10 }
           ]}
         >
-          <Pressable style={styles.attachButton}>
+          <Pressable 
+            style={styles.attachButton} 
+            onPress={() => setShowAttachmentModal(true)} 
+            disabled={uploadingAttachment || sending}
+          >
             <LinearGradient
               colors={['#7A89FF', '#5A6AD0']}
               style={styles.iconButton}
             >
-              <Paperclip size={18} color="#FFFFFF" />
+              <Paperclip size={18} color={uploadingAttachment || sending ? "#555" : "#FFFFFF"} />
             </LinearGradient>
           </Pressable>
           
@@ -367,38 +557,84 @@ export default function MechanicChatScreen() {
             />
           </View>
           
-          <View style={styles.rightButtons}>
-            {inputText.length === 0 ? (
-              <>
-                <Pressable style={styles.mediaButton}>
-                  <LinearGradient
-                    colors={['#7A89FF', '#5A6AD0']}
-                    style={styles.iconButton}
-                  >
-                    <ImageIcon size={18} color="#FFFFFF" />
-                  </LinearGradient>
-                </Pressable>
-                <Pressable style={styles.mediaButton}>
-                  <LinearGradient
-                    colors={['#7A89FF', '#5A6AD0']}
-                    style={styles.iconButton}
-                  >
-                    <Mic size={18} color="#FFFFFF" />
-                  </LinearGradient>
-                </Pressable>
-              </>
-            ) : (
-              <Pressable style={styles.sendButton} onPress={handleSendMessage}>
+          {inputText.length === 0 ? (
+            <>
+              <Pressable style={styles.mediaButton} onPress={handleTakePhoto} disabled={uploadingAttachment || sending}>
                 <LinearGradient
-                  colors={['#00C2FF', '#0080FF']}
-                  style={styles.sendGradient}
+                  colors={['#7A89FF', '#5A6AD0']}
+                  style={styles.iconButton}
                 >
-                  <Send size={18} color="#FFFFFF" />
+                  <Camera size={18} color={uploadingAttachment || sending ? "#555" : "#FFFFFF"} />
                 </LinearGradient>
               </Pressable>
-            )}
-          </View>
+            </>
+          ) : (
+            <Pressable style={styles.sendButton} onPress={handleSendMessage} disabled={sending || uploadingAttachment || !inputText.trim()}>
+              <LinearGradient
+                colors={['#00C2FF', '#0080FF']}
+                style={styles.sendGradient}
+              >
+                <Send size={18} color="#FFFFFF" />
+              </LinearGradient>
+            </Pressable>
+          )}
         </LinearGradient>
+
+        {/* Attachment Selection Modal */}
+        <Modal
+          visible={showAttachmentModal}
+          transparent={true}
+          animationType="slide"
+          onRequestClose={() => setShowAttachmentModal(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <LinearGradient
+                colors={['#1A2138', '#0A0F1E']}
+                style={styles.modalGradient}
+              >
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>Select Attachment</Text>
+                  <Pressable onPress={() => setShowAttachmentModal(false)} style={styles.closeButton}>
+                    <X size={24} color="#FFFFFF" />
+                  </Pressable>
+                </View>
+                
+                <View style={styles.attachmentOptions}>
+                  <Pressable style={styles.attachmentOption} onPress={handleTakePhoto}>
+                    <LinearGradient colors={['#00C2FF', '#0080FF']} style={styles.optionIcon}>
+                      <Camera size={24} color="#FFFFFF" />
+                    </LinearGradient>
+                    <View style={styles.optionText}>
+                      <Text style={styles.optionTitle}>Camera</Text>
+                      <Text style={styles.optionDescription}>Take a photo</Text>
+                    </View>
+                  </Pressable>
+                  
+                  <Pressable style={styles.attachmentOption} onPress={handlePickImage}>
+                    <LinearGradient colors={['#7A89FF', '#5A6AD0']} style={styles.optionIcon}>
+                      <ImageIcon size={24} color="#FFFFFF" />
+                    </LinearGradient>
+                    <View style={styles.optionText}>
+                      <Text style={styles.optionTitle}>Photo Library</Text>
+                      <Text style={styles.optionDescription}>Choose from gallery</Text>
+                    </View>
+                  </Pressable>
+                  
+                  <Pressable style={styles.attachmentOption} onPress={handlePickDocument}>
+                    <LinearGradient colors={['#FF6B6B', '#E74C3C']} style={styles.optionIcon}>
+                      <File size={24} color="#FFFFFF" />
+                    </LinearGradient>
+                    <View style={styles.optionText}>
+                      <Text style={styles.optionTitle}>Document</Text>
+                      <Text style={styles.optionDescription}>PDF, Word, Text files</Text>
+                    </View>
+                  </Pressable>
+                </View>
+              </LinearGradient>
+            </View>
+          </View>
+        </Modal>
       </KeyboardAvoidingView>
     </Animated.View>
   );
@@ -617,5 +853,112 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: 'Inter_500Medium',
     marginTop: 16,
+  },
+  chatImageAttachment: {
+    width: 200, 
+    height: 200,
+    borderRadius: 10,
+    marginTop: 5,
+    marginBottom: 5,
+  },
+  attachmentSize: {
+    color: '#7A89FF',
+    fontSize: 10,
+    fontFamily: 'Inter_400Regular',
+    marginTop: 4,
+  },
+  documentAttachment: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(42, 53, 85, 0.5)',
+  },
+  documentInfo: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  documentName: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontFamily: 'Inter_400Regular',
+    marginBottom: 4,
+  },
+  documentSize: {
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontSize: 10,
+    fontFamily: 'Inter_400Regular',
+  },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  modalContent: {
+    backgroundColor: '#0A0F1E',
+    borderRadius: 20,
+    margin: 20,
+    width: '90%',
+    maxWidth: 400,
+  },
+  modalGradient: {
+    borderRadius: 20,
+    padding: 0,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#2A3555',
+  },
+  modalTitle: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontFamily: 'Inter_700Bold',
+  },
+  closeButton: {
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  attachmentOptions: {
+    padding: 20,
+    gap: 16,
+  },
+  attachmentOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    backgroundColor: 'rgba(42, 53, 85, 0.3)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#2A3555',
+  },
+  optionIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  optionText: {
+    marginLeft: 16,
+    flex: 1,
+  },
+  optionTitle: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontFamily: 'Inter_600SemiBold',
+    marginBottom: 4,
+  },
+  optionDescription: {
+    color: '#7A89FF',
+    fontSize: 13,
+    fontFamily: 'Inter_400Regular',
   },
 }); 

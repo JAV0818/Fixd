@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, ActivityIndicator, Alert } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ProviderStackParamList } from '../../navigation/ProviderNavigator';
-import { Calendar, Clock, MapPin, Play, X, MessageCircle, Check } from 'lucide-react-native';
+import { Calendar, Clock, MapPin, Play, X, MessageCircle, Check, PlusCircle } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NavigationProp } from '@react-navigation/native';
@@ -11,6 +11,7 @@ import { firestore, auth } from '@/lib/firebase';
 import { collection, query, where, onSnapshot, Timestamp, orderBy } from 'firebase/firestore';
 import { RepairOrder } from '@/types/orders';
 import RequestCard from '@/components/provider/RequestCard';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 
 // The Props should match the name of this screen in the navigator
 type Props = NativeStackScreenProps<ProviderStackParamList, 'Requests'>;
@@ -97,6 +98,12 @@ export default function RequestsScreen({ navigation: stackNavigation }: Props) {
       <SafeAreaView style={styles.container}>
         <View style={styles.header}> 
           <Text style={styles.sectionTitle}>SERVICE REQUESTS</Text>
+          <TouchableOpacity 
+            style={styles.addChargeButton}
+            onPress={() => stackNavigation.navigate('CreateCustomCharge')}
+          >
+            <PlusCircle size={28} color="#00F0FF" />
+          </TouchableOpacity>
         </View>
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyText}>NO PENDING REQUESTS</Text>
@@ -111,6 +118,41 @@ export default function RequestsScreen({ navigation: stackNavigation }: Props) {
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.sectionTitle}>PENDING SERVICE REQUESTS</Text>
+        <View style={{ flexDirection: 'row' }}> 
+          <TouchableOpacity 
+            style={[styles.addChargeButton, { marginRight: 8 }]}
+            onPress={async () => {
+              try {
+                const functionsInstance = getFunctions(auth.app);
+                const callCreatePaymentIntent = httpsCallable(functionsInstance, 'createPaymentIntent');
+                console.log('Calling createPaymentIntent function...');
+                const result = await callCreatePaymentIntent({
+                  testData: "hello from client - request screen",
+                  amount: 1000,
+                  currency: "usd",
+                  customChargeId: "tempTestCharge001"
+                });
+                console.log("Cloud function call result:", result.data);
+                const resultData = result.data as { status: string; stripeSecretKeyLoaded: boolean; receivedData: any };
+                Alert.alert(
+                  "Function Test Result", 
+                  `Status: ${resultData.status}\nStripe Key Loaded: ${resultData.stripeSecretKeyLoaded}\nData Sent: ${JSON.stringify(resultData.receivedData)}`
+                );
+              } catch (error: any) {
+                console.error("Cloud function call error:", error);
+                Alert.alert("Function Call Error", error.message || "An unknown error occurred");
+              }
+            }}
+          >
+            <Text style={{color: '#00F0FF'}}>Test PI</Text> 
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={styles.addChargeButton}
+            onPress={() => stackNavigation.navigate('CreateCustomCharge')}
+          >
+            <PlusCircle size={28} color="#00F0FF" />
+          </TouchableOpacity>
+        </View>
       </View>
       <FlatList
         ref={flatListRef}
@@ -135,13 +177,18 @@ const styles = StyleSheet.create({
     padding: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#2A3555',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   sectionTitle: {
     fontSize: 24,
     fontFamily: 'Inter_700Bold',
     color: '#00F0FF',
     letterSpacing: 2,
-    marginBottom: 8,
+  },
+  addChargeButton: {
+    padding: 8,
   },
   listContainer: {
     padding: 16,

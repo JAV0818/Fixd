@@ -60,13 +60,12 @@ export default function CartScreen() {
   };
 
   const renderCartItem = ({ item }: { item: CartItem }) => {
-    console.log(`Rendering item: ${item.id}, Price: ${item.price}, Quantity: ${item.quantity}`); 
+    console.log(`Rendering item: ${item.id}, Price: ${item.price}, Quantity: ${item.quantity}, Image: ${JSON.stringify(item.image)}`); 
     
     try {
       return (
         <View style={styles.cartItem}> 
-          {/* Placeholder for image if needed later */}
-          <View style={styles.itemImagePlaceholder} /> 
+          <Image source={item.image} style={styles.itemImage} onError={(e) => console.log("Error loading cart item image:", item.name, e.nativeEvent.error)} /> 
           
           <View style={styles.itemDetails}>
             <Text style={styles.itemName}>{item.name || 'Name Missing'}</Text> 

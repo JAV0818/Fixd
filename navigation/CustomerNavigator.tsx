@@ -2,12 +2,14 @@ import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Home, User, Activity } from 'lucide-react-native';
 import { View, StyleSheet, Animated, Easing } from 'react-native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 // --- Import the actual screen components ---
 // TODO: Adjust paths if files are moved/renamed later
 import HomeScreen from '../screens/customer/HomeScreen';
 import ProfileScreen from '../screens/customer/ProfileScreen';
 import OrderTrackingScreen from '../screens/customer/OrderTrackingScreen';
+import CustomChargeDetailScreen from '../screens/customer/CustomChargeDetailScreen';
 
 export type CustomerTabParamList = {
   Services: undefined;
@@ -15,7 +17,25 @@ export type CustomerTabParamList = {
   Profile: undefined;
 };
 
+// Added: StackParamList for screens within the "Services" tab
+export type HomeStackParamList = {
+  Home: undefined; // For HomeScreen
+  CustomChargeDetail: { customChargeId: string };
+  // Add other screens navigable from Home here
+};
+
 const Tab = createBottomTabNavigator<CustomerTabParamList>();
+const Stack = createNativeStackNavigator<HomeStackParamList>();
+
+// Added: StackNavigator for the "Services" tab
+function HomeStackNavigator() {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="Home" component={HomeScreen} />
+      <Stack.Screen name="CustomChargeDetail" component={CustomChargeDetailScreen} />
+    </Stack.Navigator>
+  );
+}
 
 // Generic glowing icon component
 interface GlowingIconProps {
@@ -155,7 +175,7 @@ export default function CustomerNavigator() {
         }
       })}
     >
-      <Tab.Screen name="Services" component={HomeScreen} />
+      <Tab.Screen name="Services" component={HomeStackNavigator} />
       <Tab.Screen name="Orders" component={OrderTrackingScreen} options={{ tabBarLabel: 'Orders' }} />
       <Tab.Screen name="Profile" component={ProfileScreen} />
     </Tab.Navigator>
@@ -186,7 +206,6 @@ const styles = StyleSheet.create({
     width: 40,
     borderRadius: 20,
     backgroundColor: '#00F0FF',
-    opacity: 0,
   },
   focusedGlowContainer: {
     shadowColor: '#00F0FF',

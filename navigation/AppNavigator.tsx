@@ -28,6 +28,7 @@ import MechanicChatScreen from '@/screens/customer/MechanicChatScreen'; // Impor
 import PastChatsScreen from '@/screens/customer/PastChatsScreen'; // Import the past chats screen
 import AddVehicleScreen from '@/screens/customer/AddVehicleScreen'; // Import AddVehicleScreen
 import PreAcceptanceChatScreen from '@/screens/customer/PreAcceptanceChatScreen'; // Import PreAcceptanceChatScreen
+import UpdateEmailScreen from '@/screens/customer/UpdateEmailScreen'; // Import the new screen
 
 // Combine all param lists for the root navigator
 // Use NavigatorScreenParams to type nested navigator params
@@ -43,6 +44,7 @@ export type RootStackParamList = {
   BatteryJumpStart: undefined; // Add the new dedicated screen
   ServiceSchedule: undefined; // Added from ProfileScreen navigation
   PrivacySettings: undefined; // Added from ProfileScreen navigation
+  UpdateEmail: undefined; // Added for updating email
   Cart: undefined; // Add the cart screen
   Checkout: undefined; // Add the checkout screen
   OrderDetail: { orderId: string }; // Add order detail screen
@@ -68,30 +70,42 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 function useAuthNavigation() {
   const [user, setUser] = useState<User | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [loading, setLoading] = useState(true); // Start loading
+  const [loading, setLoading] = useState(true); // Stays true until role is determined
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      setUser(currentUser); 
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
       if (currentUser) {
-        try {
-          // Keep loading until role is fetched
-          const userDoc = await getDoc(doc(firestore, 'users', currentUser.uid));
-          setIsAdmin(userDoc.data()?.isAdmin || false);
-        } catch (error) {
-          console.error("Error fetching user role:", error);
-          setIsAdmin(false); // Default to non-admin on error
-        } finally {
-          setLoading(false); // Stop loading ONLY after role check
-        }
+        // Introduce a small delay to allow other Firestore operations (like FCM token save)
+        // to potentially complete and for data to be more consistent for this read.
+        setTimeout(async () => {
+          try {
+            const userDocRef = doc(firestore, 'users', currentUser.uid);
+            const userDoc = await getDoc(userDocRef);
+            console.log('[AppNavigator with Delay] User document for role check (UID:', currentUser.uid, '):', userDoc.data());
+            if (userDoc.exists()) {
+              const userData = userDoc.data();
+              console.log('[AppNavigator with Delay] isAdmin field value:', userData.isAdmin, 'Type:', typeof userData.isAdmin);
+              setIsAdmin(userData.isAdmin === true);
+            } else {
+              console.log('[AppNavigator with Delay] User document does not exist for UID:', currentUser.uid);
+              setIsAdmin(false);
+            }
+          } catch (error) {
+            console.error("Error fetching user role (with delay):", error);
+            setIsAdmin(false);
+          } finally {
+            setLoading(false); // Role determination complete, stop loading
+          }
+        }, 750); // Delay of 750ms (adjust if needed)
       } else {
-        // No user, clear admin state and stop loading
+        // No user, clear admin state and stop loading immediately
         setIsAdmin(false);
-        setLoading(false); 
+        setLoading(false);
       }
     });
 
-    return () => unsubscribe(); // Cleanup on unmount
+    return () => unsubscribe();
   }, []);
 
   return { user, isAdmin, loading };
@@ -139,6 +153,7 @@ export default function AppNavigator() {
             <Stack.Screen name="PastChats" component={PastChatsScreen} />
             <Stack.Screen name="AddVehicle" component={AddVehicleScreen} />
             <Stack.Screen name="PreAcceptanceChat" component={PreAcceptanceChatScreen} />
+            <Stack.Screen name="UpdateEmail" component={UpdateEmailScreen} />
           </>
         )
       ) : (

@@ -10,12 +10,13 @@ import {
   Alert,
   ActivityIndicator,
   FlatList,
-  Dimensions
+  Dimensions,
+  TextInput
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ProviderStackParamList } from '../../navigation/ProviderNavigator'; // Adjust path if needed
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft, CheckCircle, Camera, XCircle, Image as ImageIcon } from 'lucide-react-native';
+import { ArrowLeft, CheckCircle, Camera, XCircle, Image as ImageIcon, CameraIcon } from 'lucide-react-native';
 import { auth, firestore, storage } from '@/lib/firebase'; // Assuming storage is exported from firebase config
 import { doc, setDoc, serverTimestamp, getDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -27,6 +28,7 @@ interface InspectionItem {
   key: string;
   label: string;
   category: string; // To group items
+  inputType?: 'rating' | 'text'; // Added: defaults to 'rating'
 }
 
 // Define categories and their items
@@ -98,17 +100,17 @@ const inspectionCategories: { title: string; items: InspectionItem[] }[] = [
   {
     title: 'TIRES & BRAKES',
     items: [
-      { key: 'brakePadsGeneral', label: 'Brake Pads Condition (General)', category: 'Tires & Brakes' },
-      { key: 'tireTreadGeneral', label: 'Tire Tread Depth (General)', category: 'Tires & Brakes' },
-      { key: 'tireWearPatternGeneral', label: 'Tire Wear Pattern (General)', category: 'Tires & Brakes' },
-      { key: 'tirePressureGeneral', label: 'Tire Pressure (General - Check all)', category: 'Tires & Brakes' },
+      { key: 'brakePadsGeneral', label: 'Brake Pads Condition (General)', category: 'Tires & Brakes', inputType: 'text' },
+      { key: 'tireTreadGeneral', label: 'Tire Tread Depth (General)', category: 'Tires & Brakes', inputType: 'text' },
+      { key: 'tireWearPatternGeneral', label: 'Tire Wear Pattern (General)', category: 'Tires & Brakes', inputType: 'text' },
+      { key: 'tirePressureGeneral', label: 'Tire Pressure (General - Check all)', category: 'Tires & Brakes', inputType: 'text' },
     ],
   },
   {
     title: 'MAINTENANCE ITEMS',
     items: [
-        { key: 'cabinAirFilterDue', label: 'Cabin Air Filter Change Due?', category: 'Maintenance' },
-        { key: 'sparkPlugsDue', label: 'Spark Plugs Change Due (Based on mileage/time)?', category: 'Maintenance' },
+        { key: 'cabinAirFilterDue', label: 'Cabin Air Filter Change Due?', category: 'Maintenance', inputType: 'text' },
+        { key: 'sparkPlugsDue', label: 'Spark Plugs Change Due (Based on mileage/time)?', category: 'Maintenance', inputType: 'text' },
     ],
   }
 ];
@@ -116,6 +118,7 @@ const inspectionCategories: { title: string; items: InspectionItem[] }[] = [
 
 type RatingValue = 'green' | 'yellow' | 'red' | undefined;
 type Ratings = Record<string, RatingValue>;
+type TextInputs = Record<string, string>; // Added for text inputs
 type ImageAsset = ImagePicker.ImagePickerAsset;
 
 type Props = NativeStackScreenProps<ProviderStackParamList, 'InspectionChecklist'>;
@@ -124,11 +127,12 @@ export default function InspectionChecklistScreen({ navigation, route }: Props) 
   const { orderId } = route.params;
   const insets = useSafeAreaInsets();
   const [ratings, setRatings] = useState<Ratings>({});
+  const [textInputs, setTextInputs] = useState<TextInputs>({}); // Added
   const [selectedImages, setSelectedImages] = useState<ImageAsset[]>([]);
-  const [imageUploadProgress, setImageUploadProgress] = useState<Record<string, number>>({});
   const [uploadedImageUrls, setUploadedImageUrls] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [overallSummaryNotes, setOverallSummaryNotes] = useState(""); // Added for overall notes
 
   useEffect(() => {
     const fetchReport = async () => {
@@ -138,8 +142,27 @@ export default function InspectionChecklistScreen({ navigation, route }: Props) 
         const reportSnap = await getDoc(reportRef);
         if (reportSnap.exists()) {
           const data = reportSnap.data();
-          setRatings(data.ratings || {});
-          setUploadedImageUrls(data.imageUrls || []);
+          // Adapt to new data structure if present, otherwise adapt old
+          if (data.sections) {
+            const newRatings: Ratings = {};
+            const newTextInputs: TextInputs = {};
+            Object.values(data.sections).forEach((section: any) => {
+              Object.entries(section).forEach(([itemKey, itemData]: [string, any]) => {
+                if (itemData.rating) {
+                  newRatings[itemKey] = itemData.rating;
+                }
+                if (itemData.value) {
+                  newTextInputs[itemKey] = itemData.value;
+                }
+              });
+            });
+            setRatings(newRatings);
+            setTextInputs(newTextInputs);
+          } else if (data.ratings) { // Fallback for old structure
+            setRatings(data.ratings || {});
+          }
+          setUploadedImageUrls(data.overallImageUrls || data.imageUrls || []); // Prioritize new overallImageUrls
+          setOverallSummaryNotes(data.overallSummaryNotes || "");
         }
       } catch (error) {
         console.error("Error fetching existing inspection report:", error);
@@ -155,15 +178,38 @@ export default function InspectionChecklistScreen({ navigation, route }: Props) 
     setRatings(prev => ({ ...prev, [itemKey]: value }));
   };
 
-  const pickImage = async () => {
+  const handleTextInputChange = (itemKey: string, value: string) => {
+    setTextInputs(prev => ({ ...prev, [itemKey]: value }));
+  };
+
+  const pickImageFromLibrary = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert("Permission Denied", "Camera roll access is needed to upload photos.");
+      Alert.alert("Permission Denied", "Media library access is needed to select photos.");
       return;
     }
     let result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: 'Images' as any,
       allowsMultipleSelection: true,
+      quality: 0.7,
+    });
+    if (!result.canceled && result.assets) {
+      setSelectedImages(prev => {
+        const newAssets = result.assets.filter(asset => !prev.some(existing => existing.uri === asset.uri));
+        return [...prev, ...newAssets];
+      });
+    }
+  };
+
+  const takePhotoWithCamera = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert("Permission Denied", "Camera access is needed to take photos.");
+      return;
+    }
+    let result = await ImagePicker.launchCameraAsync({
+      mediaTypes: 'Images' as any,
+      allowsEditing: false,
       quality: 0.7,
     });
     if (!result.canceled && result.assets) {
@@ -186,31 +232,12 @@ export default function InspectionChecklistScreen({ navigation, route }: Props) 
         style: "destructive",
         onPress: () => {
           setUploadedImageUrls(prev => prev.filter(url => url !== imageUrl));
-          console.log("Removed image from UI. Deletion from storage and DB needs to be implemented if image was already saved.");
+          // TODO: Optionally, implement deletion from Firebase Storage if the image was already saved in a *finalized* report.
+          // For now, removing from UI and not re-saving the URL is sufficient for an editable report.
+          console.log("Removed uploaded image URL from UI. It will not be saved unless re-added.");
         }
       }
     ]);
-  };
-
-  const uploadImageAndGetURL = async (imageAsset: ImageAsset): Promise<string | null> => {
-    if (!auth.currentUser) return null;
-    setImageUploadProgress(prev => ({ ...prev, [imageAsset.uri]: 0 }));
-    try {
-      const response = await fetch(imageAsset.uri);
-      const blob = await response.blob();
-      const imageName = `${Date.now()}-${imageAsset.fileName || 'image.jpg'}`;
-      const storagePath = `inspection_reports/${orderId}/initial/${imageName}`;
-      const imageRef = ref(storage, storagePath);
-      await uploadBytes(imageRef, blob);
-      setImageUploadProgress(prev => ({ ...prev, [imageAsset.uri]: 100 }));
-      const downloadURL = await getDownloadURL(imageRef);
-      return downloadURL;
-    } catch (e) {
-      console.error("Error uploading image: ", imageAsset.fileName, e);
-      Alert.alert("Upload Error", `Failed to upload ${imageAsset.fileName || 'image'}`);
-      setImageUploadProgress(prev => ({ ...prev, [imageAsset.uri]: -1 }));
-      return null;
-    }
   };
 
   const handleSaveInspection = async () => {
@@ -218,30 +245,73 @@ export default function InspectionChecklistScreen({ navigation, route }: Props) 
       Alert.alert("Error", "You must be logged in to save.");
       return;
     }
+    console.log('Current user UID attempting to save inspection:', auth.currentUser.uid);
     setSaving(true);
+    
     const newImageUrls: string[] = [];
+    // Upload newly selected images
     for (const imageAsset of selectedImages) {
-        const alreadyUploaded = uploadedImageUrls.some(url => url.includes(imageAsset.fileName || imageAsset.uri.split('/').pop() || 'unique_fallback_string'));
-        if (alreadyUploaded) continue;
-        const downloadURL = await uploadImageAndGetURL(imageAsset);
-        if (downloadURL) {
-            newImageUrls.push(downloadURL);
-        }
+      try {
+        const response = await fetch(imageAsset.uri);
+        const blob = await response.blob();
+        const fileExtension = imageAsset.uri.split('.').pop() || 'jpg';
+        const fileName = `${Date.now()}-${auth.currentUser.uid}-${Math.random().toString(36).substring(7)}.${fileExtension}`;
+        const imageRef = ref(storage, `inspectionReports/${orderId}/${fileName}`);
+        
+        await uploadBytes(imageRef, blob);
+        const downloadURL = await getDownloadURL(imageRef);
+        newImageUrls.push(downloadURL);
+      } catch (uploadError) {
+        console.error("Error uploading an image:", uploadError);
+        Alert.alert("Image Upload Failed", `Failed to upload image: ${imageAsset.fileName || 'selected image'}. Please try saving again.`);
+        setSaving(false);
+        return; // Stop saving if an image fails to upload
+      }
     }
+
     const finalImageUrls = Array.from(new Set([...uploadedImageUrls, ...newImageUrls]));
+
+    const reportRef = doc(firestore, 'repairOrders', orderId, 'inspectionReport', 'initial');
+    
+    const reportData: any = {
+      technicianUid: auth.currentUser.uid,
+      orderId: orderId,
+      reportName: 'Initial Inspection',
+      updatedAt: serverTimestamp(),
+      sections: {},
+      overallImageUrls: finalImageUrls, // Use the combined and uploaded URLs
+      overallSummaryNotes: overallSummaryNotes, 
+    };
+
+    // Populate sections for Firestore
+    inspectionCategories.forEach(category => {
+      const sectionKey = category.title.toUpperCase().replace(/\s+/g, '_').replace(/&/g, 'AND');
+      reportData.sections[sectionKey] = {};
+      category.items.forEach(item => {
+        reportData.sections[sectionKey][item.key] = {
+          label: item.label, // Store label for easier display later
+          rating: ratings[item.key] || null,
+          value: textInputs[item.key] || null,
+          notes: "", // Placeholder for item-specific notes
+          imageUrls: [] // Placeholder for item-specific images
+        };
+      });
+    });
+
     try {
-      const reportRef = doc(firestore, 'repairOrders', orderId, 'inspectionReport', 'initial');
-      await setDoc(reportRef, {
-        technicianUid: auth.currentUser.uid,
-        orderId: orderId,
-        ratings,
-        imageUrls: finalImageUrls,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      }, { merge: true });
+      const existingReportSnap = await getDoc(reportRef);
+      if (!existingReportSnap.exists()) {
+        reportData.createdAt = serverTimestamp(); // Set createdAt only if it's a new report
+      }
+
+      await setDoc(reportRef, reportData, { merge: true });
       Alert.alert("Success", "Inspection report saved!");
-      setUploadedImageUrls(finalImageUrls);
-      setSelectedImages([]);
+      setSelectedImages([]); // Clear selected images after successful upload and save
+      setUploadedImageUrls(finalImageUrls); // Update uploadedImageUrls to reflect the newly saved state
+      navigation.navigate('RequestStart', { 
+        orderId: orderId, 
+        inspectionCompleted: true 
+      });
     } catch (error) {
       console.error("Error saving inspection report:", error);
       Alert.alert("Error", "Could not save inspection report. Please try again.");
@@ -265,6 +335,22 @@ export default function InspectionChecklistScreen({ navigation, route }: Props) 
             onPress={() => handleRatingChange(itemKey, color)}
           />
         ))}
+      </View>
+    );
+  };
+
+  // Added: Render TextInput for specific items
+  const renderTextInput = (item: InspectionItem) => {
+    return (
+      <View style={styles.textInputContainer}>
+        <TextInput
+          style={styles.textInput}
+          placeholder="Enter details..."
+          placeholderTextColor="#7A89FF"
+          value={textInputs[item.key] || ''}
+          onChangeText={(text) => handleTextInputChange(item.key, text)}
+          multiline
+        />
       </View>
     );
   };
@@ -304,11 +390,32 @@ export default function InspectionChecklistScreen({ navigation, route }: Props) 
             {category.items.map((item) => (
               <View key={item.key} style={styles.itemRow}>
                 <Text style={styles.itemLabel}>{item.label}</Text>
-                {renderRatingButtons(item.key)}
+                {item.inputType === 'text' ? renderTextInput(item) : renderRatingButtons(item.key)}
               </View>
             ))}
           </View>
         ))}
+
+        <View style={styles.categoryContainer}>
+            <LinearGradient
+                colors={['#1A2238', '#121827']}
+                start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+                style={styles.categoryHeaderGradient}
+            >
+                <Text style={styles.categoryTitle}>Overall Summary Notes</Text>
+            </LinearGradient>
+            <View style={styles.notesInputContainer}>
+                <TextInput
+                    style={styles.notesInput}
+                    placeholder="Enter overall summary notes for the inspection..."
+                    placeholderTextColor="#7A89FF"
+                    value={overallSummaryNotes}
+                    onChangeText={setOverallSummaryNotes}
+                    multiline
+                    numberOfLines={4}
+                />
+            </View>
+        </View>
 
         <View style={styles.categoryContainer}>
             <LinearGradient
@@ -348,10 +455,16 @@ export default function InspectionChecklistScreen({ navigation, route }: Props) 
               style={styles.thumbnailList}
               contentContainerStyle={{ paddingVertical: 10 }}
             />
-            <TouchableOpacity style={styles.addPhotoButton} onPress={pickImage}>
-                <ImageIcon size={20} color="#00F0FF" style={{marginRight: 8}} />
-                <Text style={styles.addPhotoButtonText}>Add Photos</Text>
-            </TouchableOpacity>
+            <View style={styles.photoActionButtonsContainer}>
+                <TouchableOpacity style={[styles.photoActionButton, styles.photoActionButtonSecondary]} onPress={pickImageFromLibrary}>
+                    <ImageIcon size={20} color="#00F0FF" style={{marginRight: 8}} />
+                    <Text style={styles.photoActionButtonText}>Add From Library</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.photoActionButton} onPress={takePhotoWithCamera}>
+                    <CameraIcon size={20} color="#00F0FF" style={{marginRight: 8}} />
+                    <Text style={styles.photoActionButtonText}>Take Photo</Text>
+                </TouchableOpacity>
+            </View>
           </View>
         </View>
 
@@ -377,7 +490,7 @@ export default function InspectionChecklistScreen({ navigation, route }: Props) 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0A0F1E',
+    backgroundColor: '#0A0F1E', // Dark base for futuristic feel
   },
   header: {
     flexDirection: 'row',
@@ -386,16 +499,26 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: '#2A3555',
+    borderBottomColor: '#00F0FF', // Glowey border
+    // Add a subtle shadow to make it pop a bit
+    shadowColor: '#00F0FF',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.5,
+    shadowRadius: 3,
+    elevation: 5, // For Android
   },
   backButton: {
     padding: 8,
+    // Add a glow effect on press (can be done via state or keep simple)
   },
   headerTitle: {
     fontSize: 18,
     fontFamily: 'Inter_700Bold',
-    color: '#00F0FF',
-    letterSpacing: 0.5,
+    color: '#00F0FF', // Main glow color
+    letterSpacing: 1.5, // Wider spacing for futuristic look
+    textShadowColor: 'rgba(0, 240, 255, 0.7)', // Text glow
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 8,
   },
   scrollContainer: {
     flex: 1,
@@ -405,148 +528,241 @@ const styles = StyleSheet.create({
     paddingBottom: 30,
   },
   categoryContainer: {
-    marginBottom: 20,
-    backgroundColor: 'rgba(26, 33, 56, 0.7)',
-    borderRadius: 12,
+    marginBottom: 24, // Increased spacing
+    backgroundColor: 'rgba(26, 33, 56, 0.85)', // Slightly more opaque
+    borderRadius: 15, // Sharper edges than 12
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: '#2A3555',
+    borderColor: '#00F0FF', // Glowey border
+    shadowColor: '#00F0FF',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.6,
+    shadowRadius: 10,
+    elevation: 8,
   },
   categoryHeaderGradient: {
-    paddingVertical: 12,
+    paddingVertical: 14, // Increased padding
     paddingHorizontal: 16,
+    // Removed gradient, will use solid color with glow for header for now, or can be re-added if preferred
+    backgroundColor: 'rgba(0, 240, 255, 0.1)', // Light glow background for header
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0, 240, 255, 0.3)',
   },
   categoryTitle: {
-    fontSize: 16,
+    fontSize: 15, // Slightly smaller
     fontFamily: 'Inter_600SemiBold',
     color: '#FFFFFF',
-    letterSpacing: 0.5,
+    letterSpacing: 1, // Futuristic spacing
     textTransform: 'uppercase',
+    textShadowColor: 'rgba(0, 240, 255, 0.5)', // Text glow
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 5,
   },
   itemRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 14,
+    paddingVertical: 16, // Increased padding
     paddingHorizontal: 16,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(42, 53, 85, 0.5)',
+    borderBottomColor: 'rgba(0, 240, 255, 0.15)', // Subtle glowey separator
   },
   itemLabel: {
-    flex: 1,
+    flex: 0.6,
     fontSize: 14,
     fontFamily: 'Inter_400Regular',
-    color: '#D0DFFF',
+    color: '#E0EFFF', // Brighter text
     marginRight: 10,
-    lineHeight: 18,
+    lineHeight: 20, // Increased line height
   },
   ratingButtonsContainer: {
+    flex: 0.4,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'flex-end',
   },
   circleButton: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 32, // Slightly larger
+    height: 32,
+    borderRadius: 16,
     marginHorizontal: 6,
     borderWidth: 2,
-    borderColor: 'transparent',
+    borderColor: 'rgba(0, 240, 255, 0.3)', // Default glow border
     justifyContent: 'center',
     alignItems: 'center',
+    // Add a base shadow for depth
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 3,
   },
   selectedCircle: {
-    borderColor: '#FFFFFF',
-    shadowColor: "#FFF",
+    borderColor: '#00F0FF', // Bright glow border for selected
+    shadowColor: "#00F0FF", // Glow effect
     shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.9,
-    shadowRadius: 6,
-    elevation: 8,
+    shadowOpacity: 1,
+    shadowRadius: 10,
+    elevation: 10,
   },
   imageUploadContent: {
-    padding: 16,
+    paddingVertical: 16, // No horizontal padding, use container's
   },
-  addPhotoButton: {
+  photoActionButtonsContainer: {
     flexDirection: 'row',
-    backgroundColor: 'rgba(0, 240, 255, 0.1)',
+    justifyContent: 'space-between',
+    marginTop: 16, // Increased margin
+    gap: 12,
+  },
+  photoActionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    backgroundColor: 'rgba(0, 240, 255, 0.15)', // More prominent glow background
     paddingVertical: 14,
-    paddingHorizontal: 20,
-    borderRadius: 8,
+    paddingHorizontal: 12,
+    borderRadius: 10, // Sharper edges
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: '#00F0FF',
-    marginTop: 10,
+    shadowColor: '#00F0FF',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 5,
+    elevation: 5,
   },
-  addPhotoButtonText: {
-    color: '#00F0FF',
-    fontSize: 15,
+  photoActionButtonSecondary: {
+    // Can differentiate secondary if needed, e.g. lighter border or bg
+    backgroundColor: 'rgba(122, 137, 255, 0.15)',
+    borderColor: '#7A89FF',
+    shadowColor: '#7A89FF',
+  },
+  photoActionButtonText: {
+    // color will be inherited or can be set explicitly if different for primary/secondary
+    fontSize: 14,
     fontFamily: 'Inter_600SemiBold',
+    textAlign: 'center',
+    // Default to #00F0FF for primary, adjust if needed for secondary in its own style object
   },
   thumbnailList: {
-    marginBottom: 10,
+    marginBottom: 16,
   },
   thumbnailContainer: {
     marginRight: 10,
     position: 'relative',
-    borderWidth: 1,
-    borderColor: '#00F0FF',
-    borderRadius: 10,
+    borderWidth: 2, // Thicker border
+    borderColor: '#00F0FF', // Glowey border
+    borderRadius: 12, // Sharper
     overflow: 'hidden',
+    shadowColor: '#00F0FF',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.7,
+    shadowRadius: 5,
+    elevation: 6,
   },
   thumbnail: {
     width: 80,
     height: 80,
-    borderRadius: 8,
+    // borderRadius: 10, // Already set by container
   },
   removeImageButton: {
     position: 'absolute',
-    top: 2,
-    right: 2,
-    backgroundColor: 'rgba(10, 15, 30, 0.85)', // Made slightly more opaque
-    borderRadius: 11, // Half of the icon size (22)
-    width: 22,
-    height: 22,
+    top: 3,
+    right: 3,
+    backgroundColor: 'rgba(10, 15, 30, 0.9)', // More opaque
+    borderRadius: 12, // Match shape
+    width: 24, // Slightly larger
+    height: 24,
     justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#00F0FF',
   },
   removeImageIcon: {
-    // No specific style needed if Lucide icon color is set directly
+    // XCircle already has color prop, direct styling here not usually needed unless for layout
   },
   emptyImageContainer: {
-    width: Dimensions.get('window').width - 64,
+    width: Dimensions.get('window').width - 64, // Account for padding
     height: 80,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(42, 53, 85, 0.3)',
-    borderRadius: 8,
+    backgroundColor: 'rgba(0, 240, 255, 0.05)', // Faint glow background
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 240, 255, 0.3)',
+    paddingHorizontal: 10,
   },
   noImagesText: {
-    color: '#7A89FF',
+    color: '#00F0FF',
     fontSize: 13,
-    fontFamily: 'Inter_400Regular',
+    fontFamily: 'Inter_500Medium',
   },
   saveButton: {
     flexDirection: 'row',
-    backgroundColor: '#00F0FF',
-    paddingVertical: 16,
-    borderRadius: 8,
+    backgroundColor: '#00F0FF', // Main glow color
+    paddingVertical: 18, // Larger button
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 24,
     marginHorizontal: 0,
+    borderWidth: 1,
+    borderColor: '#00F0FF',
+    shadowColor: '#00F0FF',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 12,
+    elevation: 10,
   },
   saveButtonText: {
     color: '#0A0F1E',
     fontSize: 16,
-    fontFamily: 'Inter_600SemiBold',
+    fontFamily: 'Inter_700Bold', // Bolder text
+    letterSpacing: 1,
   },
   disabledButton: {
-    backgroundColor: '#7A89FF',
+    backgroundColor: '#7A89FF', // Standard disabled color
+    shadowOpacity: 0.2, // Reduced glow when disabled
+    borderColor: '#7A89FF',
   },
   loadingText: {
-    color: '#7A89FF',
+    color: '#00F0FF', // Glowey loading text
     fontSize: 16,
-    marginTop: 10,
+    marginTop: 12,
     fontFamily: 'Inter_500Medium',
-  }
+  },
+  textInputContainer: {
+    flex: 0.4,
+    paddingLeft: 5,
+  },
+  textInput: {
+    backgroundColor: 'rgba(0, 240, 255, 0.05)', // Faint glow background
+    color: '#E0EFFF',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    fontFamily: 'Inter_400Regular',
+    minHeight: 40,
+    textAlignVertical: 'top',
+    borderWidth: 1,
+    borderColor: 'rgba(0, 240, 255, 0.3)', // Subtle glow border
+  },
+  notesInputContainer: {
+    padding: 0, // Remove padding if categoryContainer has it
+  },
+  notesInput: {
+    backgroundColor: 'rgba(0, 240, 255, 0.05)',
+    color: '#E0EFFF',
+    borderRadius: 8,
+    paddingHorizontal: 16, // Match category padding
+    paddingVertical: 12,
+    fontSize: 14,
+    fontFamily: 'Inter_400Regular',
+    minHeight: 100, // Increased height
+    textAlignVertical: 'top',
+    borderWidth: 1,
+    borderColor: 'rgba(0, 240, 255, 0.3)',
+    marginTop: -1, // To cover the category container border if it has one on bottom
+  },
 }); 

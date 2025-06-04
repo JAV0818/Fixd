@@ -28,9 +28,12 @@ export interface RepairOrder {
   totalPrice: number;
   locationDetails: LocationDetails;
   paymentMethod: 'creditCard' | 'paypal' | null;
-  status: 'Pending' | 'Accepted' | 'InProgress' | 'Completed' | 'Cancelled';
+  status: 'Pending' | 'Accepted' | 'Scheduled' | 'InProgress' | 'Completed' | 'Cancelled';
   createdAt: Timestamp;
   providerId: string | null;
+  providerName?: string;
+  customerName?: string;
+  customerPhotoURL?: string;
   // Optional fields that might be added later
   acceptedAt?: Timestamp;
   startedAt?: Timestamp;

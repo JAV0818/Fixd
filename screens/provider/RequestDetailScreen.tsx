@@ -5,7 +5,7 @@ import { ProviderStackParamList } from '../../navigation/ProviderNavigator';
 import { ArrowLeft, Check, X, MessageCircle, Play, Ban } from 'lucide-react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { firestore, auth } from '@/lib/firebase';
-import { doc, onSnapshot, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, onSnapshot, updateDoc, serverTimestamp, increment } from 'firebase/firestore';
 import { RepairOrder } from '@/types/orders';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 
@@ -57,18 +57,27 @@ export default function RequestDetailScreen({ navigation, route }: Props) {
     }
 
     setIsUpdating(true);
-    const docRef = doc(firestore, 'repairOrders', orderId);
+    const orderDocRef = doc(firestore, 'repairOrders', orderId);
+    const providerDocRef = doc(firestore, 'users', currentUser.uid);
 
     try {
-      await updateDoc(docRef, {
+      await updateDoc(orderDocRef, {
         providerId: currentUser.uid,
+        providerName: currentUser.displayName || 'Mechanic',
         status: 'Accepted',
         acceptedAt: serverTimestamp()
       });
+
+      await updateDoc(providerDocRef, {
+        numberOfAcceptedJobs: increment(1)
+      });
+      
+      Alert.alert("Success", "Request accepted!");
       navigation.goBack();
     } catch (err) {
       console.error("Error accepting request:", err);
       Alert.alert("Error", "Could not accept the request. Please try again.");
+    } finally {
       setIsUpdating(false);
     }
   };
