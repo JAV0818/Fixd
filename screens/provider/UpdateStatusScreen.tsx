@@ -2,11 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, CheckCircle, Circle, Loader, User, MapPin, Wrench } from 'lucide-react-native';
-import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { NativeStackScreenProps, NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { ProviderStackParamList } from '@/navigation/ProviderNavigator';
 import { RepairOrder } from '@/types/orders';
 import { auth, firestore } from '@/lib/firebase';
 import { doc, getDoc, updateDoc, serverTimestamp, increment } from 'firebase/firestore';
+import { CommonActions } from '@react-navigation/native';
+import { ProviderTabParamList } from '@/navigation/ProviderTabNavigator';
 
 type Props = NativeStackScreenProps<ProviderStackParamList, 'UpdateStatus'>;
 
@@ -219,7 +221,22 @@ export default function UpdateStatusScreen({ navigation, route }: Props) {
         [
           {
             text: "OK",
-            onPress: () => navigation.goBack()
+            onPress: () => {
+              if (selectedStatus === 'Completed' || selectedStatus === 'Cancelled') {
+                // Reset the ProviderNavigator stack (associated with 'Requests' tab) to its initial route
+                navigation.dispatch(
+                  CommonActions.reset({
+                    index: 0,
+                    routes: [{ name: 'Requests' }], // 'Requests' is initial route of ProviderNavigator
+                  })
+                );
+                // Navigate to the 'RepairOrders' tab in the parent TabNavigator
+                const tabNavigator = navigation.getParent<NativeStackNavigationProp<ProviderTabParamList>>();
+                tabNavigator?.navigate('RepairOrders');
+              } else {
+                navigation.goBack();
+              }
+            }
           }
         ]
       );

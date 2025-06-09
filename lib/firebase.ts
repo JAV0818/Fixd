@@ -6,6 +6,7 @@
     import { initializeAuth, getReactNativePersistence } from 'firebase/auth';
     import { getFirestore } from 'firebase/firestore';
     import { getStorage } from 'firebase/storage';
+    import { getFunctions } from 'firebase/functions';
     import ReactNativeAsyncStorage from '@react-native-async-storage/async-storage'; // Import this
 
     // Your web app's Firebase configuration
@@ -33,6 +34,7 @@
     });
     const firestore = getFirestore(app);
     const storage = getStorage(app);
+    const functions = getFunctions(app);
 
     // Initialize Analytics only if supported (web-only)
     let analytics: Analytics | null = null;
@@ -44,4 +46,4 @@
         });
     }
 
-export { app, auth, firestore, storage, analytics };
+export { app, auth, firestore, storage, functions, analytics };

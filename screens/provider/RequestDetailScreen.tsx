@@ -2,10 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ProviderStackParamList } from '../../navigation/ProviderNavigator';
-import { ArrowLeft, Check, X, MessageCircle, Play, Ban } from 'lucide-react-native';
+import { ArrowLeft, Check, X, MessageCircle, Play, Ban, CalendarClock, UserCircle } from 'lucide-react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { firestore, auth } from '@/lib/firebase';
-import { doc, onSnapshot, updateDoc, serverTimestamp, increment } from 'firebase/firestore';
+import { doc, onSnapshot, updateDoc, serverTimestamp, increment, getDoc } from 'firebase/firestore';
 import { RepairOrder } from '@/types/orders';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 
@@ -14,6 +14,7 @@ type Props = NativeStackScreenProps<ProviderStackParamList, 'RequestDetail'>;
 export default function RequestDetailScreen({ navigation, route }: Props) {
   const { orderId } = route.params;
   const [order, setOrder] = useState<RepairOrder | null>(null);
+  const [customerDisplayName, setCustomerDisplayName] = useState<string>('Anonymous User');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -25,10 +26,39 @@ export default function RequestDetailScreen({ navigation, route }: Props) {
     const docRef = doc(firestore, 'repairOrders', orderId);
 
     const unsubscribe = onSnapshot(docRef, 
-      (docSnap) => {
+      async (docSnap) => {
         if (docSnap.exists()) {
-          setOrder({ id: docSnap.id, ...docSnap.data() } as RepairOrder);
+          const orderData = { id: docSnap.id, ...docSnap.data() } as RepairOrder;
+          setOrder(orderData);
           setError(null);
+
+          if (orderData.customerId) {
+            try {
+              const userDocRef = doc(firestore, 'users', orderData.customerId);
+              const userDocSnap = await getDoc(userDocRef);
+              if (userDocSnap.exists()) {
+                const userData = userDocSnap.data();
+                const firstName = userData.firstName;
+                const lastName = userData.lastName;
+                if (firstName && lastName) {
+                  setCustomerDisplayName(`${firstName} ${lastName}`);
+                } else if (orderData.customerName) {
+                  setCustomerDisplayName(orderData.customerName);
+                } else {
+                  setCustomerDisplayName('Anonymous User');
+                }
+              } else {
+                setCustomerDisplayName(orderData.customerName || 'Anonymous User');
+                console.log("Customer user document not found, using order.customerName or default.");
+              }
+            } catch (userError) {
+              console.error("Error fetching customer details:", userError);
+              setCustomerDisplayName(orderData.customerName || 'Anonymous User');
+            }
+          } else {
+            setCustomerDisplayName(orderData.customerName || 'Anonymous User');
+          }
+
         } else {
           setError("Request not found.");
           setOrder(null);
@@ -178,6 +208,19 @@ export default function RequestDetailScreen({ navigation, route }: Props) {
     );
   }
 
+  const getScheduleDateTime = () => {
+    if (order.startedAt && typeof order.startedAt.toDate === 'function') {
+      return { label: "Service Started:", dateTime: `${order.startedAt.toDate().toLocaleDateString()} ${order.startedAt.toDate().toLocaleTimeString()}` };
+    } else if (order.acceptedAt && typeof order.acceptedAt.toDate === 'function') {
+      return { label: "Service Accepted:", dateTime: `${order.acceptedAt.toDate().toLocaleDateString()} ${order.acceptedAt.toDate().toLocaleTimeString()}` };
+    } else if (order.createdAt && typeof order.createdAt.toDate === 'function') {
+      return { label: "Date Requested:", dateTime: `${order.createdAt.toDate().toLocaleDateString()} ${order.createdAt.toDate().toLocaleTimeString()}` };
+    }
+    return { label: "Schedule:", dateTime: 'N/A' };
+  };
+
+  const scheduleInfo = getScheduleDateTime();
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
@@ -200,8 +243,8 @@ export default function RequestDetailScreen({ navigation, route }: Props) {
               <Text style={styles.detailValue}>{order.items[0]?.name || 'N/A'}</Text>
             </View>
             <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Date Requested:</Text>
-              <Text style={styles.detailValue}>{order.createdAt?.toDate() ? order.createdAt.toDate().toLocaleDateString() : 'N/A'}</Text>
+              <Text style={styles.detailLabel}>{scheduleInfo.label}</Text>
+              <Text style={styles.detailValue}>{scheduleInfo.dateTime}</Text>
             </View>
             <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>Total Price:</Text>
@@ -216,8 +259,8 @@ export default function RequestDetailScreen({ navigation, route }: Props) {
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>Customer & Location</Text>
             <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Customer ID:</Text>
-              <Text style={styles.detailValue}>{order.customerId}</Text>
+              <Text style={styles.detailLabel}>Customer:</Text>
+              <Text style={styles.detailValue}>{customerDisplayName}</Text>
             </View>
             <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>Address:</Text>

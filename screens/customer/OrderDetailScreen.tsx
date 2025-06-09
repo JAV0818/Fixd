@@ -337,12 +337,6 @@ export default function OrderDetailScreen() {
               </View>
 
               <View style={styles.contactButtonsContainer}>
-                 {mechanicDetails.phone && mechanicDetails.phone !== 'N/A' && (
-                    <Pressable style={styles.callButton} onPress={() => {/* Implement call functionality */}}>
-                        <PhoneCall size={20} color="#FFFFFF" />
-                        <Text style={styles.contactButtonText}>Call Mechanic</Text>
-                    </Pressable>
-                 )}
                 <Pressable 
                     style={styles.chatButton} 
                     onPress={handleChatWithProviderPress} 
@@ -607,8 +601,6 @@ const styles = StyleSheet.create({
   },
   contactButtonsContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
-    gap: 12,
   },
   callButton: {
     flex: 1,
@@ -617,6 +609,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#7A89FF',
     paddingVertical: 12,
+    paddingHorizontal: 12,
     borderRadius: 8,
   },
   chatButton: {
@@ -626,9 +619,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#00F0FF',
     paddingVertical: 12,
+    paddingHorizontal: 12,
     borderRadius: 8,
   },
   contactButtonText: {
+    flex: 1,
+    textAlign: 'center',
     color: '#FFFFFF',
     fontSize: 14,
     fontFamily: 'Inter_500Medium',

@@ -1,77 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Pressable, SectionList, ActivityIndicator, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, Pressable, SectionList, ActivityIndicator, RefreshControl, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, Calendar, CheckCircle, XCircle, Clock, Wrench, AlertTriangle } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '@/navigation/AppNavigator';
 import { auth, firestore } from '@/lib/firebase';
-import { collection, query, where, onSnapshot, orderBy, Timestamp } from 'firebase/firestore';
-import { RepairOrder } from '@/types/orders'; // Assuming this type is appropriate
+import { collection, query, where, onSnapshot, orderBy, Timestamp, getDoc, doc } from 'firebase/firestore';
+import OrderCard from '@/components/orders/OrderCard';
+import { Order as DisplayableOrder } from '@/components/orders/OrderCard';
 
 interface OrderSection {
   title: string;
-  data: RepairOrder[];
+  data: DisplayableOrder[];
 }
-
-// Simple Order Card Component (can be expanded or moved to a separate file later)
-const OrderCard = ({ item, onPress }: { item: RepairOrder, onPress: () => void }) => {
-  const getStatusColor = () => {
-    switch (item.status) {
-      case 'Completed': return '#34C759';
-      case 'Cancelled': return '#FF3D71';
-      case 'InProgress': return '#00F0FF';
-      case 'Accepted':
-      case 'Scheduled': return '#7A89FF';
-      default: return '#A0AEC0'; // Pending or other
-    }
-  };
-
-  const getStatusIcon = () => {
-    switch (item.status) {
-      case 'Completed': return <CheckCircle size={18} color={getStatusColor()} />;
-      case 'Cancelled': return <XCircle size={18} color={getStatusColor()} />;
-      case 'InProgress':
-      case 'Accepted':
-      case 'Scheduled': return <Clock size={18} color={getStatusColor()} />;
-      default: return <AlertTriangle size={18} color={getStatusColor()} />;
-    }
-  };
-
-  return (
-    <Pressable style={styles.card} onPress={onPress}>
-      <View style={styles.cardHeader}>
-        <Wrench size={20} color={getStatusColor()} />
-        <Text style={styles.cardTitle}>{item.items[0]?.name || 'Service Details N/A'}</Text>
-      </View>
-      <View style={styles.cardRow}>
-        <Text style={styles.cardLabel}>Status:</Text>
-        <View style={styles.statusBadge}>
-          {getStatusIcon()}
-          <Text style={[styles.cardValue, { color: getStatusColor(), marginLeft: 6 }]}>
-            {item.status.toUpperCase()}
-          </Text>
-        </View>
-      </View>
-      <View style={styles.cardRow}>
-        <Text style={styles.cardLabel}>Date:</Text>
-        <Text style={styles.cardValue}>
-          {item.createdAt?.toDate().toLocaleDateString() || 'N/A'}
-        </Text>
-      </View>
-      {item.providerName && (
-        <View style={styles.cardRow}>
-          <Text style={styles.cardLabel}>Provider:</Text>
-          <Text style={styles.cardValue}>{item.providerName}</Text>
-        </View>
-      )}
-      <View style={styles.cardRow}>
-        <Text style={styles.cardLabel}>Total:</Text>
-        <Text style={[styles.cardValue, styles.priceValue]}>${item.totalPrice?.toFixed(2) || '0.00'}</Text>
-      </View>
-    </Pressable>
-  );
-};
 
 export default function ServiceScheduleScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -79,6 +21,31 @@ export default function ServiceScheduleScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+
+  const processAndSetSections = (orders: DisplayableOrder[]) => {
+    const upcoming: DisplayableOrder[] = [];
+    const past: DisplayableOrder[] = [];
+
+    orders.forEach(order => {
+      if (['Accepted', 'Scheduled', 'In Progress', 'Pending', 'Waiting'].includes(order.status)) {
+        upcoming.push(order);
+      } else if (['Completed', 'Cancelled', 'Denied'].includes(order.status)) {
+        past.push(order);
+      }
+    });
+    
+    const newSections: OrderSection[] = [];
+    if (upcoming.length > 0) {
+      newSections.push({ title: 'Upcoming/Active Services', data: upcoming });
+    }
+    if (past.length > 0) {
+      newSections.push({ title: 'Past Services', data: past });
+    }
+
+    setSections(newSections);
+    setLoading(false);
+    setRefreshing(false);
+  };
 
   const fetchOrders = () => {
     const user = auth.currentUser;
@@ -92,44 +59,24 @@ export default function ServiceScheduleScreen() {
     setLoading(true);
     setError(null);
 
-    const ordersRef = collection(firestore, 'repairOrders');
-    const q = query(
-      ordersRef,
+    const repairOrdersRef = collection(firestore, 'repairOrders');
+    const repairOrdersQuery = query(
+      repairOrdersRef,
       where('customerId', '==', user.uid),
       orderBy('createdAt', 'desc')
     );
 
-    const unsubscribe = onSnapshot(q, (querySnapshot) => {
-      const fetchedOrders: RepairOrder[] = [];
-      querySnapshot.forEach((doc) => {
-        fetchedOrders.push({ id: doc.id, ...doc.data() } as RepairOrder);
+    const unsubscribe = onSnapshot(repairOrdersQuery, async (snapshot) => {
+      const fetchedOrders = snapshot.docs.map((docSnapshot) => {
+        const orderData = docSnapshot.data() as Omit<DisplayableOrder, 'id'>;
+        return { 
+          ...orderData, 
+          id: docSnapshot.id,
+        } as DisplayableOrder;
       });
 
-      const upcoming: RepairOrder[] = [];
-      const past: RepairOrder[] = [];
+      processAndSetSections(fetchedOrders);
 
-      fetchedOrders.forEach(order => {
-        if (['Accepted', 'Scheduled', 'InProgress'].includes(order.status)) {
-          upcoming.push(order);
-        } else if (['Completed', 'Cancelled'].includes(order.status)) {
-          past.push(order);
-        } else { 
-          // Consider if Pending orders should go to upcoming or a separate category
-          upcoming.push(order); // Defaulting Pending to upcoming for now
-        }
-      });
-      
-      const newSections: OrderSection[] = [];
-      if (upcoming.length > 0) {
-        newSections.push({ title: 'Upcoming/Active Services', data: upcoming });
-      }
-      if (past.length > 0) {
-        newSections.push({ title: 'Past Services', data: past });
-      }
-
-      setSections(newSections);
-      setLoading(false);
-      setRefreshing(false);
     }, (err) => {
       console.error("Error fetching orders:", err);
       setError("Failed to load your service schedule. Please try again.");
@@ -149,11 +96,16 @@ export default function ServiceScheduleScreen() {
 
   const onRefresh = () => {
     setRefreshing(true);
-    fetchOrders(); // Re-fetch data
+    fetchOrders();
   };
   
   const handleOrderPress = (orderId: string) => {
     navigation.navigate('OrderDetail', { orderId });
+  };
+
+  const handleChatPress = (orderId: string, providerName?: string | null | undefined) => {
+    console.log("Chat pressed for order:", orderId, "Provider:", providerName);
+    Alert.alert("Chat Feature", `Chat for order ${orderId} with ${providerName || 'provider'} is not yet implemented.`);
   };
 
   if (loading && !refreshing) {
@@ -214,7 +166,7 @@ export default function ServiceScheduleScreen() {
         <SectionList
           sections={sections}
           keyExtractor={(item) => item.id}
-          renderItem={({ item }) => <OrderCard item={item} onPress={() => handleOrderPress(item.id)} />}
+          renderItem={({ item }) => <OrderCard order={item} onViewDetails={() => handleOrderPress(item.id)} onChatPress={() => handleChatPress(item.id, item.providerName)} />}
           renderSectionHeader={({ section: { title } }) => (
             <Text style={styles.sectionHeader}>{title.toUpperCase()}</Text>
           )}
@@ -252,10 +204,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   title: {
-    fontSize: 18, // Reduced size slightly to fit better
+    fontSize: 18,
     fontFamily: 'Inter_700Bold',
     color: '#00F0FF',
-    letterSpacing: 1.5, // Adjusted spacing
+    letterSpacing: 1.5,
   },
   centeredMessageContainer: {
     flex: 1,
@@ -308,53 +260,5 @@ const styles = StyleSheet.create({
     paddingTop: 20,
     backgroundColor: '#0A0F1E',
     letterSpacing: 1,
-  },
-  // OrderCard Styles
-  card: {
-    backgroundColor: '#1A2138', // Slightly darker card
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#2A3555', 
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  cardTitle: {
-    fontSize: 16,
-    fontFamily: 'Inter_600SemiBold',
-    color: '#E0EFFF',
-    marginLeft: 10,
-    flex: 1, 
-  },
-  cardRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  cardLabel: {
-    fontSize: 13,
-    fontFamily: 'Inter_500Medium',
-    color: '#7A89FF',
-  },
-  cardValue: {
-    fontSize: 13,
-    fontFamily: 'Inter_400Regular',
-    color: '#E0EFFF',
-  },
-  priceValue: {
-    fontFamily: 'Inter_600SemiBold',
-    color: '#00F0FF',
-  },
-  statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 3,
-    paddingHorizontal: 6,
-    borderRadius: 6,
   },
 }); 

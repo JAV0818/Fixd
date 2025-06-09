@@ -6,6 +6,7 @@ import { registerRootComponent } from 'expo'; // Import registerRootComponent
 import { useFonts, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
 import { NavigationContainer } from '@react-navigation/native'; // Import NavigationContainer
 import { GestureHandlerRootView } from 'react-native-gesture-handler'; // Added import
+import { StripeProvider } from '@stripe/stripe-react-native'; // Import StripeProvider
 
 import AppNavigator from './navigation/AppNavigator'; // Check path relative to App.tsx
 import { CartProvider } from './contexts/CartContext'; // Import CartProvider
@@ -74,12 +75,18 @@ export default function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <CartProvider>
-          <NavigationContainer>
-            <AppNavigator />
-            <StatusBar style="light" />
-          </NavigationContainer>
-        </CartProvider>
+        <StripeProvider
+          publishableKey="pk_test_51RW4JePBdV1Chx8vLi7yVuQIxdxGL4rEBDtKpCRVTZ4UOqDQwkq2ZsMAgDOMoAnXs5C7QPkvxutfBMbbP2o3X5jf00SmZ3UEL2"
+          // merchantIdentifier="merchant.com.your-app-identifier" // Optional: for Apple Pay
+          // urlScheme="yourapp://stripe-redirect" // Optional: for some payment methods
+        >
+          <CartProvider>
+            <NavigationContainer>
+              <AppNavigator />
+              <StatusBar style="light" />
+            </NavigationContainer>
+          </CartProvider>
+        </StripeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

@@ -54,9 +54,11 @@ const OrdersData: React.FC<OrdersDataProps> = ({
           totalPrice: data.totalPrice || 0,
           status: data.status || 'Pending', // Default status if missing
           createdAt: data.createdAt, // Keep as Firestore Timestamp
-          customerId: data.customerId, // Make sure this exists in Firestore doc
-          shippingDetails: data.shippingDetails || {}, // Default to empty object
+          customerId: data.customerId,
+          // Ensure we include locationDetails (with backward compatibility for older field names)
+          locationDetails: data.locationDetails || data.shippingDetails || { address: data.serviceAddress || 'Address not provided' },
           providerId: data.providerId || null,
+          providerName: data.providerName || null,
         });
       });
 

@@ -3,12 +3,12 @@ import { View, Text, StyleSheet, ScrollView, Pressable, Image, ActivityIndicator
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Car, PenTool as Tool, Clock, Shield, Settings, ChevronRight, LogOut, User, Star } from 'lucide-react-native';
 import { logout } from '@/lib/auth';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, NavigationProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '@/navigation/AppNavigator';
-import { LinearGradient } from 'expo-linear-gradient';
 import { auth, firestore } from '@/lib/firebase'; // Import Firebase
 import { doc, getDoc, Timestamp, collection, query, where, getCountFromServer } from 'firebase/firestore'; // Added imports for query
+import StarRatingDisplay from '@/components/ui/StarRatingDisplay'; // Import the new component
 
 // Interface for Customer Profile Data
 interface CustomerProfile {
@@ -40,7 +40,7 @@ const toDateSafe = (value: any): Date | null => {
 };
 
 export default function ProfileScreen() {
-  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const navigation = useNavigation<NavigationProp<RootStackParamList>>();
   const [profileData, setProfileData] = useState<CustomerProfile>({});
   const [completedOrderCount, setCompletedOrderCount] = useState(0);
   const [loadingProfile, setLoadingProfile] = useState(true);
@@ -118,12 +118,11 @@ export default function ProfileScreen() {
     // Simplified: Only show initials or fallback
     if (initials) {
       return (
-        <LinearGradient
-          colors={['#00C2FF', '#0080FF']}
-          style={styles.profileImage}
+        <View
+          style={[styles.profileImage, { backgroundColor: '#0080FF' }]}
         >
           <Text style={styles.profileInitials}>{initials}</Text>
-        </LinearGradient>
+        </View>
       );
     }
     // Fallback if no initials
@@ -156,30 +155,26 @@ export default function ProfileScreen() {
           <Text style={styles.membershipLevel}>FIXD CUSTOMER</Text>
           <View style={styles.statsContainer}>
             <View style={styles.statItem}>
-              <Text style={styles.statValue}>{completedOrderCount}</Text>
+              <Text style={[styles.statValue, {marginLeft: 0}]}>{completedOrderCount}</Text>
               <Text style={styles.statLabel}>ORDERS</Text>
             </View>
             <View style={styles.statDivider} />
             <View style={styles.statItem}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
-                {Array.from({ length: 5 }).map((_, index) => (
-                  <Star
-                    key={index}
-                    size={16}
-                    // Replace 3 with actual averageRating when available
-                    color={index < 3 ? '#FFC700' : '#4A5588'} 
-                    fill={index < 3 ? '#FFC700' : 'none'} 
-                  />
-                ))}
-              </View>
-              {/* Replace '3.0' with actual averageRating when available */}
-              <Text style={[styles.statValue, {fontSize: 16, color: '#FFC700' }]}>{'3.0'}</Text> 
+              <StarRatingDisplay 
+                rating={3} // Replace with actual averageRating when available
+                starSize={16}
+                showRatingNumber={true}
+                ratingNumberStyle={styles.statValue}
+                starColorFilled="#00F0FF"
+                starColorEmpty="#4A5588"
+                starContainerStyle={styles.starsContainer}
+              />
               <Text style={styles.statLabel}>RATING</Text>
             </View>
             <View style={styles.statDivider} />
             <View style={styles.statItem}>
-              <Text style={styles.statValue}>{memberSinceMonth}</Text>
-              <Text style={styles.memberYear}>{memberSinceYear}</Text>
+              <Text style={[styles.statValue, {marginLeft: 0}]}>{memberSinceMonth}</Text>
+              {memberSinceYear && <Text style={styles.memberYear}>{memberSinceYear}</Text>}
               <Text style={styles.statLabel}>CUSTOMER SINCE</Text>
             </View>
           </View>
@@ -188,7 +183,7 @@ export default function ProfileScreen() {
         <View style={styles.menuSection}>
           <Pressable 
             style={styles.menuItem}
-            onPress={() => navigation.navigate('ServiceSchedule')}
+            onPress={() => navigation.navigate('ServiceSchedule' as never)}
           >
             <Clock size={20} color="#00F0FF" />
             <Text style={styles.menuText}>Service Schedule</Text>
@@ -196,7 +191,7 @@ export default function ProfileScreen() {
           </Pressable>
           <Pressable 
             style={styles.menuItem} 
-            onPress={() => navigation.navigate('PrivacySettings')}
+            onPress={() => navigation.navigate('PrivacySettings' as never)}
           >
             <Shield size={20} color="#00F0FF" />
             <Text style={styles.menuText}>Privacy and Settings</Text>
@@ -247,46 +242,56 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
   },
   name: {
-    fontSize: 24,
+    fontSize: 22,
     fontFamily: 'Inter_700Bold',
-    color: '#00F0FF',
+    color: '#FFFFFF',
+    letterSpacing: 1,
     marginBottom: 4,
-    letterSpacing: 2,
+    textTransform: 'uppercase',
   },
   membershipLevel: {
-    fontSize: 14,
-    fontFamily: 'Inter_600SemiBold',
-    color: '#7A89FF',
-    letterSpacing: 2,
+    fontSize: 12,
+    fontFamily: 'Inter_500Medium',
+    color: '#00F0FF',
+    letterSpacing: 1,
     marginBottom: 16,
+    textTransform: 'uppercase',
   },
   statsContainer: {
     flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(122, 137, 255, 0.1)',
-    padding: 16,
-    borderRadius: 12,
+    justifyContent: 'space-around',
+    width: '100%',
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    backgroundColor: 'rgba(10, 15, 30, 0.7)', 
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: '#2A3555',
   },
   statItem: {
     alignItems: 'center',
-    flex: 1,
+    flex: 1, 
+    paddingHorizontal: 2,
   },
   statValue: {
-    fontSize: 18,
+    fontSize: 16, 
     fontFamily: 'Inter_700Bold',
     color: '#00F0FF',
     marginBottom: 4,
     textAlign: 'center',
   },
+  ratingValueText: {
+  },
+  starsContainer: { 
+    marginBottom: 4, 
+  },
   memberYear: {
-    fontSize: 14,
+    fontSize: 12,
     fontFamily: 'Inter_600SemiBold',
     color: '#00F0FF',
-    marginBottom: 4,
+    lineHeight: 12,
+    marginTop: -2,
     textAlign: 'center',
-    lineHeight: 14,
   },
   statLabel: {
     fontSize: 10,
@@ -294,10 +299,12 @@ const styles = StyleSheet.create({
     color: '#7A89FF',
     letterSpacing: 1,
     textAlign: 'center',
+    textTransform: 'uppercase',
   },
   statDivider: {
     width: 1,
-    height: 40,
+    height: '60%',
+    alignSelf: 'center',
     backgroundColor: '#2A3555',
   },
   menuSection: {
@@ -345,7 +352,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#0A0F1E',
   },
   placeholderAvatar: {
-     backgroundColor: 'rgba(122, 137, 255, 0.1)', // Use a placeholder background
+     backgroundColor: 'rgba(122, 137, 255, 0.1)',
      borderColor: '#7A89FF',
   },
 }); 

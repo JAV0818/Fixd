@@ -6,12 +6,13 @@ import NotificationPanel from '../../components/NotificationPanel';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { auth, firestore } from '@/lib/firebase';
-import { collection, query, where, onSnapshot, orderBy, Timestamp, doc, updateDoc } from 'firebase/firestore';
-import { RepairOrder } from '@/types/orders';
+import { collection, query, where, onSnapshot, orderBy, Timestamp, doc, updateDoc, getDoc } from 'firebase/firestore';
+import { RepairOrder, OrderItem } from '@/types/orders';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 
 export default function RepairOrdersScreen() {
   const [showNotifications, setShowNotifications] = useState(false);
-  const [activeFilter, setActiveFilter] = useState<'all' | 'Accepted' | 'InProgress' | 'Completed' | 'Cancelled'>('all');
+  const [activeFilter, setActiveFilter] = useState<'all' | 'Accepted' | 'InProgress' | 'Completed' | 'Cancelled' | 'Pending' | 'Scheduled' | 'Waiting'>('all');
   const navigation = useNavigation<any>();
   const [orders, setOrders] = useState<RepairOrder[]>([]);
   const [loading, setLoading] = useState(true);
@@ -29,48 +30,81 @@ export default function RepairOrdersScreen() {
     setLoading(true);
     setError(null);
 
-    const ordersRef = collection(firestore, 'repairOrders');
-    const q = query(
-      ordersRef,
+    const repairOrdersRef = collection(firestore, 'repairOrders');
+    const repairOrdersQuery = query(
+      repairOrdersRef,
       where('providerId', '==', currentUser.uid),
-      where('status', 'in', ['Accepted', 'InProgress', 'Completed', 'Cancelled']),
+      where('status', 'in', ['Accepted', 'InProgress', 'Completed', 'Cancelled', 'Pending', 'Scheduled', 'Waiting']),
       orderBy('createdAt', 'desc')
     );
 
-    const unsubscribe = onSnapshot(q, 
+    const unsubscribeRepairOrders = onSnapshot(repairOrdersQuery, 
       (querySnapshot) => {
         const fetchedOrders = querySnapshot.docs.map(doc => ({
           id: doc.id,
-          ...doc.data()
+          ...doc.data(),
         } as RepairOrder));
         setOrders(fetchedOrders);
         setLoading(false);
       },
       (err) => {
-        console.error("Error fetching assigned orders:", err);
-        setError("Failed to load assigned orders.");
+        console.error("Error fetching assigned repair orders:", err);
+        setError("Failed to load repair orders.");
         setLoading(false);
       }
     );
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribeRepairOrders();
+    };
   }, []);
 
   const handleInitiateService = async (orderId: string) => {
     setActionLoading(prev => ({ ...prev, [orderId]: true }));
     try {
       const orderRef = doc(firestore, 'repairOrders', orderId);
+      // Proceed with starting service directly
       await updateDoc(orderRef, {
         status: 'InProgress',
-        startedAt: new Date(),
+        startedAt: new Date(), // Or serverTimestamp() if preferred for consistency
       });
+      // Navigate to the RequestStartScreen (assuming 'Requests' is the correct stack name)
       navigation.navigate('Requests', { screen: 'RequestStart', params: { orderId: orderId } });
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error initiating service:", err);
-      Alert.alert("Error", "Could not start service. Please try again.");
+      Alert.alert("Error", err.message || "Could not start service. Please try again.");
     } finally {
       setActionLoading(prev => ({ ...prev, [orderId]: false }));
     }
+  };
+
+  const handleCancelQuote = async (quoteId: string) => {
+    Alert.alert(
+      "Cancel Quote",
+      "Are you sure you want to cancel this custom charge quote? This action cannot be undone.",
+      [
+        { text: "Don't Cancel", style: "cancel" },
+        {
+          text: "Yes, Cancel Quote",
+          style: "destructive",
+          onPress: async () => {
+            setActionLoading(prev => ({ ...prev, [quoteId]: true }));
+            try {
+              const functionsInstance = getFunctions();
+              const cancelFunction = httpsCallable(functionsInstance, 'cancelCustomChargeByProvider');
+              await cancelFunction({ customChargeId: quoteId });
+              Alert.alert("Success", "Custom charge quote has been cancelled.");
+              // The snapshot listener should automatically update the list
+            } catch (err: any) {
+              console.error("Error cancelling quote:", err);
+              Alert.alert("Error", err.message || "Could not cancel the quote. Please try again.");
+            } finally {
+              setActionLoading(prev => ({ ...prev, [quoteId]: false }));
+            }
+          },
+        },
+      ]
+    );
   };
 
   const getFilteredOrders = () => {
@@ -94,7 +128,7 @@ export default function RepairOrdersScreen() {
       case 'Accepted': return 'ACCEPTED';
       case 'Completed': return 'COMPLETED';
       case 'Cancelled': return 'CANCELLED';
-      default: return status.toUpperCase();
+      default: return status ? status.toUpperCase() : 'UNKNOWN';
     }
   };
 
@@ -277,16 +311,26 @@ export default function RepairOrdersScreen() {
                     style={styles.actionButton}
                     onPress={() => navigation.navigate('Requests', { screen: 'RequestStart', params: { orderId: item.id } })}
                   >
-                    <Text style={styles.actionButtonText}>VIEW DETAILS</Text>
+                    <Text style={styles.actionButtonText}>VIEW ACTIVE DETAILS</Text>
                   </Pressable>
                 )}
-                <Pressable 
-                  style={[styles.actionButton, (item.status !== 'Accepted' && item.status !== 'InProgress') && styles.disabledButton]}
-                  onPress={() => (item.status === 'Accepted' || item.status === 'InProgress') && navigation.navigate('Requests', { screen: 'UpdateStatus', params: { orderId: item.id } })}
-                  disabled={item.status !== 'Accepted' && item.status !== 'InProgress'}
-                >
-                  <Text style={styles.actionButtonText}>UPDATE STATUS</Text>
-                </Pressable>
+                {item.status === 'Completed' && (
+                  <Pressable 
+                    style={styles.actionButton}
+                    onPress={() => navigation.navigate('Requests', { screen: 'InspectionChecklist', params: { orderId: item.id } })}
+                  >
+                    <Text style={styles.actionButtonText}>VIEW INSPECTION/DETAILS</Text>
+                  </Pressable>
+                )}
+                {(item.status === 'Accepted' || item.status === 'InProgress') && (
+                  <Pressable 
+                    style={[styles.actionButton, (item.status !== 'Accepted' && item.status !== 'InProgress') && styles.disabledButton]}
+                    onPress={() => navigation.navigate('Requests', { screen: 'UpdateStatus', params: { orderId: item.id } })}
+                    disabled={item.status !== 'Accepted' && item.status !== 'InProgress'}
+                  >
+                    <Text style={styles.actionButtonText}>UPDATE STATUS</Text>
+                  </Pressable>
+                )}
                 <Pressable 
                   style={[styles.actionButton, styles.secondaryButton, (item.status !== 'Accepted' && item.status !== 'InProgress') && styles.disabledButton]}
                   onPress={() => (item.status === 'Accepted' || item.status === 'InProgress') && navigation.navigate('Requests', { screen: 'RequestContact', params: { orderId: item.id } })}

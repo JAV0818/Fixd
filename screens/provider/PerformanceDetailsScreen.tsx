@@ -7,6 +7,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '@/navigation/AppNavigator';
 import { auth, firestore } from '@/lib/firebase';
 import { doc, getDoc, Timestamp } from 'firebase/firestore';
+import StarRatingDisplay from '@/components/ui/StarRatingDisplay';
 
 // Helper function to safely convert Firestore Timestamps or other date formats
 const toDateSafe = (timestamp: any): Date => {
@@ -161,18 +162,27 @@ const PerformanceDetailsScreen = () => {
         </View>
         
         {metrics.map((metric, index) => (
-          <View key={index} style={styles.metricCard}>
+          <View key={index} style={[styles.metricCard, {borderColor: metric.color, backgroundColor: `${metric.color}1A`}]}>
             <View style={styles.metricHeader}>
-              <View style={[styles.iconContainer, { backgroundColor: `${metric.color}20` }]}>
+              <View style={[styles.metricIconContainer, {backgroundColor: `${metric.color}33`}]}>
                 {metric.icon}
               </View>
-              <View style={styles.metricTitleContainer}>
-                <Text style={styles.metricTitle}>{metric.title.toUpperCase()}</Text>
-                <Text style={[styles.metricValue, { color: metric.color }]}>{metric.value}</Text>
-              </View>
+              <Text style={[styles.metricTitle, {color: metric.color}]}>{metric.title.toUpperCase()}</Text>
             </View>
+            {metric.title === 'Overall Rating' && typeof providerData?.averageRating === 'number' ? (
+              <View style={styles.ratingDisplayContainer}>
+                <StarRatingDisplay 
+                  rating={providerData.averageRating}
+                  starSize={28} 
+                  showRatingNumber={true}
+                  ratingNumberStyle={styles.ratingValueText}
+                  starColorFilled={metric.color}
+                />
+              </View>
+            ) : (
+              <Text style={styles.metricValue}>{metric.value}</Text>
+            )}
             <Text style={styles.metricDescription}>{metric.description}</Text>
-            <View style={[styles.metricLine, { backgroundColor: metric.color }]} />
           </View>
         ))}
         
@@ -241,58 +251,50 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   metricCard: {
-    backgroundColor: 'rgba(26, 33, 56, 1)',
+    backgroundColor: 'rgba(26, 33, 56, 0.8)',
     borderRadius: 12,
     padding: 16,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    position: 'relative',
-    overflow: 'hidden',
+    marginBottom: 16,
+    borderWidth: 1,
   },
   metricHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 12,
   },
-  iconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+  metricIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
   },
-  metricTitleContainer: {
-    flex: 1,
-  },
   metricTitle: {
     fontSize: 14,
     fontFamily: 'Inter_600SemiBold',
-    color: '#7A89FF',
     letterSpacing: 1,
   },
   metricValue: {
-    fontSize: 24,
+    fontSize: 32,
     fontFamily: 'Inter_700Bold',
-    marginTop: 4,
+    color: '#FFFFFF',
+    marginBottom: 4,
+  },
+  ratingDisplayContainer: {
+    marginBottom: 8,
+    alignItems: 'flex-start',
+  },
+  ratingValueText: {
+    fontSize: 28,
+    fontFamily: 'Inter_700Bold',
+    color: '#FFD700',
   },
   metricDescription: {
-    fontSize: 14,
+    fontSize: 13,
     fontFamily: 'Inter_400Regular',
-    color: '#FFFFFF',
-    lineHeight: 20,
-    marginTop: 8,
-    opacity: 0.8,
-  },
-  metricLine: {
-    height: 2,
-    width: '100%',
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
+    color: '#AEAEAE',
+    lineHeight: 18,
   },
   tipsCard: {
     backgroundColor: 'rgba(26, 33, 56, 1)',

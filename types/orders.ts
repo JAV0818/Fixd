@@ -6,7 +6,7 @@ export interface OrderItem {
   name: string;
   price: number;
   quantity: number;
-  vehicleId?: string; // Optional
+  vehicleId?: string | null; // Changed to allow null
   vehicleDisplay?: string; // Optional
 }
 
@@ -28,7 +28,7 @@ export interface RepairOrder {
   totalPrice: number;
   locationDetails: LocationDetails;
   paymentMethod: 'creditCard' | 'paypal' | null;
-  status: 'Pending' | 'Accepted' | 'Scheduled' | 'InProgress' | 'Completed' | 'Cancelled';
+  status: 'Pending' | 'Accepted' | 'Scheduled' | 'InProgress' | 'Completed' | 'Cancelled' | 'PendingApproval';
   createdAt: Timestamp;
   providerId: string | null;
   providerName?: string;

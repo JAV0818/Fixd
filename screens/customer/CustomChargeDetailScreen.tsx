@@ -11,10 +11,12 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 // import { NativeStackScreenProps } from '@react-navigation/native-stack'; // We'll add this once navigator is known
 import { useRoute, useNavigation } from '@react-navigation/native';
-import { firestore } from '@/lib/firebase';
+import { firestore, functions, auth } from '@/lib/firebase';
+import { httpsCallable } from 'firebase/functions';
 import { doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { CustomCharge } from '../../types/customCharges'; // Adjust path if needed
 import { ArrowLeft, CheckCircle, XCircle } from 'lucide-react-native';
+import { useStripe } from '@stripe/stripe-react-native'; // Import useStripe
 
 // Assuming your CustomerNavigator (or equivalent) will have a param list like:
 // export type CustomerStackParamList = {
@@ -37,6 +39,8 @@ export default function CustomChargeDetailScreen(/* { navigation, route }: Props
   const [charge, setCharge] = useState<CustomCharge | null>(null);
   const [loading, setLoading] = useState(true);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [isPaying, setIsPaying] = useState(false);
+  const { initPaymentSheet, presentPaymentSheet } = useStripe(); // Get Stripe functions, removed stripeLoading
 
   useEffect(() => {
     if (!customChargeId) {
@@ -78,12 +82,17 @@ export default function CustomChargeDetailScreen(/* { navigation, route }: Props
         status: newStatus,
         updatedAt: serverTimestamp(),
       });
-      setCharge(prev => prev ? { ...prev, status: newStatus, updatedAt: new Date() } : null); // Update local state
+      // Store the new status locally before calling handlePayment, so UI can react if needed
+      const updatedChargeData = { ...charge, status: newStatus, updatedAt: new Date() } as CustomCharge;
+      setCharge(updatedChargeData);
+      
       Alert.alert("Success", `Charge has been ${newStatus === 'ApprovedAndPendingPayment' ? 'approved' : 'declined'}.`);
-      // Navigate or update UI further based on newStatus
+
       if (newStatus === 'ApprovedAndPendingPayment') {
-        // TODO: Navigate to payment flow or show payment button
-        console.log("Charge approved, ready for payment flow.");
+        console.log("Charge approved, proceeding to payment flow.");
+        // Pass the updated charge object to handlePayment if it relies on the most current state
+        // For now, handlePayment fetches the charge from state, which we just updated.
+        await handlePayment(); 
       } else if (newStatus === 'DeclinedByCustomer') {
         navigation.goBack(); // Or to a confirmation screen
       }
@@ -92,6 +101,124 @@ export default function CustomChargeDetailScreen(/* { navigation, route }: Props
       Alert.alert("Error", `Could not update the charge status.`);
     } finally {
       setIsUpdating(false);
+    }
+  };
+
+  const handlePayment = async () => {
+    if (!charge || !charge.id || !charge.price) {
+      Alert.alert("Error", "Charge details are missing for payment.");
+      return;
+    }
+
+    setIsPaying(true);
+    try {
+      const user = auth.currentUser;
+      if (!user) {
+        Alert.alert("Authentication Error", "You need to be logged in to make a payment.");
+        setIsPaying(false);
+        return;
+      }
+
+      // The following block that incorrectly checked for stripeCustomerId on the client-side is now removed.
+      // Stripe Customer ID logic is handled by the createPaymentIntent Cloud Function.
+
+      const createPaymentIntent = httpsCallable(functions, 'createPaymentIntent');
+      const amountInCents = Math.round(charge.price * 100); // Convert dollars to cents
+
+      console.log(`Calling createPaymentIntent with: amount=${amountInCents}, currency='usd', customChargeId=${charge.id}`);
+
+      const result = await createPaymentIntent({
+        amount: amountInCents,
+        currency: "usd", // Pass currency to the cloud function
+        customChargeId: charge.id, // Optional: pass the charge ID for linking
+        // customerId is no longer sent from client
+      });
+
+      const { clientSecret, error, customerStripeId } = result.data as { clientSecret?: string; error?: string, customerStripeId?: string };
+
+      if (error) {
+        console.error("Error from createPaymentIntent function:", error);
+        Alert.alert("Payment Error", error);
+      } else if (clientSecret) {
+        console.log("Received clientSecret:", clientSecret, "Stripe Customer ID:", customerStripeId);
+        
+        // Initialize the Payment Sheet
+        const { error: initError } = await initPaymentSheet({
+          merchantDisplayName: "Fixd Services", // Replace with your app/merchant name
+          paymentIntentClientSecret: clientSecret,
+          customerId: customerStripeId, // Optional: use the customer ID from the cloud function
+          // allowsDelayedPaymentMethods: true, // Set to true if you want to support delayed payment methods like bank debits
+          // returnURL: 'yourappscheme://stripe-redirect', // Optional, for deep linking back to your app
+          appearance: {
+            colors: {
+              primary: '#00F0FF', // Your primary brand color
+              background: '#1C2333',
+              componentBackground: '#2A3555',
+              componentText: '#FFFFFF',
+              icon: '#FFFFFF',
+              placeholderText: '#AEAEAE',
+            }
+          }
+        });
+
+        if (initError) {
+          console.error("Error initializing payment sheet:", initError);
+          Alert.alert("Payment Setup Error", initError.message);
+          setIsPaying(false);
+          return;
+        }
+
+        // Present the Payment Sheet
+        const { error: presentError } = await presentPaymentSheet();
+
+        if (presentError) {
+          if (presentError.code === 'Canceled') {
+            Alert.alert("Payment Canceled", "The payment process was canceled.");
+          } else {
+            console.error("Error presenting payment sheet:", presentError);
+            Alert.alert("Payment Failed", presentError.message);
+          }
+        } else {
+          Alert.alert("Payment Success!", "Your payment has been processed. Updating status...");
+          // Call markChargeAsPaid Cloud Function instead of updating Firestore directly
+          try {
+            const markAsPaidFunction = httpsCallable(functions, 'markChargeAsPaid');
+            const paymentIntentId = clientSecret.split('_secret')[0];
+            
+            console.log(`Calling markChargeAsPaid with: customChargeId=${charge.id}, paymentIntentId=${paymentIntentId}`);
+            
+            const result = await markAsPaidFunction({ 
+              customChargeId: charge.id, 
+              paymentIntentId: paymentIntentId 
+            });
+
+            const { success: markAsPaidSuccess, message: markAsPaidMessage, error: markAsPaidError } = result.data as { success?: boolean; message?: string; error?: string };
+
+            if (markAsPaidSuccess) {
+              setCharge(prev => prev ? { ...prev, status: 'Accepted' } : null);
+              console.log("Charge status updated to Accepted via Cloud Function:", markAsPaidMessage);
+              Alert.alert("Status Updated", "Charge has been successfully accepted and payment confirmed.");
+              navigation.goBack();
+            } else {
+              console.error("Error from markChargeAsPaid function:", markAsPaidError || markAsPaidMessage);
+              Alert.alert("Update Error", `Payment was successful, but failed to mark charge as paid: ${markAsPaidError || markAsPaidMessage}`);
+            }
+          } catch (cloudFunctionError: any) {
+            console.error("Error calling markChargeAsPaid function:", cloudFunctionError);
+            const errorMessage = cloudFunctionError?.message || "An unknown error occurred while finalizing payment.";
+            Alert.alert("Update Error", `Payment was successful, but there was an issue updating the charge status. ${errorMessage}`);
+          }
+        }
+      } else {
+        console.error("Invalid response from createPaymentIntent function.");
+        Alert.alert("Payment Error", "Could not initialize payment. Invalid response from server.");
+      }
+    } catch (err) {
+      console.error("Error calling createPaymentIntent function:", err);
+      const errorMessage = (err as any)?.message || "An unknown error occurred.";
+      Alert.alert("Payment Setup Error", `Failed to initiate payment. ${errorMessage}`);
+    } finally {
+      setIsPaying(false);
     }
   };
 
@@ -141,16 +268,16 @@ export default function CustomChargeDetailScreen(/* { navigation, route }: Props
           <View style={styles.actionsContainer}>
             <TouchableOpacity 
               style={[styles.actionButton, styles.approveButton]} 
-              onPress={() => handleUpdateStatus('ApprovedAndPendingPayment')} 
-              disabled={isUpdating}
+              onPress={handlePayment}
+              disabled={isUpdating || isPaying}
             >
-              {isUpdating ? <ActivityIndicator color="#FFFFFF"/> : <CheckCircle size={20} color="#FFFFFF" style={{marginRight: 8}} />}
-              <Text style={styles.actionButtonText}>Approve & Proceed</Text>
+              {(isUpdating || isPaying) ? <ActivityIndicator color="#FFFFFF"/> : <CheckCircle size={20} color="#FFFFFF" style={{marginRight: 8}} />}
+              <Text style={styles.actionButtonText}>Approve & Pay Quote</Text>
             </TouchableOpacity>
             <TouchableOpacity 
               style={[styles.actionButton, styles.declineButton]} 
-              onPress={() => handleUpdateStatus('DeclinedByCustomer')} 
-              disabled={isUpdating}
+              onPress={() => handleUpdateStatus('DeclinedByCustomer')}
+              disabled={isUpdating || isPaying}
             >
               {isUpdating ? <ActivityIndicator color="#FFFFFF"/> : <XCircle size={20} color="#FFFFFF" style={{marginRight: 8}} />}
               <Text style={styles.actionButtonText}>Decline Quote</Text>
@@ -158,13 +285,22 @@ export default function CustomChargeDetailScreen(/* { navigation, route }: Props
           </View>
         )}
         {/* Add logic here for payment if status is ApprovedAndPendingPayment */}
-         {charge.status === 'ApprovedAndPendingPayment' && (
+         {/* THIS BLOCK WILL BE REMOVED as ApprovedAndPendingPayment status will be skipped */}
+         {/* {charge.status === 'ApprovedAndPendingPayment' && (
             <View style={styles.actionsContainer}> 
-                <TouchableOpacity style={[styles.actionButton, styles.payButton]} onPress={() => Alert.alert("Pay Now", "Payment flow to be implemented.")}>
+                <TouchableOpacity 
+                  style={[styles.actionButton, styles.payButton, isPaying && styles.disabledButton]} 
+                  onPress={handlePayment}
+                  disabled={isPaying}
+                >
+                  {isPaying ? (
+                    <ActivityIndicator color="#FFFFFF" />
+                  ) : (
                     <Text style={styles.actionButtonText}>Pay Now (${charge.price.toFixed(2)})</Text>
+                  )}
                 </TouchableOpacity>
             </View>
-        )}
+        )} */}
 
       </ScrollView>
     </SafeAreaView>
@@ -235,5 +371,8 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontFamily: 'Inter_600SemiBold',
+  },
+  disabledButton: {
+    backgroundColor: '#A0A0A0', // Grey out when disabled
   },
 }); 

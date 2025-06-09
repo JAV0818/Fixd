@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, ScrollView, Alert, ActivityIndicator, ViewStyle, TextStyle, ImageStyle } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Image, ScrollView, Alert, ActivityIndicator, ViewStyle } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ProviderStackParamList } from '../../navigation/ProviderNavigator';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -22,10 +22,7 @@ interface OrderDetails {
   price?: string;
   estimatedDuration?: string;
   customerId: string;
-  vehicleMake?: string;
-  vehicleModel?: string;
-  vehicleYear?: string;
-  licensePlate?: string;
+  vehicleDisplay: string;
 }
 
 export default function RequestStartScreen({ navigation, route }: Props) {
@@ -44,7 +41,7 @@ export default function RequestStartScreen({ navigation, route }: Props) {
 
       if (orderSnap.exists()) {
         const orderData = orderSnap.data();
-        let customerName = 'N/A';
+        let customerName = 'Anonymous User';
         let customerAvatar = undefined;
 
         if (orderData.customerId) {
@@ -52,33 +49,52 @@ export default function RequestStartScreen({ navigation, route }: Props) {
           const userSnap = await getDoc(userRef);
           if (userSnap.exists()) {
             const userData = userSnap.data();
-            customerName = userData.displayName || 'Anonymous User';
+            if (userData.firstName && userData.lastName) {
+              customerName = `${userData.firstName} ${userData.lastName}`;
+            } else if (userData.displayName) {
+              customerName = userData.displayName;
+            } else if (orderData.customerName) {
+              customerName = orderData.customerName;
+            }
             customerAvatar = userData.photoURL;
+          } else if (orderData.customerName) {
+            customerName = orderData.customerName;
           }
+        } else if (orderData.customerName) {
+          customerName = orderData.customerName;
         }
         
-        let formattedDate = orderData.serviceDate;
-        if (orderData.serviceDate instanceof Timestamp) {
-          formattedDate = orderData.serviceDate.toDate().toLocaleDateString();
+        let scheduleDate: Date | null = null;
+        if (orderData.startedAt && typeof orderData.startedAt.toDate === 'function') {
+            scheduleDate = orderData.startedAt.toDate();
+        } else if (orderData.acceptedAt && typeof orderData.acceptedAt.toDate === 'function') {
+            scheduleDate = orderData.acceptedAt.toDate();
+        } else if (orderData.createdAt && typeof orderData.createdAt.toDate === 'function') {
+            scheduleDate = orderData.createdAt.toDate();
         }
+
+        const formattedDate = scheduleDate ? scheduleDate.toLocaleDateString() : 'Date not set';
+        const formattedTime = scheduleDate ? scheduleDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Time not set';
+
+        const location = orderData.locationDetails;
+        const fullAddress = location 
+          ? `${location.address || ''}, ${location.city || ''}, ${location.state || ''} ${location.zipCode || ''}`.replace(/, ,/g, ',').trim().replace(/^,|,$/g, '')
+          : 'Address not provided';
 
         const fetchedDetails: OrderDetails = {
           id: orderId,
           customerName: customerName,
           customerAvatar: customerAvatar,
-          serviceName: orderData.serviceName || orderData.items?.[0]?.name || 'Service details not available',
-          date: formattedDate || 'Date not set',
-          time: orderData.serviceTime || 'Time not set',
-          address: orderData.serviceAddress || orderData.locationDetails?.address || 'Address not provided',
+          serviceName: orderData.items?.[0]?.name || 'Service details not available',
+          date: formattedDate,
+          time: formattedTime,
+          address: fullAddress,
           status: orderData.status || 'Status Unknown',
-          description: orderData.description || 'No description.',
-          price: orderData.price ? `$${Number(orderData.price).toFixed(2)}` : 'Price not set',
-          estimatedDuration: orderData.estimatedDuration || 'Not specified',
+          description: orderData.locationDetails?.additionalNotes || 'No additional notes provided.',
+          price: orderData.totalPrice ? `$${Number(orderData.totalPrice).toFixed(2)}` : 'Price not set',
+          estimatedDuration: 'Not specified',
           customerId: orderData.customerId,
-          vehicleMake: orderData.vehicleMake || orderData.vehicle?.make || 'N/A',
-          vehicleModel: orderData.vehicleModel || orderData.vehicle?.model || 'N/A',
-          vehicleYear: orderData.vehicleYear || orderData.vehicle?.year || 'N/A',
-          licensePlate: orderData.licensePlate || orderData.vehicle?.licensePlate || 'N/A',
+          vehicleDisplay: orderData.items?.[0]?.vehicleDisplay || 'N/A',
         };
         setRequestDetails(fetchedDetails);
 
@@ -163,7 +179,7 @@ export default function RequestStartScreen({ navigation, route }: Props) {
       );
       setServiceEnded(true);
       setRequestDetails(prev => prev ? { ...prev, status: 'Completed' } : null);
-      navigation.navigate('RepairOrders');
+      navigation.navigate('Requests');
 
     } catch (error) {
       console.error("Error ending service:", error);
@@ -241,6 +257,21 @@ export default function RequestStartScreen({ navigation, route }: Props) {
   }
 
   const displayStatus = serviceEnded ? "Completed" : (requestDetails.status === 'InProgress' ? "In Progress" : requestDetails.status);
+  
+  const getStatusBadgeStyle = (status: string): ViewStyle => ({
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+    backgroundColor: 
+      status === 'Completed' ? '#28A745' :
+      status === 'InProgress' ? '#FFC107' :
+      status === 'Accepted' ? '#00F0FF' :
+      status === 'Pending' ? '#6C757D' :
+      '#FD7E14',
+  });
+  
+  const statusBadgeStyle = getStatusBadgeStyle(displayStatus);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -257,7 +288,7 @@ export default function RequestStartScreen({ navigation, route }: Props) {
           <Image source={{ uri: requestDetails.customerAvatar || 'https://via.placeholder.com/150/0A0F1E/00F0FF?text=User' }} style={styles.avatar} />
           <View style={styles.customerInfo}>
             <Text style={styles.customerName}>{requestDetails.customerName.toUpperCase()}</Text>
-            <View style={styles.statusBadge(displayStatus)}>
+            <View style={statusBadgeStyle}>
                 <Text style={styles.statusBadgeText}>{displayStatus.toUpperCase()}</Text>
             </View>
           </View>
@@ -269,8 +300,7 @@ export default function RequestStartScreen({ navigation, route }: Props) {
                 <Text style={styles.sectionTitle}>SERVICE & VEHICLE</Text>
             </View>
             <View style={styles.detailRow}><Text style={styles.detailLabel}>Service:</Text><Text style={styles.detailValue}>{requestDetails.serviceName}</Text></View>
-            <View style={styles.detailRow}><Text style={styles.detailLabel}>Vehicle:</Text><Text style={styles.detailValue}>{`${requestDetails.vehicleMake} ${requestDetails.vehicleModel} (${requestDetails.vehicleYear})`}</Text></View>
-            <View style={styles.detailRow}><Text style={styles.detailLabel}>Plate #:</Text><Text style={styles.detailValue}>{requestDetails.licensePlate}</Text></View>
+            <View style={styles.detailRow}><Text style={styles.detailLabel}>Vehicle:</Text><Text style={styles.detailValue}>{requestDetails.vehicleDisplay}</Text></View>
         </View>
 
         <View style={styles.card}>
@@ -413,7 +443,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#00F0FF',
     backgroundColor: '#2A3555'
-  } as ImageStyle,
+  },
   customerInfo: {
     marginLeft: 16,
     flex: 1,
@@ -425,24 +455,12 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     letterSpacing: 1,
   },
-  statusBadge: (status: string): ViewStyle => ({
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-    borderRadius: 12,
-    alignSelf: 'flex-start',
-    backgroundColor: 
-      status === 'Completed' ? '#28A745' :
-      status === 'InProgress' ? '#FFC107' :
-      status === 'Accepted' ? '#00F0FF' :
-      status === 'Pending' ? '#6C757D' :
-      '#FD7E14',
-  }),
   statusBadgeText: {
       fontSize: 10,
       fontFamily: 'Inter_700Bold',
       color: '#0A0F1E',
       letterSpacing: 0.5,
-  } as TextStyle,
+  },
   priceText: {
     fontSize: 20,
     fontFamily: 'Inter_700Bold',

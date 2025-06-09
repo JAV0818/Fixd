@@ -1,7 +1,9 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Pressable, Animated, Easing } from 'react-native';
 import { MapPin, Clock, Check, ChevronRight, MessageCircle, AlertCircle } from 'lucide-react-native';
 import ProgressBar from '@/components/ui/ProgressBar';
+import { firestore } from '@/lib/firebase';
+import { doc, getDoc } from 'firebase/firestore';
 
 // Define the type for order items - align with Firestore data
 export type OrderStatus = 'Pending' | 'Scheduled' | 'Waiting' | 'In Progress' | 'Completed' | 'Cancelled' | 'Denied' | 'Accepted';
@@ -28,6 +30,7 @@ export type Order = {
       address: string;
   };
   providerId?: string | null; // Optional provider ID
+  providerName?: string | null; // Added providerName
   // Add other potential fields like providerName, scheduledDateTime if needed later
 };
 
@@ -84,6 +87,35 @@ const GlowingBorder = () => {
 };
 
 const OrderCard: React.FC<OrderCardProps> = ({ order, onViewDetails, onChatPress }) => {
+  const [displayedProviderName, setDisplayedProviderName] = useState<string | null | undefined>(order.providerName);
+  const [isFetchingName, setIsFetchingName] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (order.providerId && !order.providerName && !displayedProviderName) {
+      setIsFetchingName(true);
+      const fetchProviderName = async () => {
+        try {
+          const providerDocRef = doc(firestore, 'users', order.providerId!);
+          const providerDoc = await getDoc(providerDocRef);
+          if (providerDoc.exists()) {
+            const pData = providerDoc.data();
+            setDisplayedProviderName(pData?.displayName || pData?.firstName || 'Mechanic');
+          } else {
+            setDisplayedProviderName('Mechanic (Not Found)');
+          }
+        } catch (e) {
+          console.error(`Error fetching provider name for order ${order.id}:`, e);
+          setDisplayedProviderName('Mechanic (Error)');
+        }
+        setIsFetchingName(false);
+      };
+      fetchProviderName();
+    } else if (order.providerName && order.providerName !== displayedProviderName) {
+      // If order.providerName is provided later (e.g. parent re-fetches), update displayed name
+      setDisplayedProviderName(order.providerName);
+    }
+  }, [order.providerId, order.providerName, displayedProviderName]); // Re-run if providerId or order.providerName changes
+
   // Determine the primary service name (e.g., first item or a summary)
   const primaryServiceName = order.items.length > 0 ? order.items[0].name : 'Order';
   const serviceCount = order.items.length;
@@ -103,6 +135,8 @@ const OrderCard: React.FC<OrderCardProps> = ({ order, onViewDetails, onChatPress
     switch (order.status) {
       case 'In Progress':
         return { badge: styles.activeStatusBadge, text: styles.activeStatusText, label: 'In Progress' };
+      case 'Accepted':
+        return { badge: styles.acceptedStatusBadge, text: styles.acceptedStatusText, label: 'Accepted' };
       case 'Pending':
       case 'Scheduled':
       case 'Waiting':
@@ -188,7 +222,11 @@ const OrderCard: React.FC<OrderCardProps> = ({ order, onViewDetails, onChatPress
         {order.status !== 'Pending' && order.status !== 'Cancelled' && order.status !== 'Denied' && (
           <View style={styles.providerInfo}>
             <Text style={styles.providerLabel}>Assigned Provider</Text>
-            <Text style={styles.providerName}>Waiting for assignment...</Text>
+            <Text style={styles.providerName}>
+              {order.providerId 
+                ? (isFetchingName ? 'Fetching name...' : (displayedProviderName || 'Details unavailable')) 
+                : 'Waiting for assignment...'}
+            </Text>
           </View>
         )}
 
@@ -290,6 +328,11 @@ const styles = StyleSheet.create({
   activeStatusBadge: { backgroundColor: 'rgba(0, 240, 255, 0.2)' }, // Cyan
   pendingStatusBadge: { backgroundColor: 'rgba(255, 184, 0, 0.2)' }, // Yellow/Orange
   completedStatusBadge: { backgroundColor: 'rgba(56, 229, 77, 0.2)' }, // Green
+  acceptedStatusBadge: {
+    backgroundColor: 'rgba(128, 0, 128, 0.2)',
+    borderColor: 'rgba(128, 0, 128, 1)',
+    borderWidth: 1,
+  },
   cancelledStatusBadge: { backgroundColor: 'rgba(107, 114, 128, 0.2)' }, // Grey
   statusText: {
     fontSize: 10, // Smaller status text
@@ -299,6 +342,7 @@ const styles = StyleSheet.create({
   activeStatusText: { color: '#00F0FF' },
   pendingStatusText: { color: '#FFB800' },
   completedStatusText: { color: '#38E54D' },
+  acceptedStatusText: { color: '#C070FF' },
   cancelledStatusText: { color: '#9CA3AF' },
   orderDetail: {
     flexDirection: 'row',

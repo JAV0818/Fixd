@@ -1,16 +1,17 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, Image, TextInput, ActivityIndicator, Alert, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, Pressable, Image, TextInput, ActivityIndicator, Alert, TouchableOpacity, AppState } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Camera, PenTool as Tool, Clock, Settings, ChevronRight, LogOut, Star, CheckCircle, Users, DollarSign, Activity, Info, Briefcase, Award, User } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { logout } from '@/lib/auth';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { ProfileStackParamList } from '@/navigation/ProviderTabNavigator';
 import { auth, firestore, storage } from '@/lib/firebase';
 import { doc, updateDoc, getDoc, Timestamp } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { ref, uploadBytes, getDownloadURL, uploadBytesResumable } from "firebase/storage";
 import { LinearGradient } from 'expo-linear-gradient';
+import StarRatingDisplay from '@/components/ui/StarRatingDisplay';
 
 // Helper function to safely convert Firestore Timestamps or other date formats
 const toDateSafe = (timestamp: any): Date => {
@@ -341,10 +342,15 @@ export default function ProviderProfileScreen() {
           
           <View style={styles.statsContainer}>
             <View style={styles.statItem}>
-              <View style={styles.statValueRow}>
-                <Star size={16} color="#00F0FF" />
-                <Text style={styles.statValue}>{avgRating}</Text>
-              </View>
+              <StarRatingDisplay 
+                rating={profileData?.averageRating || 0} 
+                starSize={16} 
+                showRatingNumber={true}
+                ratingNumberStyle={styles.statValue}
+                starColorFilled="#00F0FF"
+                starColorEmpty="#4A5588"
+                starContainerStyle={styles.starsContainer}
+              />
               <Text style={styles.statLabel}>OVERALL RATING</Text>
             </View>
             <View style={styles.statDivider} />
@@ -512,26 +518,29 @@ const styles = StyleSheet.create({
   name: {
     fontSize: 22,
     fontFamily: 'Inter_700Bold',
-    color: '#00F0FF',
-    marginBottom: 4,
+    color: '#FFFFFF',
+    marginBottom: 2,
     letterSpacing: 1.5,
+    textAlign: 'center',
   },
   membershipLevel: {
-    fontSize: 13,
-    fontFamily: 'Inter_600SemiBold',
+    fontSize: 12,
+    fontFamily: 'Inter_500Medium',
     color: '#7A89FF',
-    letterSpacing: 1.5,
-    marginBottom: 20,
+    marginBottom: 16,
+    textAlign: 'center',
   },
   statsContainer: {
     flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(122, 137, 255, 0.1)',
-    padding: 16,
-    borderRadius: 12,
+    justifyContent: 'space-around',
+    width: '100%',
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    backgroundColor: 'rgba(10, 15, 30, 0.7)',
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: '#2A3555',
-    width: '100%',
+    marginBottom: 16,
   },
   statItem: {
     alignItems: 'center',
@@ -540,14 +549,15 @@ const styles = StyleSheet.create({
   statValueRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 4,
   },
   statValue: {
-    fontSize: 18,
+    fontSize: 16,
     fontFamily: 'Inter_700Bold',
     color: '#00F0FF',
-    textAlign: 'center',
     marginLeft: 4,
+  },
+  starsContainer: {
+    marginBottom: 4,
   },
   statLabel: {
     fontSize: 10,
