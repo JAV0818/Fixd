@@ -181,9 +181,12 @@ export default function CreateCustomChargeScreen({ navigation }: Props) {
       locationDetails: locationDetails as LocationDetails,
       status: 'Pending',
       paymentMethod: null,
-      createdAt: serverTimestamp() as Timestamp,
-      acceptedAt: scheduledTimestamp || undefined,
+      createdAt: serverTimestamp() as Timestamp
     };
+
+    if (scheduledTimestamp) {
+      (repairOrderData as any).acceptedAt = scheduledTimestamp;
+    }
 
     try {
       await addDoc(collection(firestore, 'repairOrders'), repairOrderData);
