@@ -17,9 +17,6 @@
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [],
-    "experiments": {
-      "typedRoutes": true
-    },
     "extra": {
       "eas": {
         "projectId": "0f4ae8c0-e60d-454e-b2b6-e4cd49d3b7c5"
