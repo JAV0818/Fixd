@@ -13,13 +13,13 @@ import {
   ScrollView,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ProviderStackParamList } from '../../navigation/ProviderNavigator';
 import { ArrowLeft, UserSearch, Send, PlusCircle, Trash2 } from 'lucide-react-native';
 import { auth, firestore } from '@/lib/firebase';
 import { collection, addDoc, serverTimestamp, query, where, getDocs, limit, doc, getDoc, Timestamp } from 'firebase/firestore';
-import { UserProfile } from '../../types/customCharges';
-import { LocationDetails, OrderItem, RepairOrder } from '../../types/orders';
+import { UserProfile, CustomCharge } from '../../types/customCharges';
+import { LocationDetails, OrderItem } from '../../types/orders';
 
 interface LineItem {
   id: string;
@@ -126,7 +126,7 @@ export default function CreateCustomChargeScreen({ navigation }: Props) {
     setLineItems(prev => prev.filter(item => item.id !== id));
   };
 
-  const handleCreateRepairOrder = async () => {
+  const handleCreateCustomCharge = async () => {
     if (!selectedCustomer || !currentUser) {
       Alert.alert("Error", "A customer and provider must be selected.");
       return;
@@ -145,7 +145,7 @@ export default function CreateCustomChargeScreen({ navigation }: Props) {
     }
 
     setIsSubmitting(true);
-    
+
     const determinedMechanicName = (mechanicProfile?.firstName && mechanicProfile?.lastName)
       ? `${mechanicProfile.firstName} ${mechanicProfile.lastName}`
       : mechanicProfile?.email || 'Fixd Mechanic';
@@ -153,48 +153,51 @@ export default function CreateCustomChargeScreen({ navigation }: Props) {
     const customerName = (selectedCustomer.firstName && selectedCustomer.lastName)
       ? `${selectedCustomer.firstName} ${selectedCustomer.lastName}`
       : selectedCustomer.email || 'Valued Customer';
-      
-    let scheduledTimestamp: Timestamp | null = null;
-    if (serviceDate.match(/^\d{4}-\d{2}-\d{2}$/) && serviceTime.match(/^\d{2}:\d{2}$/)) {
-      try {
-        scheduledTimestamp = Timestamp.fromDate(new Date(`${serviceDate}T${serviceTime}:00`));
-      } catch (e) {
-        console.warn("Invalid date/time for timestamp creation.");
-      }
-    }
 
     const orderItems: OrderItem[] = lineItems.map(item => ({
       id: item.id,
       name: item.itemDescription,
       price: item.itemPrice,
       quantity: 1,
-      vehicleDisplay: `${vehicleYear} ${vehicleMake} ${vehicleModel} - ${licensePlate || 'N/A'}`,
     }));
 
-    const repairOrderData: Omit<RepairOrder, 'id'> = {
+    const vehicleDisplay = `${vehicleYear} ${vehicleMake} ${vehicleModel} - ${licensePlate || 'N/A'}`;
+
+    const customChargeData: Omit<CustomCharge, 'id' | 'createdAt' | 'updatedAt'> & { createdAt: any; updatedAt: any } = {
       customerId: selectedCustomer.id,
       customerName: customerName,
-      providerId: currentUser.uid,
-      providerName: determinedMechanicName,
+      mechanicId: currentUser.uid,
+      mechanicName: determinedMechanicName,
       items: orderItems,
       totalPrice: totalPrice,
       locationDetails: locationDetails as LocationDetails,
-      status: 'Pending',
-      paymentMethod: null,
-      createdAt: serverTimestamp() as Timestamp
+      status: 'PendingApproval',
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      vehicleDisplay: vehicleDisplay,
     };
 
-    if (scheduledTimestamp) {
-      (repairOrderData as any).acceptedAt = scheduledTimestamp;
+    // Conditionally add the scheduledAt field if date and time are provided
+    if (serviceDate.trim() && serviceTime.trim()) {
+      try {
+        const parsedDate = new Date(`${serviceDate.trim()}T${serviceTime.trim()}`);
+        if (!isNaN(parsedDate.getTime())) {
+          (customChargeData as CustomCharge).scheduledAt = Timestamp.fromDate(parsedDate);
+        } else {
+          console.warn("Invalid date/time format provided:", serviceDate, serviceTime);
+        }
+      } catch (e) {
+        console.error("Error parsing date/time for schedule:", e);
+      }
     }
 
     try {
-      await addDoc(collection(firestore, 'repairOrders'), repairOrderData);
-      Alert.alert("Success", "New repair order created successfully!");
+      await addDoc(collection(firestore, 'customCharges'), customChargeData);
+      Alert.alert("Success", "New custom quote created successfully!");
       navigation.goBack();
     } catch (error) {
-      console.error("Error creating repair order:", error);
-      Alert.alert("Error", "Could not create the repair order.");
+      console.error("Error creating custom quote:", error);
+      Alert.alert("Error", "Could not create the custom quote. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
@@ -335,10 +338,10 @@ export default function CreateCustomChargeScreen({ navigation }: Props) {
               
               <TouchableOpacity
                 style={[styles.sendButton, (isSubmitting || lineItems.length === 0) && styles.sendButtonDisabled]}
-                onPress={handleCreateRepairOrder}
+                onPress={handleCreateCustomCharge}
                 disabled={isSubmitting || lineItems.length === 0}
               >
-                {isSubmitting ? <ActivityIndicator color="#FFFFFF" /> : <><Send size={20} color="#FFFFFF" style={{marginRight: 8}}/><Text style={styles.sendButtonText}>Create Repair Order</Text></>}
+                {isSubmitting ? <ActivityIndicator color="#FFFFFF" /> : <><Send size={20} color="#FFFFFF" style={{marginRight: 8}}/><Text style={styles.sendButtonText}>Create Custom Quote</Text></>}
               </TouchableOpacity>
             </>
           )}

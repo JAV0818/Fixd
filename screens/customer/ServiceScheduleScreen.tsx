@@ -27,9 +27,9 @@ export default function ServiceScheduleScreen() {
     const past: DisplayableOrder[] = [];
 
     orders.forEach(order => {
-      if (['Accepted', 'Scheduled', 'In Progress', 'Pending', 'Waiting'].includes(order.status)) {
+      if (['Accepted', 'Scheduled', 'In Progress', 'InProgress', 'Waiting'].includes(order.status)) {
         upcoming.push(order);
-      } else if (['Completed', 'Cancelled', 'Denied'].includes(order.status)) {
+      } else if (['Completed', 'Cancelled', 'Denied', 'Pending'].includes(order.status)) {
         past.push(order);
       }
     });

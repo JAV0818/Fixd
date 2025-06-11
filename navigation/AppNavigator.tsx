@@ -29,6 +29,8 @@ import PastChatsScreen from '@/screens/customer/PastChatsScreen'; // Import the 
 import AddVehicleScreen from '@/screens/customer/AddVehicleScreen'; // Import AddVehicleScreen
 import PreAcceptanceChatScreen from '@/screens/customer/PreAcceptanceChatScreen'; // Import PreAcceptanceChatScreen
 import UpdateEmailScreen from '@/screens/customer/UpdateEmailScreen'; // Import the new screen
+import CustomQuoteDetailScreen from '@/screens/customer/CustomQuoteDetailScreen'; // Import the new quote detail screen
+import { CustomCharge } from '@/types/customCharges';
 
 // Combine all param lists for the root navigator
 // Use NavigatorScreenParams to type nested navigator params
@@ -52,6 +54,7 @@ export type RootStackParamList = {
   PastChats: undefined; // Add past chats screen
   AddVehicle: undefined; // Add the new vehicle screen
   PreAcceptanceChat: { orderId: string }; // Added for pre-acceptance chat
+  CustomQuoteDetail: { charge: CustomCharge };
   // Provider screens - REMOVE THESE - they belong in ProviderStackParamList
   /*
   RequestDetail: { requestId: string }; 
@@ -154,6 +157,7 @@ export default function AppNavigator() {
             <Stack.Screen name="AddVehicle" component={AddVehicleScreen} />
             <Stack.Screen name="PreAcceptanceChat" component={PreAcceptanceChatScreen} />
             <Stack.Screen name="UpdateEmail" component={UpdateEmailScreen} />
+            <Stack.Screen name="CustomQuoteDetail" component={CustomQuoteDetailScreen} />
           </>
         )
       ) : (

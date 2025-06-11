@@ -6,7 +6,7 @@ import { firestore } from '@/lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 
 // Define the type for order items - align with Firestore data
-export type OrderStatus = 'Pending' | 'Scheduled' | 'Waiting' | 'In Progress' | 'Completed' | 'Cancelled' | 'Denied' | 'Accepted';
+export type OrderStatus = 'Pending' | 'Scheduled' | 'Waiting' | 'In Progress' | 'InProgress' | 'Completed' | 'Cancelled' | 'Denied' | 'Accepted';
 
 // Represents a single item within an order
 export type OrderItemDetail = {
@@ -134,6 +134,7 @@ const OrderCard: React.FC<OrderCardProps> = ({ order, onViewDetails, onChatPress
   const getStatusStyle = () => {
     switch (order.status) {
       case 'In Progress':
+      case 'InProgress': // Also handle the legacy status without a space
         return { badge: styles.activeStatusBadge, text: styles.activeStatusText, label: 'In Progress' };
       case 'Accepted':
         return { badge: styles.acceptedStatusBadge, text: styles.acceptedStatusText, label: 'Accepted' };
@@ -181,6 +182,7 @@ const OrderCard: React.FC<OrderCardProps> = ({ order, onViewDetails, onChatPress
           isActive && styles.activeOrderCard,
           isCancelled && styles.cancelledOrderCard
         ]}
+        onPress={() => onViewDetails(order.id)}
         // Optionally disable press based on status
         // disabled={isCancelled}
       >
@@ -325,7 +327,11 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 20,
   },
-  activeStatusBadge: { backgroundColor: 'rgba(0, 240, 255, 0.2)' }, // Cyan
+  activeStatusBadge: { 
+    backgroundColor: 'rgba(0, 122, 255, 0.2)', // A vibrant blue
+    borderColor: '#007BFF',
+    borderWidth: 1,
+  },
   pendingStatusBadge: { backgroundColor: 'rgba(255, 184, 0, 0.2)' }, // Yellow/Orange
   completedStatusBadge: { backgroundColor: 'rgba(56, 229, 77, 0.2)' }, // Green
   acceptedStatusBadge: {
@@ -339,7 +345,7 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_600SemiBold',
     letterSpacing: 0.5,
   },
-  activeStatusText: { color: '#00F0FF' },
+  activeStatusText: { color: '#00A2FF' }, // Bright blue text
   pendingStatusText: { color: '#FFB800' },
   completedStatusText: { color: '#38E54D' },
   acceptedStatusText: { color: '#C070FF' },

@@ -191,15 +191,8 @@ export const markChargeAsPaid = v1https.onCall(async (data: any, context: v1http
       customerName: chargeData.customerName || null,
       providerId: chargeData.mechanicId, // Mechanic who created the quote is the provider
       providerName: chargeData.mechanicName || null,
-      items: [{
-        id: customChargeId, // Use custom charge ID as a unique item ID here
-        name: chargeData.description,
-        price: chargeData.price,
-        quantity: 1,
-        vehicleId: null,
-        vehicleDisplay: "Custom Service",
-      }],
-      totalPrice: chargeData.price,
+      items: chargeData.items || [], // Use items array from custom charge
+      totalPrice: chargeData.totalPrice || 0, // Use total price from custom charge
       status: "Accepted", // Initial status for the new repair order
       createdAt: admin.firestore.FieldValue.serverTimestamp(), // Timestamp for the new order
       originalCustomChargeId: customChargeId, // Link back to the original quote
@@ -208,10 +201,10 @@ export const markChargeAsPaid = v1https.onCall(async (data: any, context: v1http
         city: "",
         state: "",
         zipCode: "",
-        phoneNumber: "", // Ensure trailing comma for multiline objects
+        phoneNumber: "",
       },
       paymentMethod: null, // Or determine from payment, e.g., 'creditCard'
-      // Add any other necessary fields for RepairOrder, ensuring they have defaults if not from CustomCharge
+      vehicleDisplay: chargeData.vehicleDisplay || "N/A", // Pass vehicle display info
     };
 
     await newRepairOrderRef.set(repairOrderData);

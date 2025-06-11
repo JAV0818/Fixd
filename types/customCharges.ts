@@ -1,5 +1,6 @@
 // Fixd/types/customCharges.ts
-import { LocationDetails } from './orders'; // Import LocationDetails
+import { Timestamp } from 'firebase/firestore';
+import { LocationDetails, OrderItem } from './orders'; // Import LocationDetails and OrderItem
 
 // UserProfile type
 export interface UserProfile {
@@ -16,19 +17,21 @@ export interface UserProfile {
 
 // CustomCharge type
 export interface CustomCharge {
-  id?: string;
+  id: string;
   mechanicId: string;
   mechanicName: string;
   customerId: string;
   customerName: string;
-  description: string;
-  price: number;
+  items: OrderItem[]; // Replaces single description
+  totalPrice: number; // Replaces single price
   status: 'PendingApproval' | 'ApprovedAndPendingPayment' | 'Paid' | 'DeclinedByCustomer' | 'CancelledByMechanic' | 'Accepted';
-  createdAt: any; // Should be Firestore Timestamp, consider importing firebase type if used elsewhere
-  updatedAt: any; // Should be Firestore Timestamp
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+  scheduledAt?: Timestamp; // Added for optional appointment time
   paymentIntentId?: string;
   linkedRepairOrderId?: string;
   locationDetails?: LocationDetails;
+  vehicleDisplay?: string; // Optional: To show which vehicle this is for
 }
 
 // We need LocationDetails type here as well, or import it if it's in a shared types file.

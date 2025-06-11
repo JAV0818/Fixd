@@ -114,6 +114,25 @@ const getStatusStyle = (status: CustomCharge['status']) => {
 // Define Props type for HomeScreen
 type HomeScreenProps = NativeStackScreenProps<HomeStackParamList, 'Home'>;
 
+// New component for rendering a single custom charge
+const CustomChargeCard = ({ charge, onPress }: { charge: CustomCharge; onPress: () => void }) => {
+  return (
+    <TouchableOpacity style={styles.chargeCard} onPress={onPress}>
+      <View style={styles.chargeCardHeader}>
+        <Text style={styles.chargeVehicle}>{charge.vehicleDisplay || 'Custom Service'}</Text>
+        <Text style={styles.chargePrice}>${charge.totalPrice.toFixed(2)}</Text>
+      </View>
+      <Text style={styles.chargeMechanic}>Quote from: {charge.mechanicName}</Text>
+      <View style={styles.chargeStatusContainer}>
+        <View style={[styles.statusBadge, getStatusStyle(charge.status)]}>
+          <Text style={styles.statusText}>{charge.status.replace(/([A-Z])/g, ' $1').trim()}</Text>
+        </View>
+        <Text style={styles.viewQuoteButton}>View Quote →</Text>
+      </View>
+    </TouchableOpacity>
+  );
+};
+
 export default function HomeScreen({ navigation }: HomeScreenProps) {
   // const router = useRouter();
   const rootNavigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -278,33 +297,14 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   };
 
   // New: Render item for pending custom charges list
-  const renderPendingChargeItem = ({ item }: { item: CustomCharge }) => {
-    const handlePress = () => {
-      if (item.id) { // Check if item.id is defined
-        console.log("Navigate to CustomChargeDetailScreen with ID:", item.id);
-        navigation.navigate('CustomChargeDetail', { customChargeId: item.id }); // This now uses the correct navigation prop
-      } else {
-        console.error("Cannot navigate to CustomChargeDetail: charge ID is undefined.");
-        Alert.alert("Error", "Cannot open charge details: Charge ID is missing.");
-      }
-    };
-
-    return (
-      <TouchableOpacity style={styles.pendingChargeItem} onPress={handlePress}>
-        <View style={styles.pendingChargeHeader}>
-            <Text style={styles.pendingChargeMechanic}>{item.mechanicName || 'Mechanic'}</Text>
-            <Text style={styles.pendingChargeDate}>
-              {item.createdAt?.toDate ? item.createdAt.toDate().toLocaleDateString() : 'Date N/A'}
-            </Text>
-        </View>
-        <Text style={styles.pendingChargeDescription} numberOfLines={2}>{item.description || 'No description provided.'}</Text>
-        <Text style={styles.pendingChargePrice}>Total: ${item.price?.toFixed(2) || 'N/A'}</Text>
-        <Text style={[styles.pendingChargeStatus, getStatusStyle(item.status)]}>
-          Status: {item.status}
-        </Text>
-      </TouchableOpacity>
-    );
+  const handleCustomChargeSelect = (charge: CustomCharge) => {
+    // Navigate to a new screen to show quote details and payment options
+    rootNavigation.navigate('CustomQuoteDetail', { charge });
   };
+
+  const renderPendingChargeItem = ({ item }: { item: CustomCharge }) => (
+    <CustomChargeCard charge={item} onPress={() => handleCustomChargeSelect(item)} />
+  );
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -386,15 +386,17 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
                 </View>
             )}
           </View>
+          {/* Conditional Rendering for Pending Custom Charges */}
           {loadingCustomCharges ? (
-            <ActivityIndicator color="#00F0FF" style={{ marginVertical: 20 }} />
+            <ActivityIndicator style={{ marginVertical: 20 }} color="#00F0FF" />
           ) : pendingCustomCharges.length > 0 ? (
             <FlatList
               data={pendingCustomCharges}
               renderItem={renderPendingChargeItem}
               keyExtractor={(item) => item.id!}
-              // style={styles.pendingChargesList} // Add if specific list styling is needed
-              scrollEnabled={false} // Parent ScrollView handles scrolling
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 10 }}
             />
           ) : (
             <Text style={styles.noPendingChargesText}>You have no pending custom quotes at the moment.</Text>
@@ -693,5 +695,62 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontFamily: 'Inter_600SemiBold',
     textAlign: 'center',
+  },
+  sectionContainer: {
+    padding: 16,
+  },
+  chargeCard: {
+    backgroundColor: 'rgba(26, 33, 56, 1)',
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#2A3555',
+    width: 300, // Give it a fixed width
+    marginRight: 15, // Add space between cards
+  },
+  chargeCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 8,
+  },
+  chargeVehicle: {
+    fontSize: 18, // Increased font size
+    fontFamily: 'Inter_600SemiBold',
+    color: '#FFFFFF',
+    flex: 1,
+  },
+  chargePrice: {
+    fontSize: 18, // Increased font size
+    fontFamily: 'Inter_700Bold',
+    color: '#00F0FF',
+  },
+  chargeMechanic: {
+    fontSize: 14,
+    fontFamily: 'Inter_400Regular',
+    color: '#7A89FF',
+    marginBottom: 16, // Add more space
+  },
+  chargeStatusContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 'auto', // Push to bottom
+  },
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  statusText: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 11,
+    color: '#FFFFFF',
+    textTransform: 'uppercase',
+  },
+  viewQuoteButton: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 13,
+    color: '#00F0FF',
   },
 }); 

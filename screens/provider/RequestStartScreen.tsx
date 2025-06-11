@@ -132,10 +132,10 @@ export default function RequestStartScreen({ navigation, route }: Props) {
       if (requestDetails.status === 'Accepted') {
         const orderRef = doc(firestore, 'repairOrders', orderId);
         await updateDoc(orderRef, {
-          status: 'InProgress',
+          status: 'In Progress',
           startedAt: new Date(),
         });
-        setRequestDetails(prev => prev ? { ...prev, status: 'InProgress' } : null);
+        setRequestDetails(prev => prev ? { ...prev, status: 'In Progress' } : null);
         navigation.navigate('InspectionChecklist', { orderId });
       } else if (requestDetails.status === 'InProgress') {
         if (inspectionCompleted) {

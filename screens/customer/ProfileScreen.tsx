@@ -3,8 +3,8 @@ import { View, Text, StyleSheet, ScrollView, Pressable, Image, ActivityIndicator
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Car, PenTool as Tool, Clock, Shield, Settings, ChevronRight, LogOut, User, Star } from 'lucide-react-native';
 import { logout } from '@/lib/auth';
-import { useNavigation, NavigationProp } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '@/navigation/AppNavigator';
 import { auth, firestore } from '@/lib/firebase'; // Import Firebase
 import { doc, getDoc, Timestamp, collection, query, where, getCountFromServer } from 'firebase/firestore'; // Added imports for query
@@ -40,7 +40,7 @@ const toDateSafe = (value: any): Date | null => {
 };
 
 export default function ProfileScreen() {
-  const navigation = useNavigation<NavigationProp<RootStackParamList>>();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [profileData, setProfileData] = useState<CustomerProfile>({});
   const [completedOrderCount, setCompletedOrderCount] = useState(0);
   const [loadingProfile, setLoadingProfile] = useState(true);

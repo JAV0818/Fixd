@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, Image, ActivityIndicator, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Bell, PenTool as Tool, Clock, Activity, Filter, Search } from 'lucide-react-native';
@@ -8,13 +8,28 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { auth, firestore } from '@/lib/firebase';
 import { collection, query, where, onSnapshot, orderBy, Timestamp, doc, updateDoc, getDoc } from 'firebase/firestore';
 import { RepairOrder, OrderItem } from '@/types/orders';
+import { CustomCharge } from '@/types/customCharges';
 import { getFunctions, httpsCallable } from 'firebase/functions';
+
+// Define all possible statuses
+type AllStatus = RepairOrder['status'] | CustomCharge['status'];
+
+// Unified type for displaying either an order or a quote
+type DisplayableItem = Omit<Partial<RepairOrder & CustomCharge>, 'status'> & {
+  itemType: 'order' | 'quote';
+  id: string; // Ensure id is always present
+  status: AllStatus;
+};
 
 export default function RepairOrdersScreen() {
   const [showNotifications, setShowNotifications] = useState(false);
-  const [activeFilter, setActiveFilter] = useState<'all' | 'Accepted' | 'InProgress' | 'Completed' | 'Cancelled' | 'Pending' | 'Scheduled' | 'Waiting'>('all');
+  const [activeFilter, setActiveFilter] = useState<string>('all');
   const navigation = useNavigation<any>();
+  
+  // State for both data sources
   const [orders, setOrders] = useState<RepairOrder[]>([]);
+  const [quotes, setQuotes] = useState<CustomCharge[]>([]);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({});
@@ -30,34 +45,62 @@ export default function RepairOrdersScreen() {
     setLoading(true);
     setError(null);
 
-    const repairOrdersRef = collection(firestore, 'repairOrders');
-    const repairOrdersQuery = query(
-      repairOrdersRef,
-      where('providerId', '==', currentUser.uid),
-      where('status', 'in', ['Accepted', 'InProgress', 'Completed', 'Cancelled', 'Pending', 'Scheduled', 'Waiting']),
-      orderBy('createdAt', 'desc')
-    );
-
-    const unsubscribeRepairOrders = onSnapshot(repairOrdersQuery, 
-      (querySnapshot) => {
-        const fetchedOrders = querySnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data(),
-        } as RepairOrder));
+    // Fetch Repair Orders
+    const ordersRef = collection(firestore, 'repairOrders');
+    const ordersQuery = query(ordersRef, where('providerId', '==', currentUser.uid));
+    const unsubscribeOrders = onSnapshot(ordersQuery, 
+      (snapshot) => {
+        const fetchedOrders = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as RepairOrder));
         setOrders(fetchedOrders);
-        setLoading(false);
+        setLoading(false); // Stop loading once first data source returns
       },
       (err) => {
-        console.error("Error fetching assigned repair orders:", err);
+        console.error("Error fetching repair orders:", err);
         setError("Failed to load repair orders.");
         setLoading(false);
       }
     );
 
+    // Fetch Custom Charges (Quotes)
+    const quotesRef = collection(firestore, 'customCharges');
+    const quotesQuery = query(quotesRef, where('mechanicId', '==', currentUser.uid));
+    const unsubscribeQuotes = onSnapshot(quotesQuery,
+      (snapshot) => {
+        const fetchedQuotes = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as CustomCharge));
+        setQuotes(fetchedQuotes);
+        setLoading(false); // Also stop loading here
+      },
+      (err) => {
+        console.error("Error fetching custom charges:", err);
+        // Don't set main error state if orders loaded fine
+      }
+    );
+
     return () => {
-      unsubscribeRepairOrders();
+      unsubscribeOrders();
+      unsubscribeQuotes();
     };
   }, []);
+
+  const combinedItems = useMemo((): DisplayableItem[] => {
+    const allOrders: DisplayableItem[] = orders.map(o => ({ ...o, itemType: 'order' }));
+    const allQuotes: DisplayableItem[] = quotes.map(q => ({ ...q, itemType: 'quote' }));
+    
+    const combined = [...allOrders, ...allQuotes];
+    
+    // Sort by creation date, newest first
+    return combined.sort((a, b) => {
+      const dateA = (a.createdAt as Timestamp)?.toDate() || new Date(0);
+      const dateB = (b.createdAt as Timestamp)?.toDate() || new Date(0);
+      return dateB.getTime() - dateA.getTime();
+    });
+  }, [orders, quotes]);
+
+  const filteredItems = useMemo(() => {
+    if (activeFilter === 'all') return combinedItems;
+    // This filter is simplified; you might want more granular quote statuses
+    return combinedItems.filter(item => item.status === activeFilter);
+  }, [combinedItems, activeFilter]);
 
   const handleInitiateService = async (orderId: string) => {
     setActionLoading(prev => ({ ...prev, [orderId]: true }));
@@ -107,29 +150,50 @@ export default function RepairOrdersScreen() {
     );
   };
 
-  const getFilteredOrders = () => {
-    if (activeFilter === 'all') return orders;
-    return orders.filter(order => order.status === activeFilter);
+  const handleCancelOrder = async (orderId: string) => {
+    Alert.alert(
+      "Cancel Order",
+      "Are you sure you want to cancel this repair order? This action cannot be undone.",
+      [
+        { text: "Keep Order", style: "cancel" },
+        {
+          text: "Yes, Cancel",
+          style: "destructive",
+          onPress: async () => {
+            setActionLoading(prev => ({ ...prev, [orderId]: true }));
+            try {
+              const orderRef = doc(firestore, 'repairOrders', orderId);
+              await updateDoc(orderRef, { status: 'Cancelled' });
+              Alert.alert("Success", "The repair order has been cancelled.");
+            } catch (err: any) {
+              console.error("Error cancelling order:", err);
+              Alert.alert("Error", err.message || "Could not cancel the order.");
+            } finally {
+              setActionLoading(prev => ({ ...prev, [orderId]: false }));
+            }
+          },
+        },
+      ]
+    );
   };
 
-  const getStatusColor = (status: RepairOrder['status']) => {
+  const getStatusColor = (status: string) => {
     switch (status) {
       case 'InProgress': return '#00F0FF';
       case 'Accepted': return '#7A89FF';
       case 'Completed': return '#34C759';
       case 'Cancelled': return '#FF3D71';
+      case 'Pending': return '#FFA500';
+      case 'PendingApproval': return '#FFB800';
+      case 'DeclinedByCustomer': return '#FF3D71';
+      case 'CancelledByMechanic': return '#FF3D71';
       default: return '#FFFFFF';
     }
   };
 
-  const getStatusLabel = (status: RepairOrder['status']) => {
-    switch (status) {
-      case 'InProgress': return 'IN PROGRESS';
-      case 'Accepted': return 'ACCEPTED';
-      case 'Completed': return 'COMPLETED';
-      case 'Cancelled': return 'CANCELLED';
-      default: return status ? status.toUpperCase() : 'UNKNOWN';
-    }
+  const getStatusLabel = (status: string) => {
+    if (!status) return 'UNKNOWN';
+    return status.replace(/([A-Z])/g, ' $1').trim().toUpperCase();
   };
 
   if (loading) {
@@ -183,6 +247,18 @@ export default function RepairOrdersScreen() {
             <Pressable 
               style={[
                 styles.filterButton, 
+                activeFilter === 'PendingApproval' && styles.activeFilterButton
+              ]}
+              onPress={() => setActiveFilter('PendingApproval')}
+            >
+              <Text style={[
+                styles.filterText,
+                activeFilter === 'PendingApproval' && styles.activeFilterText
+              ]}>NEW QUOTES</Text>
+            </Pressable>
+            <Pressable 
+              style={[
+                styles.filterButton, 
                 activeFilter === 'InProgress' && styles.activeFilterButton
               ]}
               onPress={() => setActiveFilter('InProgress')}
@@ -232,10 +308,10 @@ export default function RepairOrdersScreen() {
         </View>
       </View>
 
-      {getFilteredOrders().length === 0 ? (
+      {filteredItems.length === 0 ? (
         <View style={styles.centeredContainer}>
           <Text style={styles.emptyStateText}>
-            No orders found for "{activeFilter === 'all' ? 'All Orders' : getStatusLabel(activeFilter as RepairOrder['status'])}"
+            No orders found for "{activeFilter === 'all' ? 'All Orders' : getStatusLabel(activeFilter as string)}"
           </Text>
         </View>
       ) : (
@@ -244,15 +320,15 @@ export default function RepairOrdersScreen() {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: 100 }}
         >
-          {getFilteredOrders().map((item) => {
+          {filteredItems.map((item) => {
             const customerPhotoToDisplay = item.customerPhotoURL || `https://via.placeholder.com/48/0A0F1E/FFFFFF?text=${item.customerName ? item.customerName.charAt(0).toUpperCase() : 'U'}`;
             const displayCustomerName = item.customerName || 'Customer';
-            const displayVehicle = item.items[0]?.vehicleDisplay || 'Vehicle not specified';
-            const displayService = item.items[0]?.name || 'Service not specified';
+            const displayVehicle = item.vehicleDisplay || item.items?.[0]?.vehicleDisplay || 'Vehicle not specified';
+            const displayService = item.items?.[0]?.name || 'Service not specified';
             const displayLocation = item.locationDetails ? `${item.locationDetails.address}, ${item.locationDetails.city}` : 'Location not set';
             const displayNotes = item.locationDetails?.additionalNotes || 'No additional notes provided.';
 
-            const isButtonLoading = actionLoading[item.id];
+            const isButtonLoading = item.id ? actionLoading[item.id] : false;
 
             return (
             <Pressable key={item.id} style={styles.orderCard}>
@@ -293,10 +369,10 @@ export default function RepairOrdersScreen() {
               </View>
               
               <View style={styles.actionButtons}>
-                {item.status === 'Accepted' && (
+                {item.itemType === 'order' && item.status === 'Accepted' && (
                   <Pressable 
                     style={[styles.actionButton, isButtonLoading && styles.disabledButton]}
-                    onPress={() => !isButtonLoading && handleInitiateService(item.id)}
+                    onPress={() => !isButtonLoading && handleInitiateService(item.id!)}
                     disabled={isButtonLoading}
                   >
                     {isButtonLoading ? (
@@ -306,7 +382,7 @@ export default function RepairOrdersScreen() {
                     )}
                   </Pressable>
                 )}
-                {item.status === 'InProgress' && (
+                {item.itemType === 'order' && item.status === 'InProgress' && (
                   <Pressable 
                     style={styles.actionButton}
                     onPress={() => navigation.navigate('Requests', { screen: 'RequestStart', params: { orderId: item.id } })}
@@ -314,7 +390,7 @@ export default function RepairOrdersScreen() {
                     <Text style={styles.actionButtonText}>VIEW ACTIVE DETAILS</Text>
                   </Pressable>
                 )}
-                {item.status === 'Completed' && (
+                {item.itemType === 'order' && item.status === 'Completed' && (
                   <Pressable 
                     style={styles.actionButton}
                     onPress={() => navigation.navigate('Requests', { screen: 'InspectionChecklist', params: { orderId: item.id } })}
@@ -322,7 +398,7 @@ export default function RepairOrdersScreen() {
                     <Text style={styles.actionButtonText}>VIEW INSPECTION/DETAILS</Text>
                   </Pressable>
                 )}
-                {(item.status === 'Accepted' || item.status === 'InProgress') && (
+                {(item.itemType === 'order' && (item.status === 'Accepted' || item.status === 'InProgress')) && (
                   <Pressable 
                     style={[styles.actionButton, (item.status !== 'Accepted' && item.status !== 'InProgress') && styles.disabledButton]}
                     onPress={() => navigation.navigate('Requests', { screen: 'UpdateStatus', params: { orderId: item.id } })}
@@ -331,13 +407,41 @@ export default function RepairOrdersScreen() {
                     <Text style={styles.actionButtonText}>UPDATE STATUS</Text>
                   </Pressable>
                 )}
-                <Pressable 
-                  style={[styles.actionButton, styles.secondaryButton, (item.status !== 'Accepted' && item.status !== 'InProgress') && styles.disabledButton]}
-                  onPress={() => (item.status === 'Accepted' || item.status === 'InProgress') && navigation.navigate('Requests', { screen: 'RequestContact', params: { orderId: item.id } })}
-                  disabled={item.status !== 'Accepted' && item.status !== 'InProgress'}
-                >
-                  <Text style={styles.secondaryButtonText}>CONTACT CUSTOMER</Text>
-                </Pressable>
+                {(item.itemType === 'order' && (item.status === 'Accepted' || item.status === 'InProgress')) && (
+                  <Pressable 
+                    style={[styles.actionButton, styles.secondaryButton, (item.status !== 'Accepted' && item.status !== 'InProgress') && styles.disabledButton]}
+                    onPress={() => (item.status === 'Accepted' || item.status === 'InProgress') && navigation.navigate('Requests', { screen: 'RequestContact', params: { orderId: item.id } })}
+                    disabled={item.status !== 'Accepted' && item.status !== 'InProgress'}
+                  >
+                    <Text style={styles.secondaryButtonText}>CONTACT CUSTOMER</Text>
+                  </Pressable>
+                )}
+                {item.itemType === 'order' && item.status === 'Pending' && (
+                  <Pressable
+                    style={[styles.actionButton, styles.cancelButton]}
+                    onPress={() => handleCancelOrder(item.id!)}
+                    disabled={isButtonLoading}
+                  >
+                    {isButtonLoading ? (
+                      <ActivityIndicator color="#FFF" />
+                    ) : (
+                      <Text style={[styles.actionButtonText, styles.cancelButtonText]}>CANCEL ORDER</Text>
+                    )}
+                  </Pressable>
+                )}
+                {item.itemType === 'quote' && item.status === 'PendingApproval' && (
+                  <Pressable
+                    style={[styles.actionButton, styles.cancelButton, {backgroundColor: '#FFA500'}]}
+                    onPress={() => handleCancelQuote(item.id!)}
+                    disabled={isButtonLoading}
+                  >
+                    {isButtonLoading ? (
+                      <ActivityIndicator color="#FFF" />
+                    ) : (
+                      <Text style={[styles.actionButtonText, styles.cancelButtonText]}>CANCEL QUOTE</Text>
+                    )}
+                  </Pressable>
+                )}
               </View>
             </Pressable>
             )}
@@ -577,4 +681,10 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingHorizontal: 20,
   },
+  cancelButton: {
+    backgroundColor: '#FF3D71',
+  },
+  cancelButtonText: {
+    color: '#FFFFFF',
+  }
 }); 
