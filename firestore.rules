@@ -1,0 +1,116 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    /* =====================================================================
+        HELPER FUNCTIONS
+       ===================================================================== */
+    function isProvider() {
+      return request.auth != null &&
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'provider';
+    }
+
+    function isAdmin() {
+      return request.auth != null &&
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true;
+    }
+
+    /* =====================================================================
+        USERS
+       ===================================================================== */
+    match /users/{userId} {
+      allow read:  if request.auth != null && request.auth.uid == userId;
+      allow write: if request.auth != null && (request.auth.uid == userId || isAdmin());
+
+      match /vehicles/{vehicleId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+    }
+
+    /* =====================================================================
+        REPAIR ORDERS (Unified Collection for Standard & Custom Quotes)
+       ===================================================================== */
+    match /repair-orders/{orderId} {
+      function isOrderCustomer() {
+        return request.auth.uid == resource.data.customerId;
+      }
+
+      function isOrderProvider() {
+        return resource.data.providerId != null && request.auth.uid == resource.data.providerId;
+      }
+
+      // GET: Allow if customer, assigned provider, or an admin/provider viewing an unassigned order.
+      allow get: if isOrderCustomer() || isOrderProvider() || ((isAdmin() || isProvider()) && resource.data.providerId == null);
+
+      // LIST: Allow queries for:
+      // 1. A customer's own orders.
+      allow list: if request.auth.uid == resource.data.customerId;
+
+      // CREATE: Allow customer to create standard orders, or provider to create custom quotes.
+      allow create: if request.auth != null &&
+        ( (request.auth.uid == request.resource.data.customerId && request.resource.data.orderType == 'standard') ||
+          ((isProvider() || isAdmin()) && request.auth.uid == request.resource.data.providerId && request.resource.data.orderType == 'custom_quote')
+        );
+
+      // UPDATE: Allow if customer or assigned provider.
+      allow update: if (isOrderCustomer() && (resource.data.status == 'Pending' || resource.data.status == 'PendingApproval')) || isOrderProvider();
+
+      // DELETE: Only assigned provider or admin can delete.
+      allow delete: if isOrderProvider() || isAdmin();
+
+      /* Sub-collections */
+      match /inspectionReport/{reportId} { allow read, write: if isOrderCustomer() || isOrderProvider(); }
+      match /preAcceptanceChats/{messageId} { allow read, write: if request.auth != null; }
+      match /activeChat/{messageId} { allow read, write: if isOrderCustomer() || isOrderProvider(); }
+    }
+
+    /* =====================================================================
+        REPAIR ORDERS (camelCase collection name)
+       ===================================================================== */
+    match /repairOrders/{orderId} {
+      function isOrderCustomer() {
+        return request.auth != null && request.auth.uid == resource.data.customerId;
+      }
+
+      function isOrderProvider() {
+        return request.auth != null && resource.data.providerId != null && request.auth.uid == resource.data.providerId;
+      }
+
+      // Allow customers and assigned providers to read their orders
+      allow get, list: if isOrderCustomer() || isOrderProvider();
+
+      // Allow customers to create standard orders, providers to create custom quotes
+      allow create: if request.auth != null &&
+        ( (request.auth.uid == request.resource.data.customerId && request.resource.data.orderType == 'standard') ||
+          ((isProvider() || isAdmin()) && request.auth.uid == request.resource.data.providerId && request.resource.data.orderType == 'custom_quote')
+        );
+
+      // Allow updates by customer (limited statuses) or assigned provider
+      allow update: if (isOrderCustomer() && (resource.data.status == 'Pending' || resource.data.status == 'PendingApproval' || resource.data.status == 'Completed')) || isOrderProvider();
+
+      // Allow delete by assigned provider or admin
+      allow delete: if isOrderProvider() || isAdmin();
+
+      /* Sub-collections */
+      match /inspectionReport/{reportId} { allow read, write: if isOrderCustomer() || isOrderProvider(); }
+      match /preAcceptanceChats/{messageId} { allow read, write: if request.auth != null; }
+      match /activeChat/{messageId} { allow read, write: if isOrderCustomer() || isOrderProvider(); }
+    }
+
+    /* =====================================================================
+        CUSTOM CHARGES (Separate collection for provider-initiated quotes)
+       ===================================================================== */
+    match /customCharges/{chargeId} {
+      // Allow read if the user is the customer associated with the charge.
+      allow get, list: if request.auth.uid == resource.data.customerId;
+      // Allow provider to create, and customer to update (e.g., approve/decline).
+      allow create: if isProvider();
+      allow update: if request.auth.uid == resource.data.customerId || isProvider();
+      // Allow provider to delete.
+      allow delete: if isProvider();
+    }
+  }
+} 

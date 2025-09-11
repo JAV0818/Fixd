@@ -6,7 +6,8 @@ import {
   SectionList,
   ActivityIndicator, 
   RefreshControl, 
-  Pressable 
+  Pressable,
+  ScrollView
 } from 'react-native';
 import { AlertTriangle, Clock, CheckCircle } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
@@ -14,6 +15,9 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '@/navigation/AppNavigator';
 import OrderCard, { Order, OrderStatus } from './OrderCard';
 import ProgressBar from '../ui/ProgressBar';
+
+// Add filter-related props
+type FilterType = 'All' | 'Active' | 'PendingApproval' | 'Scheduled' | 'Completed' | 'Cancelled';
 
 interface ServiceOrderListProps {
   title?: string;
@@ -26,6 +30,11 @@ interface ServiceOrderListProps {
   loadingStateMessage?: string;
   errorStateMessage?: string;
   limit?: number;
+  // New props for filters
+  filterOptions?: FilterType[];
+  activeFilter?: FilterType;
+  onFilterChange?: (filter: FilterType) => void;
+  getFilterCount?: (filter: FilterType) => number;
 }
 
 // Define structure for SectionList
@@ -45,7 +54,12 @@ const ServiceOrderList: React.FC<ServiceOrderListProps> = ({
   emptyStateMessage = 'No orders found',
   loadingStateMessage = 'Loading your orders...',
   errorStateMessage = 'Something went wrong while loading your orders',
-  limit
+  limit,
+  // Destructure new props
+  filterOptions,
+  activeFilter,
+  onFilterChange,
+  getFilterCount,
 }) => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [groupedOrders, setGroupedOrders] = useState<OrderSection[]>([]);
@@ -246,8 +260,74 @@ const ServiceOrderList: React.FC<ServiceOrderListProps> = ({
 
   return (
     <View style={styles.container}>
-      {showTitle && <Text style={styles.title}>{title}</Text>}
-      {renderContent()}
+      {showTitle && title && <Text style={styles.title}>{title.toUpperCase()}</Text>}
+
+      {/* Filter Chips */}
+      {filterOptions && activeFilter && onFilterChange && getFilterCount && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.filterContainer}
+          contentContainerStyle={styles.filterContent}
+        >
+          {filterOptions.map((filter) => (
+            <Pressable
+              key={filter}
+              style={[
+                styles.filterChip,
+                activeFilter === filter && styles.activeFilterChip,
+              ]}
+              onPress={() => onFilterChange(filter)}
+            >
+              <Text
+                style={[
+                  styles.filterText,
+                  activeFilter === filter && styles.activeFilterText,
+                ]}
+              >
+                {filter.replace('Approval', '')} ({getFilterCount(filter)})
+              </Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+      )}
+
+      {/* Conditional Rendering Logic */}
+      <View style={{ flex: 1 }}>
+        {isLoading ? (
+          <View style={styles.centeredMessageContainer}>
+            {renderLoadingState()}
+          </View>
+        ) : error ? (
+          <View style={styles.centeredMessageContainer}>
+            {renderErrorState()}
+          </View>
+        ) : groupedOrders.length === 0 ? (
+          <View style={styles.centeredMessageContainer}>
+            {renderEmptyState()}
+          </View>
+        ) : (
+          <SectionList
+            sections={groupedOrders}
+            keyExtractor={(item, index) => item.id + index}
+            renderItem={renderOrderItem}
+            renderSectionHeader={renderSectionHeader}
+            contentContainerStyle={styles.listContent}
+            showsVerticalScrollIndicator={false}
+            stickySectionHeadersEnabled={false} // Optional: makes headers scroll with content
+            refreshControl={
+              onRefresh ? (
+                <RefreshControl
+                  refreshing={refreshing}
+                  onRefresh={handleRefresh}
+                  tintColor="#00F0FF"
+                  colors={["#00F0FF", "#7A89FF"]}
+                />
+              ) : undefined
+            }
+          />
+        )}
+      </View>
     </View>
   );
 };
@@ -255,16 +335,20 @@ const ServiceOrderList: React.FC<ServiceOrderListProps> = ({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#0A0F1E',
   },
   title: {
     fontSize: 20,
-    fontFamily: 'Inter_600SemiBold',
+    fontFamily: 'Inter_700Bold',
     color: '#FFFFFF',
-    marginBottom: 16,
+    letterSpacing: 1,
     paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 4, // Reduced space between title and filters
   },
   listContent: {
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingTop: 8, // Keep first item away from filters
   },
   stateContainer: {
     flex: 1,
@@ -313,6 +397,40 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16, // Match list padding
     textTransform: 'uppercase',
     letterSpacing: 1,
+  },
+  // Add styles for filters
+  filterContainer: {
+    paddingVertical: 4,
+    paddingHorizontal: 16,
+    marginBottom: 8, // Space between filters and list
+  },
+  filterContent: {
+    alignItems: 'center',
+  },
+  filterChip: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#2A3555',
+    marginRight: 8,
+  },
+  activeFilterChip: {
+    backgroundColor: 'rgba(0, 240, 255, 0.15)',
+    borderColor: '#00F0FF',
+  },
+  filterText: {
+    fontSize: 14,
+    fontFamily: 'Inter_500Medium',
+    color: '#7A89FF',
+  },
+  activeFilterText: {
+    color: '#00F0FF',
+  },
+  centeredMessageContainer: {
+    alignItems: 'center',
+    padding: 20,
+    marginTop: 16, // space below filters
   },
 });
 

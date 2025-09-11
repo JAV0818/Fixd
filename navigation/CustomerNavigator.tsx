@@ -8,7 +8,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 // TODO: Adjust paths if files are moved/renamed later
 import HomeScreen from '../screens/customer/HomeScreen';
 import ProfileScreen from '../screens/customer/ProfileScreen';
-import ServiceScheduleScreen from '../screens/customer/ServiceScheduleScreen';
+import OrdersScreen from '../screens/customer/OrdersScreen';
 import CustomChargeDetailScreen from '../screens/customer/CustomChargeDetailScreen';
 
 export type CustomerTabParamList = {
@@ -176,7 +176,7 @@ export default function CustomerNavigator() {
       })}
     >
       <Tab.Screen name="Services" component={HomeStackNavigator} />
-      <Tab.Screen name="Orders" component={ServiceScheduleScreen} options={{ tabBarLabel: 'Orders' }} />
+      <Tab.Screen name="Orders" component={OrdersScreen} options={{ tabBarLabel: 'Orders' }} />
       <Tab.Screen name="Profile" component={ProfileScreen} />
     </Tab.Navigator>
   );
