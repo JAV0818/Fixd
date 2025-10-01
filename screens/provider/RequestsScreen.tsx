@@ -1,8 +1,8 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, ActivityIndicator, Alert } from 'react-native';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, ActivityIndicator, Alert, Pressable } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ProviderStackParamList } from '../../navigation/ProviderNavigator';
-import { Calendar, Clock, MapPin, Play, X, MessageCircle, Check, PlusCircle } from 'lucide-react-native';
+import { Calendar, Clock, MapPin, Play, X, MessageCircle, Check, PlusCircle, ChevronLeft, ChevronRight } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NavigationProp } from '@react-navigation/native';
@@ -12,6 +12,7 @@ import { collection, query, where, onSnapshot, Timestamp, orderBy } from 'fireba
 import { RepairOrder } from '@/types/orders';
 import RequestCard from '@/components/provider/RequestCard';
 import { getFunctions, httpsCallable } from 'firebase/functions';
+import { globalStyles, colors, spacing, componentStyles } from '@/styles/theme';
 
 // The Props should match the name of this screen in the navigator
 type Props = NativeStackScreenProps<ProviderStackParamList, 'Requests'>;
@@ -21,6 +22,8 @@ export default function RequestsScreen({ navigation: stackNavigation }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const flatListRef = useRef<FlatList>(null);
+  const [pageSize, setPageSize] = useState<number>(10);
+  const [currentPage, setCurrentPage] = useState<number>(1);
   
   // Fetch pending requests
   useEffect(() => {
@@ -28,20 +31,24 @@ export default function RequestsScreen({ navigation: stackNavigation }: Props) {
     setError(null);
 
     const ordersRef = collection(firestore, 'repairOrders');
+    // Fetch pending requests; filter unassigned and sort client-side to avoid index/null issues
     const q = query(
-      ordersRef, 
-      where('status', '==', 'Pending'), 
-      where('providerId', '==', null), 
-      orderBy('createdAt', 'desc') // Show newest first
+      ordersRef,
+      where('status', '==', 'Pending')
     );
 
     const unsubscribe = onSnapshot(q, 
       (querySnapshot) => {
-        const fetchedRequests = querySnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        } as RepairOrder));
-        setRequests(fetchedRequests);
+        const fetched = querySnapshot.docs.map(d => ({ id: d.id, ...d.data() } as RepairOrder));
+        // Only unassigned requests (no provider yet)
+        const unassigned = fetched.filter(r => !(r as any).providerId);
+        // Sort newest first by createdAt if available
+        const sorted = unassigned.sort((a: any, b: any) => {
+          const aDate = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : 0;
+          const bDate = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : 0;
+          return bDate - aDate;
+        });
+        setRequests(sorted);
         setLoading(false);
       },
       (err) => {
@@ -54,6 +61,27 @@ export default function RequestsScreen({ navigation: stackNavigation }: Props) {
     // Cleanup listener on unmount
     return () => unsubscribe();
   }, []);
+
+  // Derived pagination values
+  const totalPages = useMemo(() => {
+    return Math.max(1, Math.ceil(requests.length / pageSize));
+  }, [requests, pageSize]);
+
+  const pagedRequests = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    const end = start + pageSize;
+    return requests.slice(start, end);
+  }, [requests, currentPage, pageSize]);
+
+  const goPrev = () => setCurrentPage(p => Math.max(1, p - 1));
+  const goNext = () => setCurrentPage(p => Math.min(totalPages, p + 1));
+
+  // Reset to first page when data size changes and currentPage is out of range
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(1);
+    }
+  }, [totalPages]);
 
   // Scroll to top when the screen loses focus
   useFocusEffect(
@@ -72,10 +100,10 @@ export default function RequestsScreen({ navigation: stackNavigation }: Props) {
   // Loading State
   if (loading) {
     return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.centeredContainer}> 
-          <ActivityIndicator size="large" color="#00F0FF" />
-          <Text style={styles.loadingText}>Loading Requests...</Text>
+      <SafeAreaView style={globalStyles.container}>
+        <View style={globalStyles.centeredContainer}> 
+          <ActivityIndicator size="large" color={colors.accent} />
+          <Text style={globalStyles.loadingText}>Loading Requests...</Text>
         </View>
       </SafeAreaView>
     );
@@ -84,9 +112,9 @@ export default function RequestsScreen({ navigation: stackNavigation }: Props) {
   // Error State
   if (error) {
     return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.centeredContainer}> 
-          <Text style={styles.errorText}>{error}</Text>
+      <SafeAreaView style={globalStyles.container}>
+        <View style={globalStyles.centeredContainer}> 
+          <Text style={globalStyles.errorText}>{error}</Text>
         </View>
       </SafeAreaView>
     );
@@ -95,19 +123,19 @@ export default function RequestsScreen({ navigation: stackNavigation }: Props) {
   // If no requests after loading
   if (requests.length === 0) {
     return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.header}> 
-          <Text style={styles.sectionTitle}>SERVICE REQUESTS</Text>
+      <SafeAreaView style={globalStyles.container}>
+        <View style={globalStyles.header}> 
+          <Text style={globalStyles.sectionTitle}>SERVICE REQUESTS</Text>
           <TouchableOpacity 
             style={styles.addChargeButton}
             onPress={() => stackNavigation.navigate('CreateCustomCharge')}
           >
-            <PlusCircle size={28} color="#00F0FF" />
+            <PlusCircle size={28} color={colors.accent} />
           </TouchableOpacity>
         </View>
-        <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>NO PENDING REQUESTS</Text>
-          <Text style={styles.emptySubtext}>New requests will appear here when available.</Text>
+        <View style={globalStyles.centeredContainer}>
+          <Text style={globalStyles.emptyText}>NO PENDING REQUESTS</Text>
+          <Text style={globalStyles.emptySubtext}>New requests will appear here when available.</Text>
         </View>
       </SafeAreaView>
     );
@@ -115,9 +143,9 @@ export default function RequestsScreen({ navigation: stackNavigation }: Props) {
 
   // Main content with requests
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.sectionTitle}>PENDING SERVICE REQUESTS</Text>
+    <SafeAreaView style={globalStyles.container}>
+      <View style={globalStyles.header}>
+        <Text style={globalStyles.sectionTitle}>PENDING SERVICE REQUESTS</Text>
         <View style={{ flexDirection: 'row' }}> 
           <TouchableOpacity 
             style={[styles.addChargeButton, { marginRight: 8 }]}
@@ -144,55 +172,64 @@ export default function RequestsScreen({ navigation: stackNavigation }: Props) {
               }
             }}
           >
-            <Text style={{color: '#00F0FF'}}>Test PI</Text> 
+            <Text style={{color: colors.accent}}>Test PI</Text> 
           </TouchableOpacity>
           <TouchableOpacity 
             style={styles.addChargeButton}
             onPress={() => stackNavigation.navigate('CreateCustomCharge')}
           >
-            <PlusCircle size={28} color="#00F0FF" />
+            <PlusCircle size={28} color={colors.accent} />
           </TouchableOpacity>
         </View>
       </View>
       <FlatList
         ref={flatListRef}
-        data={requests}
+        data={pagedRequests}
         renderItem={({ item }) => <RequestCard item={item} navigation={stackNavigation} />}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.listContainer}
+        contentContainerStyle={globalStyles.listContainer}
         showsVerticalScrollIndicator={false}
         contentInsetAdjustmentBehavior="automatic"
         contentInset={{ bottom: 80 }}
+        ListFooterComponent={
+          <View style={globalStyles.listFooter}>
+            <View style={styles.pagerRow}>
+              <Pressable
+                accessibilityLabel="Previous page"
+                onPress={goPrev}
+                disabled={currentPage === 1}
+                style={({ pressed }) => [
+                  componentStyles.tealIconButton,
+                  pressed && componentStyles.tealButtonPressed,
+                  currentPage === 1 && componentStyles.tealButtonDisabled,
+                ]}
+              >
+                <ChevronLeft size={18} color={colors.accent} />
+              </Pressable>
+              <Text style={styles.pagerLabel}>Page {currentPage} of {totalPages}</Text>
+              <Pressable
+                accessibilityLabel="Next page"
+                onPress={goNext}
+                disabled={currentPage === totalPages}
+                style={({ pressed }) => [
+                  componentStyles.tealIconButton,
+                  pressed && componentStyles.tealButtonPressed,
+                  currentPage === totalPages && componentStyles.tealButtonDisabled,
+                ]}
+              >
+                <ChevronRight size={18} color={colors.accent} />
+              </Pressable>
+            </View>
+          </View>
+        }
       />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0A0F1E',
-  },
-  header: {
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#2A3555',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  sectionTitle: {
-    fontSize: 24,
-    fontFamily: 'Inter_700Bold',
-    color: '#00F0FF',
-    letterSpacing: 2,
-  },
   addChargeButton: {
     padding: 8,
-  },
-  listContainer: {
-    padding: 16,
-    paddingBottom: 100,
   },
   requestCard: {
     backgroundColor: 'rgba(122, 137, 255, 0.1)',
@@ -200,7 +237,7 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#2A3555',
+    borderColor: colors.border,
     position: 'relative',
     overflow: 'hidden',
   },
@@ -323,33 +360,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  emptyText: {
-    fontSize: 20,
-    fontFamily: 'Inter_700Bold',
-    color: '#00F0FF',
-    marginBottom: 8,
-    letterSpacing: 2,
-  },
-  emptySubtext: {
-    fontSize: 14,
-    fontFamily: 'Inter_400Regular',
-    color: '#7A89FF',
-  },
-  centeredContainer: {
-    flex: 1,
-    justifyContent: 'center',
+  pagerButton: {},
+  pagerPressed: {},
+  pagerDisabled: {},
+  pagerText: {},
+  pagerRow: {
+    width: '100%',
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 0,
   },
-  loadingText: {
-    fontSize: 16,
-    fontFamily: 'Inter_600SemiBold',
-    color: '#00F0FF',
-    marginTop: 16,
-  },
-  errorText: {
-    fontSize: 16,
-    fontFamily: 'Inter_600SemiBold',
-    color: '#FF3D71',
-    marginTop: 16,
+  pagerLabel: {
+    color: colors.textSecondary,
+    fontFamily: 'Inter_500Medium',
   },
 }); 

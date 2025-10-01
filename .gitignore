@@ -36,3 +36,32 @@ yarn-error.*
 # Environment variables
 .env
 # --- ENV ---
+node_modules/ 
+**/node_modules/ 
+.expo/ 
+.expo-shared/ 
+.expo/web-build/ 
+.cache/ 
+.tmp/ 
+.DS_Store 
+Thumbs.db 
+.env 
+.env.* 
+*.local 
+npm-debug.log* 
+yarn-debug.log* 
+yarn-error.log* 
+.pnpm-debug.log* 
+**/dist/ 
+**/build/ 
+.firebase/ 
+firebase-debug.log 
+firebase-debug.*.log 
+*.tsbuildinfo 
+coverage/ 
+.idea/ 
+.vscode/ 
+*.swp 
+*.swo 
+logs 
+*.log

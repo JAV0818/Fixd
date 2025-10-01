@@ -9,7 +9,10 @@ service cloud.firestore {
     function isProvider() {
       return request.auth != null &&
              exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'provider';
+             (
+               get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'provider' ||
+               get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true
+             );
     }
 
     function isAdmin() {
@@ -80,7 +83,8 @@ service cloud.firestore {
       }
 
       // Allow customers and assigned providers to read their orders
-      allow get, list: if isOrderCustomer() || isOrderProvider();
+      // Also allow providers to list pending orders for claim queue. The client query MUST include where('status','==','Pending').
+      allow get, list: if isOrderCustomer() || isOrderProvider() || (isProvider() && resource.data.status == 'Pending');
 
       // Allow customers to create standard orders, providers to create custom quotes
       allow create: if request.auth != null &&
@@ -104,8 +108,11 @@ service cloud.firestore {
         CUSTOM CHARGES (Separate collection for provider-initiated quotes)
        ===================================================================== */
     match /customCharges/{chargeId} {
-      // Allow read if the user is the customer associated with the charge.
-      allow get, list: if request.auth.uid == resource.data.customerId;
+      // Allow read if customer or assigned mechanic (provider) for the charge
+      allow get, list: if request.auth != null && (
+        request.auth.uid == resource.data.customerId ||
+        (isProvider() && request.auth.uid == resource.data.mechanicId)
+      );
       // Allow provider to create, and customer to update (e.g., approve/decline).
       allow create: if isProvider();
       allow update: if request.auth.uid == resource.data.customerId || isProvider();

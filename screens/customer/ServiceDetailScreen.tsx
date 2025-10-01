@@ -8,6 +8,7 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useCart, CartItem } from '@/contexts/CartContext';
+import { componentStyles, colors } from '@/styles/theme';
 
 // --- Types --- (Moved before MOCK_SERVICES)
 type Addon = {
@@ -322,17 +323,25 @@ export default function ServiceDetailScreen() {
                 <Text style={styles.totalLabel}>Total:</Text>
                 <Text style={styles.totalPrice}>${totalPrice.toFixed(2)}</Text>
             </View>
-            <Pressable 
-                style={[
-                    styles.addToCartButton,
-                    addedToCart ? styles.addedToCartButton : null
-                ]} 
-                onPress={handleAddToCart}
-            >
-                <Text style={styles.addToCartButtonText}>
-                    {addedToCart ? "Added to Cart" : "Add to Cart"}
-                </Text>
-            </Pressable>
+            <View style={styles.rightActions}>
+              <Pressable 
+                  style={[
+                      styles.addToCartButton,
+                      addedToCart ? styles.addedToCartButton : null
+                  ]} 
+                  onPress={handleAddToCart}
+              >
+                  <Text style={styles.addToCartButtonText}>
+                      {addedToCart ? "Added to Cart" : "Add to Cart"}
+                  </Text>
+              </Pressable>
+              <Pressable 
+                  style={[componentStyles.tealButton, { marginTop: 8 }]}
+                  onPress={() => navigation.navigate('HelpMeChoose', { id: service.id, vehicleId })}
+              >
+                  <Text style={{ color: colors.accent, fontFamily: 'Inter_600SemiBold' }}>Help me choose</Text>
+              </Pressable>
+            </View>
         </View>
         
         {/* Success Overlay */}

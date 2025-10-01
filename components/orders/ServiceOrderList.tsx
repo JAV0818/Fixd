@@ -9,12 +9,13 @@ import {
   Pressable,
   ScrollView
 } from 'react-native';
-import { AlertTriangle, Clock, CheckCircle } from 'lucide-react-native';
+import { AlertTriangle, Clock, CheckCircle, ChevronLeft, ChevronRight } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '@/navigation/AppNavigator';
 import OrderCard, { Order, OrderStatus } from './OrderCard';
 import ProgressBar from '../ui/ProgressBar';
+import { globalStyles, colors, spacing, componentStyles } from '@/styles/theme';
 
 // Add filter-related props
 type FilterType = 'All' | 'Active' | 'PendingApproval' | 'Scheduled' | 'Completed' | 'Cancelled';
@@ -35,6 +36,12 @@ interface ServiceOrderListProps {
   activeFilter?: FilterType;
   onFilterChange?: (filter: FilterType) => void;
   getFilterCount?: (filter: FilterType) => number;
+  pagination?: {
+    currentPage: number;
+    totalPages: number;
+    onPrev: () => void;
+    onNext: () => void;
+  };
 }
 
 // Define structure for SectionList
@@ -60,6 +67,7 @@ const ServiceOrderList: React.FC<ServiceOrderListProps> = ({
   activeFilter,
   onFilterChange,
   getFilterCount,
+  pagination,
 }) => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [groupedOrders, setGroupedOrders] = useState<OrderSection[]>([]);
@@ -194,7 +202,7 @@ const ServiceOrderList: React.FC<ServiceOrderListProps> = ({
         height={6}
         animated={true}
       />
-      <ActivityIndicator size="large" color="#00F0FF" style={styles.activityIndicator} />
+      <ActivityIndicator size="large" color={colors.accent} style={styles.activityIndicator} />
       <Text style={styles.stateMessage}>{loadingStateMessage}</Text>
     </View>
   );
@@ -249,11 +257,42 @@ const ServiceOrderList: React.FC<ServiceOrderListProps> = ({
             <RefreshControl
               refreshing={refreshing}
               onRefresh={handleRefresh}
-              tintColor="#00F0FF"
-              colors={["#00F0FF", "#7A89FF"]}
+              tintColor={colors.accent}
+              colors={[colors.accent, colors.textSecondary]}
             />
           ) : undefined
         }
+         ListFooterComponent={pagination ? (
+           <View style={globalStyles.listFooter}>
+             <View style={componentStyles.pagerRow}>
+               <Pressable
+                 accessibilityLabel="Previous page"
+                 onPress={pagination.onPrev}
+                 disabled={pagination.currentPage === 1}
+                 style={({ pressed }) => [
+                   componentStyles.tealIconButton,
+                   pressed && componentStyles.tealButtonPressed,
+                   pagination.currentPage === 1 && componentStyles.tealButtonDisabled,
+                 ]}
+               >
+                 <ChevronLeft size={18} color={colors.accent} />
+               </Pressable>
+               <Text style={componentStyles.pagerLabel}>Page {pagination.currentPage} of {pagination.totalPages}</Text>
+               <Pressable
+                 accessibilityLabel="Next page"
+                 onPress={pagination.onNext}
+                 disabled={pagination.currentPage === pagination.totalPages}
+                 style={({ pressed }) => [
+                   componentStyles.tealIconButton,
+                   pressed && componentStyles.tealButtonPressed,
+                   pagination.currentPage === pagination.totalPages && componentStyles.tealButtonDisabled,
+                 ]}
+               >
+                 <ChevronRight size={18} color={colors.accent} />
+               </Pressable>
+             </View>
+           </View>
+         ) : null}
       />
     );
   };
@@ -264,32 +303,34 @@ const ServiceOrderList: React.FC<ServiceOrderListProps> = ({
 
       {/* Filter Chips */}
       {filterOptions && activeFilter && onFilterChange && getFilterCount && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.filterContainer}
-          contentContainerStyle={styles.filterContent}
-        >
-          {filterOptions.map((filter) => (
-            <Pressable
-              key={filter}
-              style={[
-                styles.filterChip,
-                activeFilter === filter && styles.activeFilterChip,
-              ]}
-              onPress={() => onFilterChange(filter)}
-            >
-              <Text
+        <View style={styles.filterBarContainer}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.filterContainer}
+            contentContainerStyle={styles.filterContent}
+          >
+            {filterOptions.map((filter) => (
+              <Pressable
+                key={filter}
                 style={[
-                  styles.filterText,
-                  activeFilter === filter && styles.activeFilterText,
+                  styles.filterChip,
+                  activeFilter === filter && styles.activeFilterChip,
                 ]}
+                onPress={() => onFilterChange(filter)}
               >
-                {filter.replace('Approval', '')} ({getFilterCount(filter)})
-              </Text>
-            </Pressable>
-          ))}
-        </ScrollView>
+                <Text
+                  style={[
+                    styles.filterText,
+                    activeFilter === filter && styles.activeFilterText,
+                  ]}
+                >
+                  {filter.replace('Approval', '')} ({getFilterCount(filter)})
+                </Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        </View>
       )}
 
       {/* Conditional Rendering Logic */}
@@ -320,11 +361,25 @@ const ServiceOrderList: React.FC<ServiceOrderListProps> = ({
                 <RefreshControl
                   refreshing={refreshing}
                   onRefresh={handleRefresh}
-                  tintColor="#00F0FF"
-                  colors={["#00F0FF", "#7A89FF"]}
+                  tintColor={colors.accent}
+                  colors={[colors.accent, colors.textSecondary]}
                 />
               ) : undefined
             }
+            ListFooterComponent={pagination ? (
+              <View style={globalStyles.listFooter}>
+                <Text style={{ color: colors.textSecondary, marginBottom: spacing.sm }}>Page {pagination.currentPage} of {pagination.totalPages}</Text>
+                <View style={{ flexDirection: 'row' }}>
+                  <Pressable onPress={pagination.onPrev} disabled={pagination.currentPage === 1} style={[styles.pagerButton, pagination.currentPage === 1 && styles.pagerDisabled]}>
+                    <Text style={styles.pagerText}>Previous</Text>
+                  </Pressable>
+                  <View style={{ width: spacing.sm }} />
+                  <Pressable onPress={pagination.onNext} disabled={pagination.currentPage === pagination.totalPages} style={[styles.pagerButton, pagination.currentPage === pagination.totalPages && styles.pagerDisabled]}>
+                    <Text style={styles.pagerText}>Next</Text>
+                  </Pressable>
+                </View>
+              </View>
+            ) : null}
           />
         )}
       </View>
@@ -335,7 +390,7 @@ const ServiceOrderList: React.FC<ServiceOrderListProps> = ({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0A0F1E',
+    backgroundColor: colors.background,
   },
   title: {
     fontSize: 20,
@@ -381,10 +436,10 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#00F0FF',
+    borderColor: colors.accent,
   },
   retryButtonText: {
-    color: '#00F0FF',
+    color: colors.accent,
     fontSize: 14,
     fontFamily: 'Inter_500Medium',
   },
@@ -399,6 +454,11 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
   // Add styles for filters
+  filterBarContainer: {
+    backgroundColor: 'rgba(10, 15, 30, 0.9)',
+    borderBottomWidth: 1,
+    borderBottomColor: '#2A3555',
+  },
   filterContainer: {
     paddingVertical: 4,
     paddingHorizontal: 16,
@@ -417,7 +477,7 @@ const styles = StyleSheet.create({
   },
   activeFilterChip: {
     backgroundColor: 'rgba(0, 240, 255, 0.15)',
-    borderColor: '#00F0FF',
+    borderColor: colors.accent,
   },
   filterText: {
     fontSize: 14,
@@ -425,13 +485,33 @@ const styles = StyleSheet.create({
     color: '#7A89FF',
   },
   activeFilterText: {
-    color: '#00F0FF',
+    color: colors.accent,
   },
   centeredMessageContainer: {
     alignItems: 'center',
     padding: 20,
     marginTop: 16, // space below filters
   },
+  pagerButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 240, 255, 0.3)',
+    backgroundColor: 'rgba(0, 240, 255, 0.1)'
+  },
+  pagerDisabled: {
+    opacity: 0.5,
+  },
+  pagerText: {
+    color: colors.textPrimary,
+    fontFamily: 'Inter_600SemiBold'
+  },
+  pagerPressed: {
+    backgroundColor: 'rgba(0, 240, 255, 0.2)',
+  },
+  pagerRow: {},
+  pagerLabel: {},
 });
 
 export default ServiceOrderList; 

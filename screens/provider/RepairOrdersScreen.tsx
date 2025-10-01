@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, Image, ActivityIndicator, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Bell, PenTool as Tool, Clock, Activity, Filter, Search } from 'lucide-react-native';
+import { Bell, PenTool as Tool, Clock, Activity, Filter, Search, ChevronLeft, ChevronRight } from 'lucide-react-native';
 import NotificationPanel from '../../components/NotificationPanel';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -10,6 +10,7 @@ import { collection, query, where, onSnapshot, orderBy, Timestamp, doc, updateDo
 import { RepairOrder, OrderItem } from '@/types/orders';
 import { CustomCharge } from '@/types/customCharges';
 import { getFunctions, httpsCallable } from 'firebase/functions';
+import { componentStyles, colors } from '@/styles/theme';
 
 // Define all possible statuses
 type AllStatus = RepairOrder['status'] | CustomCharge['status'];
@@ -33,6 +34,8 @@ export default function RepairOrdersScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({});
+  const [pageSize, setPageSize] = useState<number>(10);
+  const [currentPage, setCurrentPage] = useState<number>(1);
 
   useEffect(() => {
     const currentUser = auth.currentUser;
@@ -101,6 +104,17 @@ export default function RepairOrdersScreen() {
     // This filter is simplified; you might want more granular quote statuses
     return combinedItems.filter(item => item.status === activeFilter);
   }, [combinedItems, activeFilter]);
+
+  const totalPages = useMemo(() => Math.max(1, Math.ceil(filteredItems.length / pageSize)), [filteredItems, pageSize]);
+  const pagedItems = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    const end = start + pageSize;
+    return filteredItems.slice(start, end);
+  }, [filteredItems, currentPage, pageSize]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) setCurrentPage(1);
+  }, [totalPages, activeFilter]);
 
   const handleInitiateService = async (orderId: string) => {
     setActionLoading(prev => ({ ...prev, [orderId]: true }));
@@ -320,7 +334,7 @@ export default function RepairOrdersScreen() {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: 100 }}
         >
-          {filteredItems.map((item) => {
+          {pagedItems.map((item) => {
             const customerPhotoToDisplay = item.customerPhotoURL || `https://via.placeholder.com/48/0A0F1E/FFFFFF?text=${item.customerName ? item.customerName.charAt(0).toUpperCase() : 'U'}`;
             const displayCustomerName = item.customerName || 'Customer';
             const displayVehicle = item.vehicleDisplay || item.items?.[0]?.vehicleDisplay || 'Vehicle not specified';
@@ -446,6 +460,34 @@ export default function RepairOrdersScreen() {
             </Pressable>
             )}
           )}
+          {/* Pager */}
+          <View style={componentStyles.pagerRow}>
+            <Pressable
+              accessibilityLabel="Previous page"
+              onPress={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              style={({ pressed }) => [
+                componentStyles.tealIconButton,
+                pressed && componentStyles.tealButtonPressed,
+                currentPage === 1 && componentStyles.tealButtonDisabled,
+              ]}
+            >
+              <ChevronLeft size={18} color={colors.accent} />
+            </Pressable>
+            <Text style={componentStyles.pagerLabel}>Page {currentPage} of {totalPages}</Text>
+            <Pressable
+              accessibilityLabel="Next page"
+              onPress={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              style={({ pressed }) => [
+                componentStyles.tealIconButton,
+                pressed && componentStyles.tealButtonPressed,
+                currentPage === totalPages && componentStyles.tealButtonDisabled,
+              ]}
+            >
+              <ChevronRight size={18} color={colors.accent} />
+            </Pressable>
+          </View>
         </ScrollView>
       )}
 
@@ -686,5 +728,16 @@ const styles = StyleSheet.create({
   },
   cancelButtonText: {
     color: '#FFFFFF',
+  },
+  pagerRow: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 12,
+  },
+  pagerLabel: {
+    color: '#7A89FF',
+    fontFamily: 'Inter_500Medium',
   }
 }); 

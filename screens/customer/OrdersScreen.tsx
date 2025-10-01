@@ -4,6 +4,7 @@ import { collection, query, where, onSnapshot, orderBy } from 'firebase/firestor
 import { auth, firestore } from '@/lib/firebase';
 import ServiceOrderList from '@/components/orders/ServiceOrderList';
 import { RepairOrder } from '@/types/orders';
+import { globalStyles, colors } from '@/styles/theme';
 
 // Types for filter options
 type FilterType = 'All' | 'Active' | 'PendingApproval' | 'Scheduled' | 'Completed' | 'Cancelled';
@@ -13,6 +14,8 @@ export default function OrdersScreen() {
   const [activeFilter, setActiveFilter] = useState<FilterType>('All');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [pageSize, setPageSize] = useState<number>(10);
+  const [currentPage, setCurrentPage] = useState<number>(1);
 
   const filterOptions: FilterType[] = ['All', 'Active', 'PendingApproval', 'Scheduled', 'Completed', 'Cancelled'];
 
@@ -70,6 +73,18 @@ export default function OrdersScreen() {
     });
   }, [orders, activeFilter]);
 
+  // Pagination derived values
+  const totalPages = useMemo(() => Math.max(1, Math.ceil(filteredOrders.length / pageSize)), [filteredOrders, pageSize]);
+  const pagedOrders = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    const end = start + pageSize;
+    return filteredOrders.slice(start, end);
+  }, [filteredOrders, currentPage, pageSize]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) setCurrentPage(1);
+  }, [totalPages]);
+
   const getFilterCount = (filter: FilterType): number => {
     if (filter === 'All') return orders.length;
     return orders.filter(order => {
@@ -92,17 +107,19 @@ export default function OrdersScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#00F0FF" />
+      <SafeAreaView style={globalStyles.container}>
+        <View style={globalStyles.centeredContainer}>
+          <ActivityIndicator size="large" color={colors.accent} />
+        </View>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={globalStyles.container}>
       <ServiceOrderList
         title="Your Orders"
-        initialOrders={filteredOrders}
+        initialOrders={pagedOrders}
         isLoading={loading}
         error={error}
         emptyStateMessage={activeFilter === 'All' ? "You haven't placed any orders yet" : `No ${activeFilter.toLowerCase()} orders found`}
@@ -111,20 +128,10 @@ export default function OrdersScreen() {
         activeFilter={activeFilter}
         onFilterChange={setActiveFilter}
         getFilterCount={getFilterCount}
+        pagination={{ currentPage, totalPages, onPrev: () => setCurrentPage(p => Math.max(1, p - 1)), onNext: () => setCurrentPage(p => Math.min(totalPages, p + 1)) }}
       />
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0A0F1E',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#0A0F1E',
-  },
-});
+const styles = StyleSheet.create({});
