@@ -9,19 +9,28 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.javazquez7355.fixd",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "web": {
       "bundler": "metro",
       "output": "single",
       "favicon": "./assets/images/favicon.png"
     },
-    "plugins": [],
+    "plugins": [
+      "expo-router"
+    ],
     "extra": {
       "eas": {
         "projectId": "0f4ae8c0-e60d-454e-b2b6-e4cd49d3b7c5"
       }
     },
-    "owner": "javazquez7355"
+    "owner": "javazquez7355",
+    "android": {
+      "package": "com.javazquez7355.fixd"
+    }
   }
 }

@@ -9,6 +9,7 @@ import LoginScreen from '@/screens/auth/LoginScreen';
 import SignupScreen from '@/screens/auth/SignupScreen';
 import CustomerNavigator from './CustomerNavigator'; // Your Bottom Tab Navigator
 import ProviderTabNavigator from './ProviderTabNavigator'; // Your Provider Tab Navigator
+import AdminTabNavigator from './AdminTabNavigator';
 import ProviderDashboardScreen from '@/screens/provider/ProviderDashboardScreen'; // Assuming this exists
 import RequestDetailScreen from '@/screens/provider/RequestDetailScreen';
 import RequestStartScreen from '@/screens/provider/RequestStartScreen';
@@ -31,6 +32,10 @@ import PreAcceptanceChatScreen from '@/screens/customer/PreAcceptanceChatScreen'
 import UpdateEmailScreen from '@/screens/customer/UpdateEmailScreen'; // Import the new screen
 import CustomQuoteDetailScreen from '@/screens/customer/CustomQuoteDetailScreen'; // Import the new quote detail screen
 import HelpMeChooseScreen from '@/screens/customer/HelpMeChooseScreen';
+import CustomQuoteRequestScreen from '@/screens/customer/CustomQuoteRequestScreen';
+import AdminRequestsScreen from '@/screens/admin/AdminRequestsScreen';
+import CustomerQuotesScreen from '@/screens/customer/CustomerQuotesScreen';
+// import SupportChatScreen from '@/screens/shared/SupportChatScreen';
 import { CustomCharge } from '@/types/customCharges';
 
 // Combine all param lists for the root navigator
@@ -39,34 +44,18 @@ import { NavigatorScreenParams } from '@react-navigation/native';
 
 // Define ParamList for type safety
 export type RootStackParamList = {
-  Login: undefined;
-  Signup: undefined;
-  CustomerApp: undefined; // Represents the entire Customer Tab Navigator
-  ProviderApp: undefined; // Represents the Provider main screen/navigator
-  ServiceDetail: { id: string; vehicleId: string | null }; // Updated to include vehicleId
-  BatteryJumpStart: undefined; // Add the new dedicated screen
-  ServiceSchedule: undefined; // Added from ProfileScreen navigation
-  PrivacySettings: undefined; // Added from ProfileScreen navigation
-  UpdateEmail: undefined; // Added for updating email
-  Cart: undefined; // Add the cart screen
-  Checkout: undefined; // Add the checkout screen
-  OrderDetail: { orderId: string }; // Add order detail screen
-  MechanicChat: { orderId: string; mechanicName?: string }; // Add chat screen
-  PastChats: undefined; // Add past chats screen
-  AddVehicle: undefined; // Add the new vehicle screen
-  PreAcceptanceChat: { orderId: string }; // Added for pre-acceptance chat
-  CustomQuoteDetail: { charge: CustomCharge };
-  HelpMeChoose: { id: string; vehicleId?: string | null };
-  // Provider screens - REMOVE THESE - they belong in ProviderStackParamList
-  /*
-  RequestDetail: { requestId: string }; 
-  RequestStart: { requestId: string };
-  RequestCancel: { requestId: string };
-  RequestContact: { requestId: string };
-  PerformanceDetails: undefined;
-  AccountSettings: undefined;
-  UpdateStatus: { orderId: string };
-  */
+  Auth: undefined;
+  Customer: NavigatorScreenParams<CustomerTabParamList>;
+  Provider: NavigatorScreenParams<ProviderTabParamList>;
+  Admin: NavigatorScreenParams<AdminTabParamList>;
+  // Add other screens here that are not part of the tab navigators
+  ServiceDetail: { id: string, vehicleId?: string | null };
+  AddVehicle: undefined;
+  ServiceSchedule: { serviceId: string, serviceName: string, vehicleId?: string };
+  HelpMeChoose: { id: string };
+  RequestQuote: undefined;
+  CustomerQuotes: undefined;
+  Support: { chatId?: string, customerId?: string };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -74,7 +63,7 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 // Custom hook for auth state and navigation
 function useAuthNavigation() {
   const [user, setUser] = useState<User | null>(null);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [role, setRole] = useState<'admin' | 'provider' | 'customer' | null>(null);
   const [loading, setLoading] = useState(true); // Stays true until role is determined
 
   useEffect(() => {
@@ -90,11 +79,10 @@ function useAuthNavigation() {
             console.log('[AppNavigator with Delay] User document for role check (UID:', currentUser.uid, '):', userDoc.data());
             if (userDoc.exists()) {
               const userData = userDoc.data();
-              console.log('[AppNavigator with Delay] isAdmin field value:', userData.isAdmin, 'Type:', typeof userData.isAdmin);
-              setIsAdmin(userData.isAdmin === true);
+              const r = (userData.role as string) || (userData.isAdmin ? 'admin' : 'customer');
+              setRole(r === 'admin' || r === 'provider' ? (r as any) : 'customer');
             } else {
-              console.log('[AppNavigator with Delay] User document does not exist for UID:', currentUser.uid);
-              setIsAdmin(false);
+              setRole('customer');
             }
           } catch (error) {
             console.error("Error fetching user role (with delay):", error);
@@ -105,7 +93,7 @@ function useAuthNavigation() {
         }, 750); // Delay of 750ms (adjust if needed)
       } else {
         // No user, clear admin state and stop loading immediately
-        setIsAdmin(false);
+        setRole(null);
         setLoading(false);
       }
     });
@@ -113,11 +101,11 @@ function useAuthNavigation() {
     return () => unsubscribe();
   }, []);
 
-  return { user, isAdmin, loading };
+  return { user, role, loading };
 }
 
 export default function AppNavigator() {
-  const { user, isAdmin, loading } = useAuthNavigation();
+  const { user, role, loading } = useAuthNavigation();
 
   if (loading) {
     // Optional: Show a loading spinner/splash screen
@@ -128,7 +116,11 @@ export default function AppNavigator() {
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       {user ? (
         // User is signed in
-        isAdmin ? (
+        role === 'admin' ? (
+          <>
+            <Stack.Screen name="ProviderApp" component={AdminTabNavigator} />
+          </>
+        ) : role === 'provider' ? (
           <>
             <Stack.Screen name="ProviderApp" component={ProviderTabNavigator} />
             {/* Provider screens - REMOVE THESE - Handled by ProviderNavigator */}
@@ -161,6 +153,10 @@ export default function AppNavigator() {
             <Stack.Screen name="UpdateEmail" component={UpdateEmailScreen} />
             <Stack.Screen name="CustomQuoteDetail" component={CustomQuoteDetailScreen} />
             <Stack.Screen name="HelpMeChoose" component={HelpMeChooseScreen} />
+            <Stack.Screen name="RequestQuote" component={CustomQuoteRequestScreen} />
+            <Stack.Screen name="CustomerQuotes" component={CustomerQuotesScreen} />
+            {/* <Stack.Screen name="Support" component={SupportChatScreen} /> */}
+            <Stack.Screen name="AdminRequests" component={AdminRequestsScreen} />
           </>
         )
       ) : (

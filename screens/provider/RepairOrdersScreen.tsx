@@ -469,7 +469,9 @@ export default function RepairOrdersScreen() {
               style={({ pressed }) => [
                 componentStyles.tealIconButton,
                 pressed && componentStyles.tealButtonPressed,
-                currentPage === 1 && componentStyles.tealButtonDisabled,
+                
+                
+                
               ]}
             >
               <ChevronLeft size={18} color={colors.accent} />

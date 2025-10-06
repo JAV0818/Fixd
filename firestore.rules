@@ -9,24 +9,34 @@ service cloud.firestore {
     function isProvider() {
       return request.auth != null &&
              exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-             (
-               get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'provider' ||
-               get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true
-             );
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'provider';
     }
 
     function isAdmin() {
       return request.auth != null &&
              exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true;
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
     /* =====================================================================
         USERS
        ===================================================================== */
     match /users/{userId} {
-      allow read:  if request.auth != null && request.auth.uid == userId;
-      allow write: if request.auth != null && (request.auth.uid == userId || isAdmin());
+      allow read:  if request.auth != null && (request.auth.uid == userId || isAdmin());
+
+      // Prevent users from elevating their own role. Only admins can change 'role'.
+      allow create: if request.auth != null && request.auth.uid == userId && (
+        !('role' in request.resource.data) || request.resource.data.role == 'customer'
+      );
+
+      allow update: if request.auth != null && (
+        // User can update their own doc as long as they aren't changing their role
+        (request.auth.uid == userId && (!('role' in request.resource.data) || request.resource.data.role == resource.data.role)) ||
+        // Admin can update any user
+        isAdmin()
+      );
+
+      allow delete: if request.auth != null && (request.auth.uid == userId || isAdmin());
 
       match /vehicles/{vehicleId} {
         allow read, write: if request.auth != null && request.auth.uid == userId;
@@ -83,14 +93,18 @@ service cloud.firestore {
       }
 
       // Allow customers and assigned providers to read their orders
-      // Also allow providers to list pending orders for claim queue. The client query MUST include where('status','==','Pending').
-      allow get, list: if isOrderCustomer() || isOrderProvider() || (isProvider() && resource.data.status == 'Pending');
+      // Providers can list pending orders for claim queue; Admins can list all orders
+      allow get, list: if isOrderCustomer() || isOrderProvider() || (isProvider() && resource.data.status == 'Pending') || isAdmin();
 
-      // Allow customers to create standard orders, providers to create custom quotes
-      allow create: if request.auth != null &&
-        ( (request.auth.uid == request.resource.data.customerId && request.resource.data.orderType == 'standard') ||
-          ((isProvider() || isAdmin()) && request.auth.uid == request.resource.data.providerId && request.resource.data.orderType == 'custom_quote')
-        );
+      // Allow creation:
+      // - Customer can create a standard order
+      // - Provider/Admin can create a custom_quote order
+      // - Customer can create a custom_quote order when accepting an approved mechanic quote (providerId must be present)
+      allow create: if request.auth != null && (
+        (request.auth.uid == request.resource.data.customerId && request.resource.data.orderType == 'standard') ||
+        ((isProvider() || isAdmin()) && request.auth.uid == request.resource.data.providerId && request.resource.data.orderType == 'custom_quote') ||
+        (request.auth.uid == request.resource.data.customerId && request.resource.data.orderType == 'custom_quote' && request.resource.data.providerId != null)
+      );
 
       // Allow updates by customer (limited statuses) or assigned provider
       allow update: if (isOrderCustomer() && (resource.data.status == 'Pending' || resource.data.status == 'PendingApproval' || resource.data.status == 'Completed')) || isOrderProvider();
@@ -108,16 +122,70 @@ service cloud.firestore {
         CUSTOM CHARGES (Separate collection for provider-initiated quotes)
        ===================================================================== */
     match /customCharges/{chargeId} {
-      // Allow read if customer or assigned mechanic (provider) for the charge
+      // Allow read if customer, assigned mechanic (provider), or admin
       allow get, list: if request.auth != null && (
         request.auth.uid == resource.data.customerId ||
-        (isProvider() && request.auth.uid == resource.data.mechanicId)
+        (isProvider() && request.auth.uid == resource.data.mechanicId) ||
+        isAdmin()
       );
       // Allow provider to create, and customer to update (e.g., approve/decline).
       allow create: if isProvider();
       allow update: if request.auth.uid == resource.data.customerId || isProvider();
       // Allow provider to delete.
       allow delete: if isProvider();
+    }
+
+    /* =====================================================================
+        QUOTE REQUESTS (Customer-initiated requests)
+       ===================================================================== */
+    match /quoteRequests/{requestId} {
+      // Customers can create and read their own requests
+      allow create: if request.auth != null && request.auth.uid == request.resource.data.customerId;
+      allow get, list: if request.auth != null && (
+        isAdmin() ||
+        request.auth.uid == resource.data.customerId ||
+        // Providers can read published requests
+        (isProvider() && resource.data.status == 'published')
+      );
+      // Admin can update/assign/publish; customer can update their drafts
+      // Additionally, allow the customer to mark a request as 'assigned' when accepting a quote
+      allow update: if request.auth != null && (
+        isAdmin() ||
+        (request.auth.uid == resource.data.customerId && resource.data.status in ['draft','submitted']) ||
+        (request.auth.uid == resource.data.customerId && request.resource.data.status == 'assigned')
+      );
+      // Delete by admin only
+      allow delete: if isAdmin();
+    }
+
+    /* =====================================================================
+        MECHANIC QUOTES (Provider-submitted quotes for a request)
+       ===================================================================== */
+    match /mechanicQuotes/{quoteId} {
+      allow read, list: if isAdmin() || isProvider() || (request.auth.uid == resource.data.customerId);
+      allow create: if isProvider();
+      allow update: if (isProvider() && request.auth.uid == resource.data.mechanicId) ||
+                       (request.auth.uid == resource.data.customerId && (
+                         request.resource.data.accepted == true ||
+                         request.resource.data.status == 'declined'
+                       ));
+      allow delete: if false;
+    }
+
+    /* =====================================================================
+    * SUPPORT CHATS (/supportChats/{chatId})
+    * ===================================================================== */
+    match /supportChats/{chatId} {
+      // Admins can see all chats. Customers can only see their own chat (chatId == userId).
+      allow read, list: if isAdmin() || request.auth.uid == chatId;
+      // Customers can create their own chat room. Admins can update status to close.
+      allow create: if request.auth.uid == chatId;
+      allow update: if isAdmin();
+
+      match /messages/{messageId} {
+        // Admins can read/write any message. Customers can only access messages in their own chat.
+        allow read, write: if isAdmin() || request.auth.uid == chatId;
+      }
     }
   }
 } 

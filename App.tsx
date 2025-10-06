@@ -75,22 +75,16 @@ export default function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <StripeProvider
-          publishableKey="pk_test_51RW4JePBdV1Chx8vLi7yVuQIxdxGL4rEBDtKpCRVTZ4UOqDQwkq2ZsMAgDOMoAnXs5C7QPkvxutfBMbbP2o3X5jf00SmZ3UEL2"
-          // merchantIdentifier="merchant.com.your-app-identifier" // Optional: for Apple Pay
-          // urlScheme="yourapp://stripe-redirect" // Optional: for some payment methods
-        >
-          <CartProvider>
-            <NavigationContainer>
-              <AppNavigator />
-              <StatusBar style="light" />
-            </NavigationContainer>
-          </CartProvider>
-        </StripeProvider>
+        <CartProvider>
+          <NavigationContainer>
+            <AppNavigator />
+            <StatusBar style="light" />
+          </NavigationContainer>
+        </CartProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
 }
-
-// Register the main App component
-registerRootComponent(App);
+ 
+ // Register the main App component
+ registerRootComponent(App);

@@ -1,6 +1,6 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Home, User, Activity } from 'lucide-react-native';
+import { Home, User, Activity, FileText, MessageCircle } from 'lucide-react-native';
 import { View, StyleSheet, Animated, Easing } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
@@ -9,7 +9,12 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import HomeScreen from '../screens/customer/HomeScreen';
 import ProfileScreen from '../screens/customer/ProfileScreen';
 import OrdersScreen from '../screens/customer/OrdersScreen';
-import CustomChargeDetailScreen from '../screens/customer/CustomChargeDetailScreen';
+import PastChatsScreen from '../screens/customer/PastChatsScreen';
+import ServiceScheduleScreen from '../screens/customer/ServiceScheduleScreen';
+import CustomQuoteRequestScreen from '../screens/customer/CustomQuoteRequestScreen';
+import CustomerQuotesScreen from '../screens/customer/CustomerQuotesScreen';
+import RequestsHomeScreen from '../screens/customer/RequestsHomeScreen';
+import SupportChatScreen from '../screens/shared/SupportChatScreen';
 
 export type CustomerTabParamList = {
   Services: undefined;
@@ -26,6 +31,13 @@ export type HomeStackParamList = {
 
 const Tab = createBottomTabNavigator<CustomerTabParamList>();
 const Stack = createNativeStackNavigator<HomeStackParamList>();
+type RequestsStackParamList = {
+  RequestsHome: undefined;
+  RequestQuote: undefined;
+  CustomerQuotes: undefined;
+  Support: undefined;
+};
+const RequestsStack = createNativeStackNavigator<RequestsStackParamList>();
 
 // Added: StackNavigator for the "Services" tab
 function HomeStackNavigator() {
@@ -34,6 +46,17 @@ function HomeStackNavigator() {
       <Stack.Screen name="Home" component={HomeScreen} />
       <Stack.Screen name="CustomChargeDetail" component={CustomChargeDetailScreen} />
     </Stack.Navigator>
+  );
+}
+
+function RequestsStackNavigator() {
+  return (
+    <RequestsStack.Navigator screenOptions={{ headerShown: false }}>
+      <RequestsStack.Screen name="RequestsHome" component={RequestsHomeScreen} />
+      <RequestsStack.Screen name="RequestQuote" component={CustomQuoteRequestScreen} />
+      <RequestsStack.Screen name="CustomerQuotes" component={CustomerQuotesScreen} />
+      <RequestsStack.Screen name="Support" component={SupportScreen} />
+    </RequestsStack.Navigator>
   );
 }
 
@@ -175,9 +198,24 @@ export default function CustomerNavigator() {
         }
       })}
     >
-      <Tab.Screen name="Services" component={HomeStackNavigator} />
+      {/* Replace Services with Requests stack */}
+      <Tab.Screen name="Services" component={RequestsStackNavigator} options={{ tabBarLabel: 'Request' }} />
       <Tab.Screen name="Orders" component={OrdersScreen} options={{ tabBarLabel: 'Orders' }} />
-      <Tab.Screen name="Profile" component={ProfileScreen} />
+      {/* <Tab.Screen
+        name="Support"
+        component={SupportChatScreen}
+        options={{
+          tabBarLabel: 'SUPPORT',
+          headerShown: false, 
+          tabBarIcon: ({ color, size, focused }) => (
+            <GlowingIcon Icon={MessageCircle} color={color} size={size} focused={focused} />
+          ),
+        }}
+      /> */}
+      <Tab.Screen
+        name="Profile"
+        component={ProfileScreen}
+      />
     </Tab.Navigator>
   );
 }

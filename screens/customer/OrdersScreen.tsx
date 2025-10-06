@@ -37,10 +37,19 @@ export default function OrdersScreen() {
     );
 
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
-      const fetchedOrders = querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-      } as RepairOrder));
+      const fetchedOrders = querySnapshot.docs.map(doc => {
+        const data = doc.data();
+        // Safely convert Firestore Timestamps to JS Date objects
+        const createdAt = data.createdAt?.toDate ? data.createdAt.toDate() : new Date();
+        const scheduledAt = data.scheduledAt?.toDate ? data.scheduledAt.toDate() : null;
+        
+        return {
+          id: doc.id,
+          ...data,
+          createdAt,
+          scheduledAt,
+        } as RepairOrder;
+      });
       setOrders(fetchedOrders);
       setLoading(false);
     }, (err) => {

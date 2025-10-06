@@ -1,7 +1,7 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { Home, User, PenTool as Tool, Activity, Bell } from 'lucide-react-native';
+import { Home, User, PenTool as Tool, Activity, Bell, MessageSquare } from 'lucide-react-native';
 import { View, StyleSheet, Animated, Easing } from 'react-native';
 import { getFocusedRouteNameFromRoute, RouteProp } from '@react-navigation/native';
 import { NavigatorScreenParams } from '@react-navigation/native';
@@ -10,7 +10,8 @@ import { NavigatorScreenParams } from '@react-navigation/native';
 import ProviderDashboardScreen from '../screens/provider/ProviderDashboardScreen';
 import ProviderProfileScreen from '../screens/provider/ProviderProfileScreen';
 import RepairOrdersScreen from '../screens/provider/RepairOrdersScreen';
-import RequestsScreen from '../screens/provider/RequestsScreen';
+import QuoteMarketplaceScreen from '@/screens/provider/QuoteMarketplaceScreen';
+import ProviderMessagingScreen from '@/screens/provider/ProviderMessagingScreen';
 import PerformanceDetailsScreen from '../screens/provider/PerformanceDetailsScreen';
 import AccountSettingsScreen from '../screens/provider/AccountSettingsScreen';
 
@@ -37,8 +38,9 @@ function ProfileStack() {
 }
 
 export type ProviderTabParamList = {
-  Requests: NavigatorScreenParams<ProviderStackParamList> | undefined;
+  Marketplace: undefined;
   RepairOrders: undefined;
+  Messages: undefined;
   Profile: NavigatorScreenParams<ProfileStackParamList> | undefined;
 };
 
@@ -152,15 +154,16 @@ const GlowingIcon = ({ color, size, focused, Icon }: GlowingIconProps) => {
 export default function ProviderTabNavigator() {
   return (
     <Tab.Navigator
-      initialRouteName="Requests"
+      initialRouteName="Marketplace"
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarIcon: ({ color, size, focused }) => {
-          if (route.name === 'Requests') {
-            return <GlowingIcon Icon={Bell} color={color} size={size} focused={focused} />;
-          } 
-          else if (route.name === 'RepairOrders') {
+          if (route.name === 'Marketplace') {
+            return <GlowingIcon Icon={Home} color={color} size={size} focused={focused} />;
+          } else if (route.name === 'RepairOrders') {
             return <GlowingIcon Icon={Tool} color={color} size={size} focused={focused} />;
+          } else if (route.name === 'Messages') {
+            return <GlowingIcon Icon={MessageSquare} color={color} size={size} focused={focused} />;
           }
           else if (route.name === 'Profile') {
             return <GlowingIcon Icon={User} color={color} size={size} focused={focused} />;
@@ -186,29 +189,9 @@ export default function ProviderTabNavigator() {
         tabBarHideOnKeyboard: true,
       })}
     >
-      <Tab.Screen 
-        name="Requests" 
-        component={ProviderNavigator} 
-        options={({ route }) => {
-          const defaultStyle = { // Define default/visible style
-              backgroundColor: '#0A0F1E', 
-              borderTopColor: '#2A3555',
-              height: 65,
-              position: 'absolute' as 'absolute', // Ensure type correctness
-              borderTopWidth: 1,
-              elevation: 0,
-              shadowOpacity: 0,
-              display: 'flex' as 'flex', // Default display
-          };
-          const routeName = getFocusedRouteNameFromRoute(route) ?? 'Requests';
-          const hideOnScreens = ['RequestContact', 'RequestDetail', 'RequestStart', 'RequestCancel', 'UpdateStatus', 'InspectionChecklist']; 
-          if (hideOnScreens.includes(routeName)) {
-              return { tabBarLabel: 'REQUESTS', tabBarStyle: { ...defaultStyle, display: 'none' } };
-          }
-          return { tabBarLabel: 'REQUESTS', tabBarStyle: defaultStyle };
-        }}
-      />
+      <Tab.Screen name="Marketplace" component={QuoteMarketplaceScreen} options={{ tabBarLabel: 'MARKETPLACE' }} />
       <Tab.Screen name="RepairOrders" component={RepairOrdersScreen} options={{ tabBarLabel: 'REPAIR QUEUE' }} />
+      <Tab.Screen name="Messages" component={ProviderMessagingScreen} options={{ tabBarLabel: 'MESSENGER' }} />
       <Tab.Screen name="Profile" component={ProfileStack} />
     </Tab.Navigator>
   );
