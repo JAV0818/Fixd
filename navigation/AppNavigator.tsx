@@ -22,8 +22,6 @@ import ServiceDetailScreen from '@/screens/customer/ServiceDetailScreen'; // Gen
 import BatteryJumpStartScreen from '@/screens/customer/BatteryJumpStartScreen'; // Import the new screen
 import ServiceScheduleScreen from '@/screens/customer/ServiceScheduleScreen';
 import PrivacySettingsScreen from '@/screens/customer/PrivacySettingsScreen';
-import CartScreen from '@/screens/customer/CartScreen'; // Import the cart screen
-import CheckoutScreen from '@/screens/customer/CheckoutScreen'; // Import the checkout screen
 import OrderDetailScreen from '@/screens/customer/OrderDetailScreen'; // Import the order detail screen
 import MechanicChatScreen from '@/screens/customer/MechanicChatScreen'; // Import the mechanic chat screen
 import PastChatsScreen from '@/screens/customer/PastChatsScreen'; // Import the past chats screen
@@ -143,8 +141,6 @@ export default function AppNavigator() {
             <Stack.Screen name="BatteryJumpStart" component={BatteryJumpStartScreen} />
             <Stack.Screen name="ServiceSchedule" component={ServiceScheduleScreen} />
             <Stack.Screen name="PrivacySettings" component={PrivacySettingsScreen} />
-            <Stack.Screen name="Cart" component={CartScreen} />
-            <Stack.Screen name="Checkout" component={CheckoutScreen} />
             <Stack.Screen name="OrderDetail" component={OrderDetailScreen} />
             <Stack.Screen name="MechanicChat" component={MechanicChatScreen} />
             <Stack.Screen name="PastChats" component={PastChatsScreen} />

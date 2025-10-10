@@ -134,7 +134,7 @@ export default function CustomerQuotesScreen() {
           <Text style={styles.title}>My Quotes</Text>
         </View>
 
-        <View style={styles.infoBox}>
+        <View style={[styles.infoBox, { marginBottom: 12 }]}>
           <Text style={styles.infoTitle}>Quotes</Text>
           <Text style={styles.infoText}>Review and approve a quote by paying a deposit.</Text>
         </View>
@@ -143,23 +143,23 @@ export default function CustomerQuotesScreen() {
           <Text style={styles.empty}>No approved quotes yet.</Text>
         ) : (
           approvedQuotes.map(q => (
-            <View key={q.id} style={styles.card}>
-              <Text style={styles.cardTitle}>Total: ${(Number(q.amount || 0) + 25).toFixed(2)}</Text>
+            <View key={q.id} style={[styles.card, { padding: 16, marginBottom: 16 }]}>
+              <Text style={[styles.cardTitle, { fontSize: 16 }]}>Total: ${(Number(q.amount || 0) + 25).toFixed(2)}</Text>
               {!!q.message && <Text style={styles.cardText}>{q.message}</Text>}
               <Text style={styles.badge}>Status: {q.accepted ? 'ACCEPTED' : 'AVAILABLE'}</Text>
-              <View style={styles.buttonRow}>
+              <View style={[styles.buttonRow, { marginTop: 20 }]}>
                 <Pressable
-                  style={[componentStyles.tealButton, styles.actionButton, styles.declineButton]}
+                  style={[styles.softButton, styles.softButtonDanger]}
                   onPress={() => declineQuote(q.id)}
                 >
-                  <Text style={styles.declineButtonText}>Decline</Text>
+                  <Text style={[styles.softButtonTextDanger]}>Decline</Text>
                 </Pressable>
                 <Pressable
-                  style={[componentStyles.tealButton, styles.actionButton]}
+                  style={[styles.softButton, styles.softButtonPrimary, q.accepted && { opacity: 0.7 }]}
                   onPress={() => acceptQuote(q)}
                   disabled={!!q.accepted}
                 >
-                  <Text style={{ color: colors.accent, fontFamily: 'Inter_600SemiBold' }}>{q.accepted ? 'Accepted' : 'Approve (Pay Deposit)'}</Text>
+                  <Text style={styles.softButtonTextPrimary}>{q.accepted ? 'Accepted' : 'Approve (Pay Deposit)'}</Text>
                 </Pressable>
               </View>
               {/* Hosted checkout opened in browser; no inline card capture */}
@@ -190,18 +190,28 @@ const styles = StyleSheet.create({
     marginTop: 16,
     gap: 8,
   },
-  actionButton: {
+  softButton: {
     flex: 1,
     alignItems: 'center',
-  },
-  declineButton: {
-    backgroundColor: 'transparent',
+    borderRadius: 10,
+    paddingVertical: 12,
     borderWidth: 1,
-    borderColor: '#FF7A7A',
+    backgroundColor: 'rgba(18,24,39,0.6)'
   },
-  declineButtonText: {
-    color: '#FF7A7A',
+  softButtonPrimary: {
+    borderColor: '#2A3555',
+  },
+  softButtonDanger: {
+    borderColor: '#533232',
+    backgroundColor: 'rgba(83, 50, 50, 0.25)'
+  },
+  softButtonTextPrimary: {
+    color: colors.accent,
     fontFamily: 'Inter_600SemiBold',
+  },
+  softButtonTextDanger: {
+    color: '#FF7A7A',
+    fontFamily: 'Inter_600SemiBold'
   },
 });
 

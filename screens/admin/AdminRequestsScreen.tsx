@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, Alert, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth, firestore } from '@/lib/firebase';
-import { collection, doc, getDocs, onSnapshot, query, updateDoc, where, getDoc, writeBatch, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, doc, getDocs, onSnapshot, query, updateDoc, where, getDoc, writeBatch, addDoc, serverTimestamp, limit } from 'firebase/firestore';
 import { componentStyles, colors } from '@/styles/theme';
 
 type QuoteRequest = {
@@ -36,6 +36,12 @@ export default function AdminRequestsScreen() {
   const [providerSearch, setProviderSearch] = useState<Record<string, string>>({});
   const [adminQuoteAmount, setAdminQuoteAmount] = useState<Record<string, string>>({});
   const [adminQuoteMessage, setAdminQuoteMessage] = useState<Record<string, string>>({});
+  const [openCreateQuote, setOpenCreateQuote] = useState<Record<string, boolean>>({});
+  const [selectedMechanicByRequest, setSelectedMechanicByRequest] = useState<Record<string, { id: string; name: string } | undefined>>({});
+  const [hasQuotesByRequest, setHasQuotesByRequest] = useState<Record<string, boolean>>({});
+  const [hasPendingApprovalByRequest, setHasPendingApprovalByRequest] = useState<Record<string, boolean>>({});
+  const [filter, setFilter] = useState<'all' | 'pendingApproval' | 'publishedNoQuotes' | 'unpublished'>('all');
+  const [visibleCount, setVisibleCount] = useState<number>(10);
 
   useEffect(() => {
     const q = query(collection(firestore, 'quoteRequests'), where('status', 'in', ['submitted', 'published', 'assigned']));
@@ -44,6 +50,36 @@ export default function AdminRequestsScreen() {
     });
     return () => unsub();
   }, []);
+
+  // Fetch per-request quote stats to support filters
+  useEffect(() => {
+    (async () => {
+      if (requests.length === 0) {
+        setHasQuotesByRequest({});
+        setHasPendingApprovalByRequest({});
+        return;
+      }
+      const quotesMap: Record<string, boolean> = {};
+      const pendingMap: Record<string, boolean> = {};
+      await Promise.all(
+        requests.map(async (r) => {
+          try {
+            const anyQuotesQ = query(collection(firestore, 'mechanicQuotes'), where('requestId', '==', r.id), limit(1));
+            const anyQuotesSnap = await getDocs(anyQuotesQ);
+            quotesMap[r.id] = !anyQuotesSnap.empty;
+
+            const pendingQ = query(collection(firestore, 'mechanicQuotes'), where('requestId', '==', r.id), where('approved', '==', false), limit(1));
+            const pendingSnap = await getDocs(pendingQ);
+            pendingMap[r.id] = !pendingSnap.empty;
+          } catch (e) {
+            // ignore per-request errors
+          }
+        })
+      );
+      setHasQuotesByRequest(quotesMap);
+      setHasPendingApprovalByRequest(pendingMap);
+    })();
+  }, [requests]);
 
   useEffect(() => {
     (async () => {
@@ -125,9 +161,10 @@ export default function AdminRequestsScreen() {
   };
 
   const handleAdminQuoteSubmit = async (req: QuoteRequest) => {
-    const assignedMechanicId = req.assignedMechanicId;
-    if (!assignedMechanicId) {
-      Alert.alert('No Mechanic Assigned', 'You must assign a mechanic to the request before creating a quote.');
+    const selected = selectedMechanicByRequest[req.id];
+    const mechanicIdForQuote = selected?.id || req.assignedMechanicId;
+    if (!mechanicIdForQuote) {
+      Alert.alert('Select Mechanic', 'Please select a mechanic for this quote (no assignment required).');
       return;
     }
 
@@ -141,7 +178,7 @@ export default function AdminRequestsScreen() {
       await addDoc(collection(firestore, 'mechanicQuotes'), {
         requestId: req.id,
         customerId: req.customerId,
-        mechanicId: assignedMechanicId,
+        mechanicId: mechanicIdForQuote,
         amount: amount,
         message: adminQuoteMessage[req.id] || `Quote provided by Admin.`,
         approved: true,
@@ -151,6 +188,7 @@ export default function AdminRequestsScreen() {
       Alert.alert('Quote Submitted', 'The quote has been created and is now visible to the customer.');
       setAdminQuoteAmount(prev => ({ ...prev, [req.id]: '' }));
       setAdminQuoteMessage(prev => ({ ...prev, [req.id]: '' }));
+      // Keep the selected mechanic for convenience; optionally clear it
     } catch (e: any) {
       Alert.alert('Error', e?.message || 'Could not submit the quote.');
     }
@@ -160,7 +198,34 @@ export default function AdminRequestsScreen() {
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.title}>Admin Requests</Text>
-        {requests.map(req => (
+        {/* Filters */}
+        <View style={[styles.row, { marginTop: 6, paddingVertical: 8 }]}>
+          <Pressable style={[componentStyles.tealButton, styles.smallBtn, filter === 'all' && styles.selectedFilter]} onPress={() => setFilter('all')}>
+            <Text style={styles.actionText}>All</Text>
+          </Pressable>
+          <Pressable style={[componentStyles.tealButton, styles.smallBtn, filter === 'pendingApproval' && styles.selectedFilter]} onPress={() => setFilter('pendingApproval')}>
+            <Text style={styles.actionText}>Pending Approval</Text>
+          </Pressable>
+          <Pressable style={[componentStyles.tealButton, styles.smallBtn, filter === 'publishedNoQuotes' && styles.selectedFilter]} onPress={() => setFilter('publishedNoQuotes')}>
+            <Text style={styles.actionText}>Published: No Quotes</Text>
+          </Pressable>
+          <Pressable style={[componentStyles.tealButton, styles.smallBtn, filter === 'unpublished' && styles.selectedFilter]} onPress={() => setFilter('unpublished')}>
+            <Text style={styles.actionText}>Unpublished</Text>
+          </Pressable>
+        </View>
+        <View style={{ height: 8 }} />
+
+        {(() => {
+          const filtered = requests.filter(req => {
+            if (filter === 'unpublished') return req.status === 'submitted';
+            if (filter === 'publishedNoQuotes') return req.status === 'published' && hasQuotesByRequest[req.id] === false;
+            if (filter === 'pendingApproval') return hasPendingApprovalByRequest[req.id] === true;
+            return true;
+          });
+          const visible = filtered.slice(0, visibleCount);
+          return (
+            <>
+              {visible.map(req => (
           <View key={req.id} style={styles.card}>
             <Text style={styles.cardTitle}>{req.vehicleInfo || 'Vehicle'}</Text>
             <Text style={styles.cardText}>{req.description}</Text>
@@ -187,33 +252,6 @@ export default function AdminRequestsScreen() {
               </Pressable>
             </View>
 
-            <View style={[styles.row, { marginTop: 10, alignItems: 'center' }]}>
-              <TextInput
-                style={styles.input}
-                placeholder="Search mechanics by name"
-                placeholderTextColor="#6E7191"
-                value={providerSearch[req.id] || ''}
-                onChangeText={text => setProviderSearch(prev => ({ ...prev, [req.id]: text }))}
-              />
-            </View>
-            {(providerSearch[req.id] || '').length > 0 && (
-              <View style={styles.quotesBox}>
-                {providers.filter(p => p.name.toLowerCase().includes((providerSearch[req.id] || '').toLowerCase())).slice(0, 5).map(p => (
-                  <Pressable
-                    key={p.id}
-                    style={styles.quoteRow}
-                    onPress={() => assignMechanic(req.id, p.id, p.name)}
-                  >
-                    <View>
-                      <Text style={styles.cardText}>{p.name}</Text>
-                      <Text style={styles.cardHint}>{p.id}</Text>
-                    </View>
-                    <Text style={styles.actionText}>{req.assignedMechanicId === p.id ? 'Assigned' : 'Assign'}</Text>
-                  </Pressable>
-                ))}
-              </View>
-            )}
-
             <Pressable style={[componentStyles.tealButton, { alignItems: 'center', marginTop: 10 }]} onPress={() => toggleQuotes(req)}>
               <Text style={styles.actionText}>{expanded[req.id] ? 'Hide Quotes' : 'View Quotes'}</Text>
             </Pressable>
@@ -232,31 +270,73 @@ export default function AdminRequestsScreen() {
             )}
             
             <View style={styles.adminQuoteSection}>
-              <Text style={styles.formLabel}>Create Quote for Customer</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Enter quote amount (e.g., 150.00)"
-                placeholderTextColor="#6E7191"
-                keyboardType="numeric"
-                value={adminQuoteAmount[req.id] || ''}
-                onChangeText={text => setAdminQuoteAmount(prev => ({ ...prev, [req.id]: text }))}
-              />
-              <TextInput
-                style={[styles.input, { marginTop: 8 }]}
-                placeholder="Enter a message (optional)"
-                placeholderTextColor="#6E7191"
-                value={adminQuoteMessage[req.id] || ''}
-                onChangeText={text => setAdminQuoteMessage(prev => ({ ...prev, [req.id]: text }))}
-              />
-              <Pressable
-                style={[componentStyles.tealButton, { alignItems: 'center', marginTop: 10 }]}
-                onPress={() => handleAdminQuoteSubmit(req)}
-              >
-                <Text style={styles.actionText}>Submit Quote to Customer</Text>
+              <Pressable onPress={() => setOpenCreateQuote(prev => ({ ...prev, [req.id]: !prev[req.id] }))} style={[componentStyles.tealButton, { alignItems: 'center' }]}>
+                <Text style={styles.actionText}>{openCreateQuote[req.id] ? 'Hide Create Quote' : 'Create Quote'}</Text>
               </Pressable>
+              {openCreateQuote[req.id] && (
+                <View style={{ marginTop: 12 }}>
+                  <Text style={styles.formLabel}>Select Mechanic and Enter Quote</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Search mechanics by name"
+                    placeholderTextColor="#6E7191"
+                    value={providerSearch[req.id] || ''}
+                    onChangeText={text => setProviderSearch(prev => ({ ...prev, [req.id]: text }))}
+                  />
+                  {(providerSearch[req.id] || '').length > 0 && (
+                    <View style={styles.quotesBox}>
+                      {providers.filter(p => p.name.toLowerCase().includes((providerSearch[req.id] || '').toLowerCase())).slice(0, 5).map(p => (
+                        <View key={p.id} style={styles.quoteRow}>
+                          <Pressable onPress={() => setSelectedMechanicByRequest(prev => ({ ...prev, [req.id]: { id: p.id, name: p.name } }))} style={{ flex: 1 }}>
+                            <View>
+                              <Text style={styles.cardText}>{p.name}</Text>
+                              <Text style={styles.cardHint}>{p.id}</Text>
+                            </View>
+                          </Pressable>
+                          <Pressable onPress={() => assignMechanic(req.id, p.id, p.name)} style={styles.smallBtn}>
+                            <Text style={styles.actionText}>{req.assignedMechanicId === p.id ? 'Assigned' : 'Assign'}</Text>
+                          </Pressable>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                  {selectedMechanicByRequest[req.id] && (
+                    <Text style={[styles.cardHint, { marginTop: 6 }]}>Selected: {selectedMechanicByRequest[req.id]?.name}</Text>
+                  )}
+                  <TextInput
+                    style={[styles.input, { marginTop: 8 }]}
+                    placeholder="Enter quote amount (e.g., 150.00)"
+                    placeholderTextColor="#6E7191"
+                    keyboardType="numeric"
+                    value={adminQuoteAmount[req.id] || ''}
+                    onChangeText={text => setAdminQuoteAmount(prev => ({ ...prev, [req.id]: text }))}
+                  />
+                  <TextInput
+                    style={[styles.input, { marginTop: 8 }]}
+                    placeholder="Enter a message (optional)"
+                    placeholderTextColor="#6E7191"
+                    value={adminQuoteMessage[req.id] || ''}
+                    onChangeText={text => setAdminQuoteMessage(prev => ({ ...prev, [req.id]: text }))}
+                  />
+                  <Pressable
+                    style={[componentStyles.tealButton, { alignItems: 'center', marginTop: 10 }]}
+                    onPress={() => handleAdminQuoteSubmit(req)}
+                  >
+                    <Text style={styles.actionText}>Submit Quote to Customer</Text>
+                  </Pressable>
+                </View>
+              )}
             </View>
           </View>
-        ))}
+              ))}
+              {filtered.length > visibleCount && (
+                <Pressable style={[componentStyles.tealButton, { alignItems: 'center', marginTop: 10 }]} onPress={() => setVisibleCount(c => c + 10)}>
+                  <Text style={styles.actionText}>Load More</Text>
+                </Pressable>
+              )}
+            </>
+          );
+        })()}
       </ScrollView>
     </SafeAreaView>
   );
@@ -304,6 +384,10 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     borderTopWidth: 1,
     borderColor: '#2A3555',
+  },
+  selectedFilter: {
+    borderColor: colors.accent,
+    borderWidth: 1,
   },
   formLabel: {
     color: '#7A89FF',

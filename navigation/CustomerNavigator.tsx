@@ -55,7 +55,7 @@ function RequestsStackNavigator() {
       <RequestsStack.Screen name="RequestsHome" component={RequestsHomeScreen} />
       <RequestsStack.Screen name="RequestQuote" component={CustomQuoteRequestScreen} />
       <RequestsStack.Screen name="CustomerQuotes" component={CustomerQuotesScreen} />
-      <RequestsStack.Screen name="Support" component={SupportScreen} />
+      <RequestsStack.Screen name="Support" component={SupportChatScreen} />
     </RequestsStack.Navigator>
   );
 }
