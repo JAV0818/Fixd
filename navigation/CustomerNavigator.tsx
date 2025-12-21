@@ -3,6 +3,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Home, User, Activity, FileText, MessageCircle } from 'lucide-react-native';
 import { View, StyleSheet, Animated, Easing } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { RequestsProvider } from '@/contexts/RequestsContext';
 
 // --- Import the actual screen components ---
 // TODO: Adjust paths if files are moved/renamed later
@@ -15,6 +16,7 @@ import CustomQuoteRequestScreen from '../screens/customer/CustomQuoteRequestScre
 import CustomerQuotesScreen from '../screens/customer/CustomerQuotesScreen';
 import RequestsHomeScreen from '../screens/customer/RequestsHomeScreen';
 import SupportChatScreen from '../screens/shared/SupportChatScreen';
+import CustomChargeDetailScreen from '../screens/customer/CustomChargeDetailScreen';
 
 export type CustomerTabParamList = {
   Services: undefined;
@@ -51,12 +53,14 @@ function HomeStackNavigator() {
 
 function RequestsStackNavigator() {
   return (
-    <RequestsStack.Navigator screenOptions={{ headerShown: false }}>
-      <RequestsStack.Screen name="RequestsHome" component={RequestsHomeScreen} />
-      <RequestsStack.Screen name="RequestQuote" component={CustomQuoteRequestScreen} />
-      <RequestsStack.Screen name="CustomerQuotes" component={CustomerQuotesScreen} />
-      <RequestsStack.Screen name="Support" component={SupportChatScreen} />
-    </RequestsStack.Navigator>
+    <RequestsProvider>
+      <RequestsStack.Navigator screenOptions={{ headerShown: false }}>
+        <RequestsStack.Screen name="RequestsHome" component={RequestsHomeScreen} />
+        <RequestsStack.Screen name="RequestQuote" component={CustomQuoteRequestScreen} />
+        <RequestsStack.Screen name="CustomerQuotes" component={CustomerQuotesScreen} />
+        <RequestsStack.Screen name="Support" component={SupportChatScreen} />
+      </RequestsStack.Navigator>
+    </RequestsProvider>
   );
 }
 
@@ -186,16 +190,28 @@ export default function CustomerNavigator() {
           // Default fallback
           return <GlowingIcon Icon={Home} color={color} size={size} focused={focused} />;
         },
-        tabBarActiveTintColor: '#00F0FF', 
-        tabBarInactiveTintColor: '#7A89FF',
+        tabBarActiveTintColor: '#5B57F5', 
+        tabBarInactiveTintColor: '#A0A3BD',
         tabBarStyle: {
-          backgroundColor: '#0A0F1E', 
-          borderTopColor: '#2A3555',
-          height: 65, // Increase tab bar height
+          backgroundColor: '#FFFFFF', 
+          borderTopColor: '#E8E9F3',
+          borderTopWidth: 1,
+          height: 85,
+          paddingBottom: 25,
+          paddingTop: 10,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: -2 },
+          shadowOpacity: 0.05,
+          shadowRadius: 8,
+          elevation: 10,
         },
         tabBarItemStyle: {
-          height: 60, // Apply to all tabs
-        }
+          paddingVertical: 8,
+        },
+        tabBarLabelStyle: {
+          fontSize: 12,
+          fontFamily: 'Inter_600SemiBold',
+        },
       })}
     >
       {/* Replace Services with Requests stack */}
@@ -236,17 +252,17 @@ const styles = StyleSheet.create({
     zIndex: 1,
   },
   focusedIconContainer: {
-    backgroundColor: 'rgba(0, 240, 255, 0.15)',
+    backgroundColor: 'rgba(91, 87, 245, 0.1)',
   },
   glowContainer: {
     position: 'absolute',
     height: 40,
     width: 40,
     borderRadius: 20,
-    backgroundColor: '#00F0FF',
+    backgroundColor: '#5B57F5',
   },
   focusedGlowContainer: {
-    shadowColor: '#00F0FF',
+    shadowColor: '#5B57F5',
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.8,
     shadowRadius: 10,

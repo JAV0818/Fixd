@@ -9,6 +9,7 @@ import { auth, firestore } from '@/lib/firebase';
 import { collection, query, where, onSnapshot, orderBy, Timestamp, getDoc, doc } from 'firebase/firestore';
 import OrderCard from '@/components/orders/OrderCard';
 import { Order as DisplayableOrder } from '@/components/orders/OrderCard';
+import { colors } from '@/styles/theme';
 
 interface OrderSection {
   title: string;
@@ -111,15 +112,14 @@ export default function ServiceScheduleScreen() {
   if (loading && !refreshing) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
-         <View style={styles.header}>
+        <View style={styles.header}>
           <Pressable onPress={() => navigation.goBack()} style={styles.backButton}>
-            <ArrowLeft size={24} color="#00F0FF" />
+            <ArrowLeft size={24} color={colors.primary} />
           </Pressable>
-          <Text style={styles.title}>SERVICE SCHEDULE</Text>
-          <View style={{ width: 40 }} />
+          <Text style={styles.title}>Service Schedule</Text>
         </View>
         <View style={styles.centeredMessageContainer}>
-          <ActivityIndicator size="large" color="#00F0FF" />
+          <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>Loading Your Schedule...</Text>
         </View>
       </SafeAreaView>
@@ -131,16 +131,15 @@ export default function ServiceScheduleScreen() {
       <SafeAreaView style={styles.container} edges={['top']}>
         <View style={styles.header}>
           <Pressable onPress={() => navigation.goBack()} style={styles.backButton}>
-            <ArrowLeft size={24} color="#00F0FF" />
+            <ArrowLeft size={24} color={colors.primary} />
           </Pressable>
-          <Text style={styles.title}>SERVICE SCHEDULE</Text>
-          <View style={{ width: 40 }} />
+          <Text style={styles.title}>Service Schedule</Text>
         </View>
         <View style={styles.centeredMessageContainer}>
-          <AlertTriangle size={40} color="#FF3D71" />
+          <AlertTriangle size={40} color={colors.danger} />
           <Text style={styles.errorText}>{error}</Text>
           <Pressable style={styles.retryButton} onPress={fetchOrders}>
-              <Text style={styles.retryButtonText}>Try Again</Text>
+            <Text style={styles.retryButtonText}>Try Again</Text>
           </Pressable>
         </View>
       </SafeAreaView>
@@ -151,29 +150,28 @@ export default function ServiceScheduleScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <Pressable onPress={() => navigation.goBack()} style={styles.backButton}>
-          <ArrowLeft size={24} color="#00F0FF" />
+          <ArrowLeft size={24} color={colors.primary} />
         </Pressable>
-        <Text style={styles.title}>SERVICE SCHEDULE</Text>
-        <View style={{ width: 40 }} />
+        <Text style={styles.title}>Service Schedule</Text>
       </View>
       
       {sections.length === 0 && !loading ? (
-          <View style={styles.centeredMessageContainer}>
-            <Calendar size={40} color="#7A89FF" />
-            <Text style={styles.emptyMessageText}>You have no scheduled services or past orders.</Text>
-         </View>
+        <View style={styles.centeredMessageContainer}>
+          <Calendar size={40} color={colors.textTertiary} />
+          <Text style={styles.emptyMessageText}>You have no scheduled services or past orders.</Text>
+        </View>
       ) : (
         <SectionList
           sections={sections}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => <OrderCard order={item} onViewDetails={() => handleOrderPress(item.id)} onChatPress={() => handleChatPress(item.id, item.providerName)} />}
           renderSectionHeader={({ section: { title } }) => (
-            <Text style={styles.sectionHeader}>{title.toUpperCase()}</Text>
+            <Text style={styles.sectionHeader}>{title}</Text>
           )}
           contentContainerStyle={styles.listContentContainer}
           showsVerticalScrollIndicator={false}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={["#00F0FF"]} tintColor="#00F0FF"/>
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary]} tintColor={colors.primary}/>
           }
         />
       )}
@@ -184,30 +182,28 @@ export default function ServiceScheduleScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0A0F1E',
+    backgroundColor: colors.background,
   },
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
-    backgroundColor: 'rgba(10, 15, 30, 0.9)',
-    borderBottomWidth: 1,
-    borderBottomColor: '#2A3555',
+    padding: 20,
+    paddingBottom: 16,
+    gap: 12,
   },
   backButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(0, 240, 255, 0.1)',
+    backgroundColor: colors.surfaceAlt,
     justifyContent: 'center',
     alignItems: 'center',
   },
   title: {
-    fontSize: 18,
+    fontSize: 24,
     fontFamily: 'Inter_700Bold',
-    color: '#00F0FF',
-    letterSpacing: 1.5,
+    color: colors.textPrimary,
+    flex: 1,
   },
   centeredMessageContainer: {
     flex: 1,
@@ -218,13 +214,13 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 10,
     fontSize: 16,
-    color: '#7A89FF',
+    color: colors.textTertiary,
     fontFamily: 'Inter_500Medium',
   },
   errorText: {
     marginTop: 10,
     fontSize: 16,
-    color: '#FF3D71',
+    color: colors.danger,
     fontFamily: 'Inter_500Medium',
     textAlign: 'center',
     marginBottom: 20,
@@ -232,33 +228,32 @@ const styles = StyleSheet.create({
   emptyMessageText: {
     marginTop: 10,
     fontSize: 16,
-    color: '#7A89FF',
+    color: colors.textTertiary,
     fontFamily: 'Inter_500Medium',
     textAlign: 'center',
   },
   retryButton: {
-    backgroundColor: '#00F0FF',
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 8,
-    marginTop:10,
+    backgroundColor: colors.primary,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    marginTop: 10,
   },
   retryButtonText: {
-    color: '#0A0F1E',
+    color: '#FFFFFF',
     fontSize: 14,
     fontFamily: 'Inter_600SemiBold',
   },
   listContentContainer: {
-    paddingHorizontal: 16,
-    paddingBottom: 16,
+    paddingHorizontal: 20,
+    paddingBottom: 100,
   },
   sectionHeader: {
-    fontSize: 14,
+    fontSize: 16,
     fontFamily: 'Inter_600SemiBold',
-    color: '#7A89FF',
+    color: colors.textPrimary,
     paddingVertical: 12,
     paddingTop: 20,
-    backgroundColor: '#0A0F1E',
-    letterSpacing: 1,
+    backgroundColor: colors.background,
   },
 }); 

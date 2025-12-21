@@ -6,9 +6,10 @@ import { logout } from '@/lib/auth';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '@/navigation/AppNavigator';
-import { auth, firestore } from '@/lib/firebase'; // Import Firebase
-import { doc, getDoc, Timestamp, collection, query, where, getCountFromServer } from 'firebase/firestore'; // Added imports for query
-import StarRatingDisplay from '@/components/ui/StarRatingDisplay'; // Import the new component
+import { auth, firestore } from '@/lib/firebase';
+import { doc, getDoc, Timestamp, collection, query, where, getCountFromServer } from 'firebase/firestore';
+import StarRatingDisplay from '@/components/ui/StarRatingDisplay';
+import { colors } from '@/styles/theme';
 
 // Interface for Customer Profile Data
 interface CustomerProfile {
@@ -118,9 +119,7 @@ export default function ProfileScreen() {
     // Simplified: Only show initials or fallback
     if (initials) {
       return (
-        <View
-          style={[styles.profileImage, { backgroundColor: '#0080FF' }]}
-        >
+        <View style={[styles.profileImage, { backgroundColor: colors.primary }]}>
           <Text style={styles.profileInitials}>{initials}</Text>
         </View>
       );
@@ -128,7 +127,7 @@ export default function ProfileScreen() {
     // Fallback if no initials
     return (
       <View style={[styles.profileImage, styles.placeholderAvatar]}>
-        <User size={60} color="#7A89FF" /> 
+        <User size={48} color={colors.textTertiary} /> 
       </View>
     );
   };
@@ -136,72 +135,84 @@ export default function ProfileScreen() {
   if (loadingProfile || loadingCount) {
     return (
       <SafeAreaView style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#00F0FF" />
+        <ActivityIndicator size="large" color={colors.primary} />
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView 
         style={styles.content}
-        contentContainerStyle={{ flexGrow: 1 }}
+        contentContainerStyle={{ flexGrow: 1, paddingBottom: 100 }}
       >
         <View style={styles.header}>
+          <Text style={styles.headerTitle}>Profile</Text>
+        </View>
+        
+        <View style={styles.profileCard}>
           <View style={styles.profileImageContainer}>
             {renderProfileAvatar()}
           </View>
-          <Text style={styles.name}>{displayName.toUpperCase()}</Text>
-          <Text style={styles.membershipLevel}>FIXD CUSTOMER</Text>
-          <View style={styles.statsContainer}>
-            <View style={styles.statItem}>
-              <Text style={[styles.statValue, {marginLeft: 0}]}>{completedOrderCount}</Text>
-              <Text style={styles.statLabel}>ORDERS</Text>
-            </View>
-            <View style={styles.statDivider} />
-            <View style={styles.statItem}>
+          <Text style={styles.name}>{displayName}</Text>
+          <Text style={styles.membershipLevel}>Fixd Customer</Text>
+        </View>
+
+        <View style={styles.statsCard}>
+          <View style={styles.statItem}>
+            <Text style={styles.statValue}>{completedOrderCount}</Text>
+            <Text style={styles.statLabel}>Orders</Text>
+          </View>
+          <View style={styles.statDivider} />
+          <View style={styles.statItem}>
+            <Text style={styles.statValue}>3.0</Text>
+            <View style={styles.starsContainer}>
               <StarRatingDisplay 
-                rating={3} // Replace with actual averageRating when available
-                starSize={16}
-                showRatingNumber={true}
-                ratingNumberStyle={styles.statValue}
-                starColorFilled="#00F0FF"
-                starColorEmpty="#4A5588"
-                starContainerStyle={styles.starsContainer}
+                rating={3}
+                starSize={14}
+                showRatingNumber={false}
+                starColorFilled={colors.warning}
+                starColorEmpty="#D9DBE9"
               />
-              <Text style={styles.statLabel}>RATING</Text>
             </View>
-            <View style={styles.statDivider} />
-            <View style={styles.statItem}>
-              <Text style={[styles.statValue, {marginLeft: 0}]}>{memberSinceMonth}</Text>
-              {memberSinceYear && <Text style={styles.memberYear}>{memberSinceYear}</Text>}
-              <Text style={styles.statLabel}>CUSTOMER SINCE</Text>
-            </View>
+          </View>
+          <View style={styles.statDivider} />
+          <View style={styles.statItem}>
+            <Text style={styles.statValue}>{memberSinceMonth}</Text>
+            {memberSinceYear && <Text style={styles.memberYear}>{memberSinceYear}</Text>}
+            <Text style={styles.statLabel}>Member Since</Text>
           </View>
         </View>
 
         <View style={styles.menuSection}>
+          <Text style={styles.sectionTitle}>Settings</Text>
+          
           <Pressable 
             style={styles.menuItem}
             onPress={() => navigation.navigate('ServiceSchedule' as never)}
           >
-            <Clock size={20} color="#00F0FF" />
+            <View style={styles.menuIconContainer}>
+              <Clock size={20} color={colors.primary} />
+            </View>
             <Text style={styles.menuText}>Service Schedule</Text>
-            <ChevronRight size={20} color="#7A89FF" />
+            <ChevronRight size={20} color={colors.textTertiary} />
           </Pressable>
+          
           <Pressable 
             style={styles.menuItem} 
             onPress={() => navigation.navigate('PrivacySettings' as never)}
           >
-            <Shield size={20} color="#00F0FF" />
+            <View style={styles.menuIconContainer}>
+              <Shield size={20} color={colors.primary} />
+            </View>
             <Text style={styles.menuText}>Privacy and Settings</Text>
-            <ChevronRight size={20} color="#7A89FF" />
+            <ChevronRight size={20} color={colors.textTertiary} />
           </Pressable>
         </View>
 
         <Pressable style={styles.logoutButton} onPress={handleLogout}>
-          <LogOut size={20} color="#FF3D71" />
-          <Text style={styles.logoutText}>LOGOUT</Text>
+          <LogOut size={20} color={colors.danger} />
+          <Text style={styles.logoutText}>Logout</Text>
         </Pressable>
       </ScrollView>
     </SafeAreaView>
@@ -211,148 +222,170 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0A0F1E',
+    backgroundColor: colors.background,
   },
   content: {
     flex: 1,
   },
   header: {
-    alignItems: 'center',
+    padding: 20,
+    paddingBottom: 16,
+  },
+  headerTitle: {
+    fontSize: 32,
+    fontFamily: 'Inter_700Bold',
+    color: colors.textPrimary,
+    lineHeight: 40,
+  },
+  profileCard: {
+    backgroundColor: colors.surface,
+    marginHorizontal: 20,
+    marginBottom: 16,
+    borderRadius: 16,
     padding: 24,
-    borderBottomWidth: 1,
-    borderBottomColor: '#2A3555',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
   },
   profileImageContainer: {
-    position: 'relative',
     marginBottom: 16,
   },
   profileImage: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
+    width: 100,
+    height: 100,
+    borderRadius: 50,
     borderWidth: 3,
-    borderColor: '#00F0FF',
+    borderColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
   },
   profileInitials: {
-    fontSize: 42,
+    fontSize: 36,
     fontFamily: 'Inter_700Bold',
     color: '#FFFFFF',
-    letterSpacing: 2,
   },
   name: {
-    fontSize: 22,
+    fontSize: 24,
     fontFamily: 'Inter_700Bold',
-    color: '#FFFFFF',
-    letterSpacing: 1,
+    color: colors.textPrimary,
     marginBottom: 4,
-    textTransform: 'uppercase',
   },
   membershipLevel: {
-    fontSize: 12,
+    fontSize: 14,
     fontFamily: 'Inter_500Medium',
-    color: '#00F0FF',
-    letterSpacing: 1,
-    marginBottom: 16,
-    textTransform: 'uppercase',
+    color: colors.textTertiary,
   },
-  statsContainer: {
+  statsCard: {
+    backgroundColor: colors.surface,
+    marginHorizontal: 20,
+    marginBottom: 24,
+    borderRadius: 16,
+    padding: 20,
     flexDirection: 'row',
     justifyContent: 'space-around',
-    width: '100%',
-    paddingVertical: 12,
-    paddingHorizontal: 8,
-    backgroundColor: 'rgba(10, 15, 30, 0.7)', 
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#2A3555',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
   },
   statItem: {
     alignItems: 'center',
-    flex: 1, 
-    paddingHorizontal: 2,
+    flex: 1,
   },
   statValue: {
-    fontSize: 16, 
+    fontSize: 24,
     fontFamily: 'Inter_700Bold',
-    color: '#00F0FF',
+    color: colors.primary,
     marginBottom: 4,
-    textAlign: 'center',
-  },
-  ratingValueText: {
   },
   starsContainer: { 
-    marginBottom: 4, 
+    marginTop: 4,
   },
   memberYear: {
-    fontSize: 12,
+    fontSize: 14,
     fontFamily: 'Inter_600SemiBold',
-    color: '#00F0FF',
-    lineHeight: 12,
-    marginTop: -2,
-    textAlign: 'center',
+    color: colors.primary,
+    marginTop: -4,
   },
   statLabel: {
-    fontSize: 10,
+    fontSize: 12,
     fontFamily: 'Inter_500Medium',
-    color: '#7A89FF',
-    letterSpacing: 1,
-    textAlign: 'center',
-    textTransform: 'uppercase',
+    color: colors.textTertiary,
   },
   statDivider: {
     width: 1,
-    height: '60%',
+    height: '80%',
     alignSelf: 'center',
-    backgroundColor: '#2A3555',
+    backgroundColor: colors.border,
   },
   menuSection: {
-    padding: 16,
-    gap: 8,
+    paddingHorizontal: 20,
+    marginBottom: 24,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontFamily: 'Inter_600SemiBold',
+    color: colors.textPrimary,
+    marginBottom: 12,
   },
   menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: 16,
-    backgroundColor: 'rgba(122, 137, 255, 0.1)',
+    backgroundColor: colors.surface,
     borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#2A3555',
+    marginBottom: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  menuIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.surfaceAlt,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
   },
   menuText: {
     flex: 1,
-    marginLeft: 16,
     fontSize: 16,
     fontFamily: 'Inter_500Medium',
-    color: '#00F0FF',
+    color: colors.textPrimary,
   },
   logoutButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    margin: 16,
+    marginHorizontal: 20,
+    marginTop: 8,
     padding: 16,
-    backgroundColor: 'rgba(255, 61, 113, 0.1)',
+    backgroundColor: colors.dangerLight,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#FF3D71',
+    borderColor: '#FFD6D6',
   },
   logoutText: {
     marginLeft: 8,
     fontSize: 16,
     fontFamily: 'Inter_600SemiBold',
-    color: '#FF3D71',
-    letterSpacing: 2,
+    color: colors.danger,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#0A0F1E',
+    backgroundColor: colors.background,
   },
   placeholderAvatar: {
-     backgroundColor: 'rgba(122, 137, 255, 0.1)',
-     borderColor: '#7A89FF',
+    backgroundColor: colors.surfaceAlt,
+    borderColor: colors.border,
   },
 }); 

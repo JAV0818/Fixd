@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, Switch, TextInput, ActivityIndicator, Alert } from 'react-native';
-// import { useRouter } from 'expo-router';
 import { 
   ArrowLeft, 
   Shield, 
@@ -27,6 +26,7 @@ import {
   updatePassword as firebaseUpdatePassword, 
   deleteUser as firebaseDeleteUser 
 } from 'firebase/auth';
+import { colors } from '@/styles/theme';
 
 // START ADDED HELPER COMPONENT DEFINITIONS
 interface SectionHeaderProps {
@@ -53,7 +53,9 @@ interface SwitchRowProps {
 const SwitchRow: React.FC<SwitchRowProps> = ({ icon, label, description, value, onValueChange, isSaving }) => (
   <Pressable style={styles.settingRow} onPress={() => onValueChange(!value)} disabled={isSaving}>
     <View style={styles.settingContent}>
-      {icon}
+      <View style={styles.iconContainer}>
+        {icon}
+      </View>
       <View style={styles.textContainer}>
         <Text style={styles.settingLabel}>{label}</Text>
         <Text style={styles.settingDescription}>{description}</Text>
@@ -61,14 +63,14 @@ const SwitchRow: React.FC<SwitchRowProps> = ({ icon, label, description, value, 
     </View>
     <View style={styles.switchContainer}>
       {isSaving ? (
-        <ActivityIndicator size="small" color="#00F0FF" />
+        <ActivityIndicator size="small" color={colors.primary} />
       ) : (
         <Switch
           value={value}
           onValueChange={onValueChange}
-          trackColor={{ false: '#2A3555', true: 'rgba(0, 240, 255, 0.3)' }}
-          thumbColor={value ? '#00F0FF' : '#7A89FF'}
-          ios_backgroundColor="#2A3555"
+          trackColor={{ false: colors.border, true: colors.primaryLight }}
+          thumbColor={value ? colors.primary : colors.textLight}
+          ios_backgroundColor={colors.border}
         />
       )}
     </View>
@@ -286,14 +288,13 @@ export default function PrivacySettingsScreen() {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
-            <Pressable onPress={() => navigation.goBack()} style={styles.backButton} disabled={isUpdatingPassword || isDeletingAccount}>
-                <ArrowLeft size={24} color="#00F0FF" />
-            </Pressable>
-            <Text style={styles.title}>PRIVACY & SECURITY</Text>
-            <View style={{ width: 40 }} /> 
+          <Pressable onPress={() => navigation.goBack()} style={styles.backButton} disabled={isUpdatingPassword || isDeletingAccount}>
+            <ArrowLeft size={24} color={colors.primary} />
+          </Pressable>
+          <Text style={styles.title}>Privacy & Security</Text>
         </View>
         <View style={styles.centeredMessageContainer}>
-          <ActivityIndicator size="large" color="#00F0FF" />
+          <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>Loading settings...</Text>
         </View>
       </SafeAreaView>
@@ -304,24 +305,25 @@ export default function PrivacySettingsScreen() {
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <Pressable onPress={() => navigation.goBack()} style={styles.backButton} disabled={isUpdatingPassword || isDeletingAccount}>
-          <ArrowLeft size={24} color="#00F0FF" />
+          <ArrowLeft size={24} color={colors.primary} />
         </Pressable>
-        <Text style={styles.title}>PRIVACY & SECURITY</Text>
-        <View style={{ width: 40 }} />
+        <Text style={styles.title}>Privacy & Security</Text>
       </View>
 
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollViewContent}>
         {/* Account Security Section */}
-        <SectionHeader title="ACCOUNT SECURITY" />
+        <SectionHeader title="Account Security" />
         <Pressable style={styles.settingRow} onPress={() => navigation.navigate('UpdateEmail')}>
           <View style={styles.settingContent}>
-            <Mail size={20} color="#00F0FF" style={styles.icon} />
+            <View style={styles.iconContainer}>
+              <Mail size={20} color={colors.primary} />
+            </View>
             <View style={styles.textContainer}>
               <Text style={styles.settingLabel}>Update Email</Text>
               <Text style={styles.settingDescription}>Change the email address associated with your account.</Text>
             </View>
           </View>
-          <ChevronRight size={20} color="#7A89FF" />
+          <ChevronRight size={20} color={colors.textTertiary} />
         </Pressable>
         
         {/* Change Password Sub-Section */}
@@ -391,17 +393,17 @@ export default function PrivacySettingsScreen() {
 
           <Pressable style={[styles.saveButton, (isUpdatingPassword || isDeletingAccount) && styles.disabledButton]} onPress={handleSavePassword} disabled={isUpdatingPassword || isDeletingAccount}>
             {isUpdatingPassword ? (
-              <ActivityIndicator color="#0A0F1E" />
+              <ActivityIndicator color="#FFFFFF" />
             ) : (
-              <Text style={styles.saveButtonText}>UPDATE PASSWORD</Text>
+              <Text style={styles.saveButtonText}>Update Password</Text>
             )}
           </Pressable>
         </View>
 
         {/* Notification Settings Section */}
-        <SectionHeader title="NOTIFICATION SETTINGS" />
+        <SectionHeader title="Notification Settings" />
         <SwitchRow 
-          icon={<Bell size={20} color="#00F0FF" />}
+          icon={<Bell size={20} color={colors.primary} />}
           label="Push Notifications"
           description="Receive alerts for order updates and messages."
           value={settings.pushNotificationsEnabled ?? true}
@@ -409,7 +411,7 @@ export default function PrivacySettingsScreen() {
           isSaving={isSavingSetting.pushNotificationsEnabled}
         />
         <SwitchRow 
-          icon={<Mail size={20} color="#00F0FF" />} // Using Mail icon as placeholder
+          icon={<Mail size={20} color={colors.primary} />}
           label="Email Notifications"
           description="Receive order summaries and promotions via email."
           value={settings.emailNotificationsEnabled ?? true}
@@ -418,19 +420,21 @@ export default function PrivacySettingsScreen() {
         />
 
         {/* Account Actions Section */}
-        <SectionHeader title="ACCOUNT ACTIONS" />
+        <SectionHeader title="Account Actions" />
         <Pressable style={styles.settingRow} onPress={handleDeleteAccount} disabled={isDeletingAccount}>
           <View style={styles.settingContent}>
-            <UserMinus size={20} color="#FF3D71" style={styles.icon} />
+            <View style={[styles.iconContainer, styles.dangerIconContainer]}>
+              <UserMinus size={20} color={colors.danger} />
+            </View>
             <View style={styles.textContainer}>
-              <Text style={styles.settingLabel}>Delete Account</Text>
+              <Text style={[styles.settingLabel, styles.dangerText]}>Delete Account</Text>
               <Text style={styles.settingDescription}>Permanently delete your account and all associated data.</Text>
             </View>
           </View>
           {isDeletingAccount ? (
-            <ActivityIndicator color="#FF3D71" />
+            <ActivityIndicator color={colors.danger} />
           ) : (
-            <ChevronRight size={20} color="#FF3D71" />
+            <ChevronRight size={20} color={colors.danger} />
           )}
         </Pressable>
       </ScrollView>
@@ -441,68 +445,75 @@ export default function PrivacySettingsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0A0F1E',
+    backgroundColor: colors.background,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 16,
-    backgroundColor: 'rgba(10, 15, 30, 0.9)',
-    borderBottomWidth: 1,
-    borderBottomColor: '#2A3555',
+    padding: 20,
+    paddingBottom: 16,
+    gap: 12,
   },
   backButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(0, 240, 255, 0.1)',
+    backgroundColor: colors.surfaceAlt,
     justifyContent: 'center',
     alignItems: 'center',
   },
   title: {
-    fontSize: 20,
+    fontSize: 24,
     fontFamily: 'Inter_700Bold',
-    color: '#00F0FF',
-    letterSpacing: 2,
+    color: colors.textPrimary,
+    flex: 1,
   },
   scrollView: {
     flex: 1,
   },
   scrollViewContent: {
-    padding: 16,
-    gap: 24,
+    padding: 20,
+    paddingBottom: 100,
   },
   sectionHeaderContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 16,
+    marginTop: 24,
+    marginBottom: 12,
   },
   sectionHeaderTitle: {
     fontSize: 16,
-    fontFamily: 'Inter_700Bold',
-    color: '#00F0FF',
-    letterSpacing: 2,
-    textTransform: 'uppercase',
+    fontFamily: 'Inter_600SemiBold',
+    color: colors.textPrimary,
   },
   settingRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: 'rgba(122, 137, 255, 0.1)',
+    backgroundColor: colors.surface,
     padding: 16,
     borderRadius: 12,
-    marginBottom: 12,
+    marginBottom: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
   },
   settingContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
     flex: 1,
+    gap: 12,
   },
-  icon: {
-    marginRight: 12,
+  iconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.surfaceAlt,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dangerIconContainer: {
+    backgroundColor: colors.dangerLight,
   },
   textContainer: {
     flex: 1,
@@ -510,31 +521,36 @@ const styles = StyleSheet.create({
   settingLabel: {
     fontSize: 16,
     fontFamily: 'Inter_600SemiBold',
-    color: '#00F0FF',
-    marginBottom: 4,
+    color: colors.textPrimary,
+    marginBottom: 2,
+  },
+  dangerText: {
+    color: colors.danger,
   },
   settingDescription: {
     fontSize: 14,
     fontFamily: 'Inter_400Regular',
-    color: '#7A89FF',
+    color: colors.textTertiary,
+    lineHeight: 18,
   },
   subSection: {
-    gap: 16,
+    marginTop: 16,
     marginBottom: 24,
   },
   label: {
     fontSize: 14,
-    fontFamily: 'Inter_500Medium',
-    color: '#7A89FF',
+    fontFamily: 'Inter_600SemiBold',
+    color: colors.textPrimary,
     marginBottom: 8,
+    marginTop: 12,
   },
   passwordInput: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(122, 137, 255, 0.1)',
-    borderRadius: 8,
+    backgroundColor: colors.surface,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#2A3555',
+    borderColor: colors.border,
     paddingHorizontal: 12,
   },
   input: {
@@ -542,22 +558,19 @@ const styles = StyleSheet.create({
     height: 48,
     fontSize: 16,
     fontFamily: 'Inter_400Regular',
-    color: '#00F0FF',
+    color: colors.textPrimary,
   },
   saveButton: {
-    backgroundColor: 'rgba(0, 240, 255, 0.1)',
+    backgroundColor: colors.primary,
     padding: 16,
-    borderRadius: 8,
+    borderRadius: 12,
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#00F0FF',
-    marginTop: 8,
+    marginTop: 16,
   },
   saveButtonText: {
-    fontSize: 14,
+    fontSize: 16,
     fontFamily: 'Inter_600SemiBold',
-    color: '#00F0FF',
-    letterSpacing: 2,
+    color: '#FFFFFF',
   },
   centeredMessageContainer: {
     flex: 1,
@@ -568,7 +581,7 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 10,
     fontSize: 16,
-    color: '#7A89FF',
+    color: colors.textTertiary,
     fontFamily: 'Inter_500Medium',
   },
   disabledButton: {

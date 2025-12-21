@@ -1,44 +1,48 @@
 import React from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { componentStyles, colors } from '@/styles/theme';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList } from '../AppNavigator';
-
-type Nav = NativeStackNavigationProp<RootStackParamList>;
+import { useRequestsContext } from '@/contexts/RequestsContext';
+import { colors } from '@/styles/theme';
+import CustomQuoteRequestForm from './CustomQuoteRequestForm';
+import CustomerQuotesView from './CustomerQuotesView';
 
 export default function RequestsHomeScreen() {
-  const navigation = useNavigation<Nav>();
+  const { activeMode, setActiveMode } = useRequestsContext();
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.content}>
-        <Text style={styles.title}>Requests & Support</Text>
-        
-        <Pressable 
-          style={[componentStyles.tealButton, styles.card]}
-          onPress={() => navigation.navigate('CustomerQuotes')}
-        >
-          <Text style={styles.cardTitle}>View My Quotes</Text>
-          <Text style={styles.cardText}>Review, accept, or decline quotes from mechanics and admins.</Text>
-        </Pressable>
+        {/* Header with Toggle */}
+        <View style={styles.header}>
+          <Text style={styles.title}>Get help now,{'\n'}book a service</Text>
+        </View>
 
-        <Pressable 
-          style={[componentStyles.tealButton, styles.card]}
-          onPress={() => navigation.navigate('RequestQuote')}
-        >
-          <Text style={styles.cardTitle}>Request a Custom Quote</Text>
-          <Text style={styles.cardText}>Submit a new request for a custom service or repair.</Text>
-        </Pressable>
+        {/* Toggle Selector */}
+        <View style={styles.toggleContainer}>
+          <Pressable
+            style={[styles.toggleButton, activeMode === 'request' && styles.toggleButtonActive]}
+            onPress={() => setActiveMode('request')}
+          >
+            <Text style={[styles.toggleText, activeMode === 'request' && styles.toggleTextActive]}>
+              Request Quote
+            </Text>
+          </Pressable>
+          <Pressable
+            style={[styles.toggleButton, activeMode === 'view' && styles.toggleButtonActive]}
+            onPress={() => setActiveMode('view')}
+          >
+            <Text style={[styles.toggleText, activeMode === 'view' && styles.toggleTextActive]}>
+              View My Quotes
+            </Text>
+          </Pressable>
+        </View>
 
-        {/* <Pressable 
-          style={[componentStyles.tealButton, styles.card]}
-          onPress={() => navigation.navigate('Support')}
-        >
-          <Text style={styles.cardTitle}>Support</Text>
-          <Text style={styles.cardText}>Chat with an admin for help with your account or a service.</Text>
-        </Pressable> */}
+        {/* Conditional Content */}
+        {activeMode === 'request' ? (
+          <CustomQuoteRequestForm />
+        ) : (
+          <CustomerQuotesView />
+        )}
       </View>
     </SafeAreaView>
   );
@@ -47,33 +51,51 @@ export default function RequestsHomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0A0F1E',
+    backgroundColor: '#E8E9F3',
   },
   content: {
-    padding: 16,
+    flex: 1,
+  },
+  header: {
+    padding: 20,
+    paddingBottom: 16,
   },
   title: {
-    color: colors.accent,
-    fontSize: 24,
+    color: '#14142B',
+    fontSize: 32,
     fontFamily: 'Inter_700Bold',
-    marginBottom: 20,
+    lineHeight: 40,
   },
-  card: {
-    padding: 16,
+  toggleContainer: {
+    flexDirection: 'row',
+    marginHorizontal: 20,
     marginBottom: 16,
-    alignItems: 'flex-start',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
   },
-  cardTitle: {
-    color: colors.accent,
-    fontSize: 18,
+  toggleButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  toggleButtonActive: {
+    backgroundColor: '#5B57F5',
+  },
+  toggleText: {
+    fontSize: 15,
     fontFamily: 'Inter_600SemiBold',
+    color: '#4E4B66',
   },
-  cardText: {
-    color: '#D0DFFF',
-    fontSize: 14,
-    fontFamily: 'Inter_400Regular',
-    marginTop: 4,
+  toggleTextActive: {
+    color: '#FFFFFF',
   },
 });
-
 

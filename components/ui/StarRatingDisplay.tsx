@@ -19,26 +19,42 @@ const StarRatingDisplay: React.FC<StarRatingDisplayProps> = ({
   starSize = 16,
   showRatingNumber = true,
   ratingNumberStyle,
-  starColorFilled = '#FFC700', // Gold color from customer profile
-  starColorEmpty = '#4A5588',  // Empty star color from customer profile
+  starColorFilled = '#FFC700',
+  starColorEmpty = '#4A5588',
   starContainerStyle,
 }) => {
   const filledStars = Math.round(rating * 2) / 2; // Rounds to nearest 0.5
   const numFilled = Math.floor(filledStars);
-  // const hasHalfStar = filledStars % 1 !== 0; // Not implementing half stars for now with lucide
+  const hasHalfStar = filledStars % 1 !== 0;
 
   return (
     <View style={[styles.overallContainer, starContainerStyle]}>
       <View style={styles.starsRowContainer}>
-        {Array.from({ length: maxStars }).map((_, index) => (
-          <Star
-            key={index}
-            size={starSize}
-            color={index < numFilled ? starColorFilled : starColorEmpty}
-            fill={index < numFilled ? starColorFilled : 'none'}
-            style={styles.star}
-          />
-        ))}
+        {Array.from({ length: maxStars }).map((_, index) => {
+          const isFilled = index < numFilled;
+          const isHalf = hasHalfStar && index === numFilled;
+          
+          return (
+            <View key={index} style={styles.starWrapper}>
+              <Star
+                size={starSize}
+                color={isFilled || isHalf ? starColorFilled : starColorEmpty}
+                fill={isFilled ? starColorFilled : 'none'}
+                style={styles.star}
+              />
+              {isHalf && (
+                <View style={[styles.halfStarMask, { width: starSize / 2, height: starSize }]}>
+                  <Star
+                    size={starSize}
+                    color={starColorFilled}
+                    fill={starColorFilled}
+                    style={styles.star}
+                  />
+                </View>
+              )}
+            </View>
+          );
+        })}
       </View>
       {showRatingNumber && (
         <Text style={[styles.ratingNumber, ratingNumberStyle]}>
@@ -57,8 +73,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     marginBottom: 2,
   },
-  star: {
+  starWrapper: {
+    position: 'relative',
     marginRight: 2,
+  },
+  star: {
+    marginRight: 0,
+  },
+  halfStarMask: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    overflow: 'hidden',
   },
   ratingNumber: {
     fontSize: 14,
