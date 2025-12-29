@@ -8,6 +8,7 @@ import { firestore, auth } from '@/lib/firebase';
 import { doc, onSnapshot, updateDoc, serverTimestamp, increment, getDoc } from 'firebase/firestore';
 import { RepairOrder } from '@/types/orders';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
+import { colors } from '@/styles/theme';
 
 type Props = NativeStackScreenProps<ProviderStackParamList, 'RequestDetail'>;
 
@@ -23,7 +24,7 @@ export default function RequestDetailScreen({ navigation, route }: Props) {
 
   useEffect(() => {
     setLoading(true);
-    const docRef = doc(firestore, 'repairOrders', orderId);
+    const docRef = doc(firestore, 'repair-orders', orderId);
 
     const unsubscribe = onSnapshot(docRef, 
       async (docSnap) => {
@@ -87,7 +88,7 @@ export default function RequestDetailScreen({ navigation, route }: Props) {
     }
 
     setIsUpdating(true);
-    const orderDocRef = doc(firestore, 'repairOrders', orderId);
+    const orderDocRef = doc(firestore, 'repair-orders', orderId);
     const providerDocRef = doc(firestore, 'users', currentUser.uid);
 
     try {
@@ -117,7 +118,7 @@ export default function RequestDetailScreen({ navigation, route }: Props) {
     if (!isUpdating && order) { 
       setIsUpdating(true);
       console.log("Attempting to decline order:", orderId);
-      const docRef = doc(firestore, 'repairOrders', orderId);
+      const docRef = doc(firestore, 'repair-orders', orderId);
       try {
         await updateDoc(docRef, {
           status: 'Cancelled'
@@ -163,7 +164,7 @@ export default function RequestDetailScreen({ navigation, route }: Props) {
           style: "destructive",
           onPress: async () => {
             setIsUpdating(true);
-            const docRef = doc(firestore, 'repairOrders', order.id);
+            const docRef = doc(firestore, 'repair-orders', order.id);
             try {
               await updateDoc(docRef, {
                 status: 'Cancelled',
@@ -185,7 +186,7 @@ export default function RequestDetailScreen({ navigation, route }: Props) {
   if (loading) {
     return (
       <SafeAreaView style={styles.loadingContainer} edges={['top']}>
-        <ActivityIndicator size="large" color="#00F0FF" />
+        <ActivityIndicator size="large" color={colors.primary} />
         <Text style={styles.loadingText}>Loading Details...</Text>
       </SafeAreaView>
     );
@@ -196,7 +197,7 @@ export default function RequestDetailScreen({ navigation, route }: Props) {
       <SafeAreaView style={styles.errorContainer} edges={['top']}>
         <View style={styles.header_basic}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton_basic}>
-            <ArrowLeft size={24} color="#FFF" />
+            <ArrowLeft size={24} color={colors.textPrimary} />
           </TouchableOpacity>
           <Text style={styles.headerTitle_basic}>Error</Text>
           <View style={{ width: 24 }} />
@@ -225,10 +226,10 @@ export default function RequestDetailScreen({ navigation, route }: Props) {
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <ArrowLeft size={24} color="#FFFFFF" />
+          <ArrowLeft size={24} color={colors.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Request Details</Text>
-        <View style={{ width: 24 }} />
+        <View style={{ width: 40 }} />
       </View>
 
       <View style={styles.mainContentArea}>
@@ -288,7 +289,7 @@ export default function RequestDetailScreen({ navigation, route }: Props) {
                 onPress={handleContact} 
                 disabled={isUpdating}
               >
-                <MessageCircle size={20} color="#7A89FF" />
+                <MessageCircle size={20} color={colors.primary} />
                 <Text style={styles.contactButtonText}>Contact</Text>
               </TouchableOpacity>
               
@@ -297,7 +298,7 @@ export default function RequestDetailScreen({ navigation, route }: Props) {
                 onPress={handleDecline} 
                 disabled={isUpdating}
               >
-                <X size={20} color="#FF3D71" />
+                <X size={20} color={colors.danger} />
                 <Text style={styles.declineButtonText}>{isUpdating ? 'Declining...' : 'Decline'}</Text>
               </TouchableOpacity>
 
@@ -306,7 +307,7 @@ export default function RequestDetailScreen({ navigation, route }: Props) {
                 onPress={handleAccept} 
                 disabled={isUpdating}
               >
-                <Check size={20} color="#0A0F1E" />
+                <Check size={20} color="#FFFFFF" />
                 <Text style={styles.acceptButtonText}>{isUpdating ? 'Accepting...' : 'Accept'}</Text>
               </TouchableOpacity>
             </>
@@ -319,7 +320,7 @@ export default function RequestDetailScreen({ navigation, route }: Props) {
                 onPress={handleContact}
                  disabled={isUpdating}
               >
-                <MessageCircle size={20} color="#7A89FF" />
+                <MessageCircle size={20} color={colors.primary} />
                 <Text style={styles.contactButtonText}>Contact</Text>
               </TouchableOpacity>
 
@@ -328,7 +329,7 @@ export default function RequestDetailScreen({ navigation, route }: Props) {
                 onPress={handleCancelService}
                 disabled={isUpdating} 
               >
-                <Ban size={20} color="#FF3D71" />
+                <Ban size={20} color={colors.danger} />
                 <Text style={styles.cancelServiceButtonText}>Cancel Service</Text>
               </TouchableOpacity>
 
@@ -337,7 +338,7 @@ export default function RequestDetailScreen({ navigation, route }: Props) {
                 onPress={handleStartService}
                 disabled={isUpdating} 
               >
-                <Play size={20} color="#0A0F1E" />
+                <Play size={20} color="#FFFFFF" />
                 <Text style={styles.startServiceButtonText}>Start Service</Text>
               </TouchableOpacity>
             </>
@@ -351,19 +352,19 @@ export default function RequestDetailScreen({ navigation, route }: Props) {
 const styles = StyleSheet.create({
   loadingContainer: {
     flex: 1,
-    backgroundColor: '#0A0F1E',
+    backgroundColor: colors.background,
     alignItems: 'center',
     justifyContent: 'center',
   },
   loadingText: {
-    color: '#00F0FF',
+    color: colors.primary,
     marginTop: 16,
     fontSize: 16,
     fontFamily: 'Inter_600SemiBold',
   },
   errorContainer: {
     flex: 1,
-    backgroundColor: '#0A0F1E',
+    backgroundColor: colors.background,
   },
   centeredContent: {
     flex: 1,
@@ -372,7 +373,7 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   errorText: {
-    color: '#FF3D71',
+    color: colors.danger,
     fontSize: 16,
     fontFamily: 'Inter_600SemiBold',
     textAlign: 'center',
@@ -384,7 +385,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#2A3555',
+    borderBottomColor: colors.border,
   },
   backButton_basic: {
     padding: 4,
@@ -392,11 +393,11 @@ const styles = StyleSheet.create({
   headerTitle_basic: {
     fontSize: 18,
     fontFamily: 'Inter_600SemiBold',
-    color: '#FFFFFF',
+    color: colors.textPrimary,
   },
   container: {
     flex: 1,
-    backgroundColor: '#0A0F1E',
+    backgroundColor: colors.background,
   },
   header: {
     flexDirection: 'row',
@@ -405,16 +406,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#2A3555',
-    backgroundColor: '#0A0F1E',
+    borderBottomColor: colors.border,
+    backgroundColor: colors.surface,
   },
   backButton: {
-    padding: 4,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.surfaceAlt,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   headerTitle: {
     fontSize: 18,
     fontFamily: 'Inter_600SemiBold',
-    color: '#FFFFFF',
+    color: colors.textPrimary,
   },
   mainContentArea: {
     flex: 1,
@@ -427,20 +433,25 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   card: {
-    backgroundColor: '#121827',
-    borderRadius: 12,
+    backgroundColor: colors.surface,
+    borderRadius: 16,
     padding: 16,
     marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#2A3555',
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
   },
   sectionTitle: {
     fontSize: 16,
     fontFamily: 'Inter_600SemiBold',
-    color: '#00F0FF',
+    color: colors.primary,
     marginBottom: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#2A3555',
+    borderBottomColor: colors.border,
     paddingBottom: 8,
   },
   detailRow: {
@@ -452,27 +463,27 @@ const styles = StyleSheet.create({
     width: 100,
     fontSize: 14,
     fontFamily: 'Inter_500Medium',
-    color: '#7A89FF',
+    color: colors.textTertiary,
     marginRight: 8,
   },
   detailValue: {
     flex: 1,
     fontSize: 14,
     fontFamily: 'Inter_400Regular',
-    color: '#E0EFFF',
+    color: colors.textPrimary,
   },
   description: {
     fontSize: 14,
     fontFamily: 'Inter_400Regular',
     lineHeight: 20,
-    color: '#E0EFFF',
+    color: colors.textSecondary,
   },
   actionButtonsContainer: {
     flexDirection: 'row',
     paddingVertical: 12,
     paddingHorizontal: 16,
-    backgroundColor: '#121827',
-    borderTopColor: '#2A3555',
+    backgroundColor: colors.surface,
+    borderTopColor: colors.border,
     borderTopWidth: 1,
   },
   actionButton: {
@@ -480,56 +491,56 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 10,
+    paddingVertical: 12,
     paddingHorizontal: 10,
-    borderRadius: 8,
+    borderRadius: 10,
     marginHorizontal: 4,
     borderWidth: 1,
     minHeight: 44,
     gap: 6,
   },
   contactButton: {
-    backgroundColor: 'rgba(122, 137, 255, 0.1)',
-    borderColor: '#7A89FF',
+    backgroundColor: colors.primaryLight,
+    borderColor: colors.primary,
   },
   contactButtonText: {
-    color: '#7A89FF',
+    color: colors.primary,
     fontSize: 14,
     fontFamily: 'Inter_600SemiBold',
   },
   declineButton: {
-    backgroundColor: 'rgba(255, 61, 113, 0.1)',
-    borderColor: '#FF3D71',
+    backgroundColor: colors.dangerLight,
+    borderColor: colors.danger,
   },
   declineButtonText: {
-    color: '#FF3D71',
+    color: colors.danger,
     fontSize: 14,
     fontFamily: 'Inter_600SemiBold',
   },
   acceptButton: {
-    backgroundColor: '#00F0FF',
-    borderColor: '#00F0FF',
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   acceptButtonText: {
-    color: '#0A0F1E',
+    color: '#FFFFFF',
     fontSize: 14,
     fontFamily: 'Inter_600SemiBold',
   },
   cancelServiceButton: {
-    backgroundColor: 'rgba(255, 61, 113, 0.1)',
-    borderColor: '#FF3D71',
+    backgroundColor: colors.dangerLight,
+    borderColor: colors.danger,
   },
   cancelServiceButtonText: {
-    color: '#FF3D71',
+    color: colors.danger,
     fontSize: 14,
     fontFamily: 'Inter_600SemiBold',
   },
   startServiceButton: {
-    backgroundColor: '#00F0FF',
-    borderColor: '#00F0FF',
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   startServiceButtonText: {
-    color: '#0A0F1E',
+    color: '#FFFFFF',
     fontSize: 14,
     fontFamily: 'Inter_600SemiBold',
   },

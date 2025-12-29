@@ -49,7 +49,7 @@ export default function RepairOrdersScreen() {
     setError(null);
 
     // Fetch Repair Orders
-    const ordersRef = collection(firestore, 'repairOrders');
+    const ordersRef = collection(firestore, 'repair-orders');
     const ordersQuery = query(ordersRef, where('providerId', '==', currentUser.uid));
     const unsubscribeOrders = onSnapshot(ordersQuery, 
       (snapshot) => {
@@ -119,7 +119,7 @@ export default function RepairOrdersScreen() {
   const handleInitiateService = async (orderId: string) => {
     setActionLoading(prev => ({ ...prev, [orderId]: true }));
     try {
-      const orderRef = doc(firestore, 'repairOrders', orderId);
+      const orderRef = doc(firestore, 'repair-orders', orderId);
       // Proceed with starting service directly
       await updateDoc(orderRef, {
         status: 'InProgress',
@@ -176,7 +176,7 @@ export default function RepairOrdersScreen() {
           onPress: async () => {
             setActionLoading(prev => ({ ...prev, [orderId]: true }));
             try {
-              const orderRef = doc(firestore, 'repairOrders', orderId);
+      const orderRef = doc(firestore, 'repair-orders', orderId);
               await updateDoc(orderRef, { status: 'Cancelled' });
               Alert.alert("Success", "The repair order has been cancelled.");
             } catch (err: any) {
@@ -636,7 +636,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(0, 240, 255, 0.1)',
+    backgroundColor: colors.primaryLight,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
@@ -647,11 +647,11 @@ const styles = StyleSheet.create({
   serviceTitle: {
     fontSize: 18,
     fontFamily: 'Inter_600SemiBold',
-    color: '#00F0FF',
+    color: colors.textPrimary,
     marginBottom: 4,
   },
   notesContainer: {
-    backgroundColor: 'rgba(42, 53, 85, 0.5)',
+    backgroundColor: colors.surfaceAlt,
     borderRadius: 8,
     padding: 12,
     marginBottom: 16,
@@ -659,13 +659,13 @@ const styles = StyleSheet.create({
   notesLabel: {
     fontSize: 12,
     fontFamily: 'Inter_600SemiBold',
-    color: '#7A89FF',
+    color: colors.textSecondary,
     marginBottom: 4,
   },
   notesText: {
     fontSize: 14,
     fontFamily: 'Inter_400Regular',
-    color: '#FFFFFF',
+    color: colors.textSecondary,
   },
   actionButtons: {
     flexDirection: 'row',
@@ -674,26 +674,26 @@ const styles = StyleSheet.create({
   },
   actionButton: {
     flex: 1,
-    backgroundColor: 'rgba(0, 240, 255, 0.1)',
+    backgroundColor: colors.primaryLight,
     borderWidth: 1,
-    borderColor: '#00F0FF',
+    borderColor: colors.primary,
     borderRadius: 8,
     paddingVertical: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
   actionButtonText: {
-    color: '#00F0FF',
+    color: '#FFFFFF',
     fontSize: 12,
     fontFamily: 'Inter_600SemiBold',
     textAlign: 'center',
   },
   secondaryButton: {
-    backgroundColor: 'rgba(122, 137, 255, 0.1)',
-    borderColor: '#7A89FF',
+    backgroundColor: colors.surfaceAlt,
+    borderColor: colors.border,
   },
   secondaryButtonText: {
-    color: '#7A89FF',
+    color: colors.textPrimary,
     fontSize: 12,
     fontFamily: 'Inter_600SemiBold',
     textAlign: 'center',
@@ -707,26 +707,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   loadingText: {
-    color: '#7A89FF',
+    color: colors.textSecondary,
     fontSize: 16,
     fontFamily: 'Inter_600SemiBold',
     marginTop: 16,
   },
   errorText: {
-    color: '#FF3D71',
+    color: colors.danger,
     fontSize: 16,
     fontFamily: 'Inter_600SemiBold',
     marginTop: 16,
   },
   emptyStateText: {
-    color: '#7A89FF',
+    color: colors.textSecondary,
     fontSize: 16,
     fontFamily: 'Inter_500Medium',
     textAlign: 'center',
     paddingHorizontal: 20,
   },
   cancelButton: {
-    backgroundColor: '#FF3D71',
+    backgroundColor: colors.danger,
   },
   cancelButtonText: {
     color: '#FFFFFF',
@@ -739,7 +739,7 @@ const styles = StyleSheet.create({
     paddingTop: 12,
   },
   pagerLabel: {
-    color: '#7A89FF',
+    color: colors.textSecondary,
     fontFamily: 'Inter_500Medium',
   }
 }); 

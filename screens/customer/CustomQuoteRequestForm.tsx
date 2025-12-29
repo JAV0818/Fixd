@@ -8,10 +8,11 @@ import {
   Pressable,
   Alert,
 } from 'react-native';
-import { X, Plus, Trash2, MapPin } from 'lucide-react-native';
+import { X, Trash2, MapPin, Plus } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { auth, firestore } from '@/lib/firebase';
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { auth, firestore, storage } from '@/lib/firebase';
+import { addDoc, collection, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useRequestsContext } from '@/contexts/RequestsContext';
 
 type Category = 'Car Towing' | 'Just Check' | 'Oil Change' | 'Brake Service' | 'Diagnostics';
@@ -70,7 +71,7 @@ export default function CustomQuoteRequestForm() {
 
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: [ImagePicker.MediaType.IMAGE],
       allowsMultipleSelection: true,
       quality: 0.8,
     });
@@ -82,6 +83,22 @@ export default function CustomQuoteRequestForm() {
 
   const removeMedia = (uri: string) => {
     setMedia(media.filter((m) => m !== uri));
+  };
+
+  const uploadMediaAndGetUrls = async (uris: string[], orderId: string) => {
+    const urls: string[] = [];
+    for (let i = 0; i < uris.length; i++) {
+      const uri = uris[i];
+      const response = await fetch(uri);
+      const blob = await response.blob();
+      const contentType = (blob as any)?.type || 'application/octet-stream';
+      const path = `repairOrders/${auth.currentUser!.uid}/${orderId}-${i}`;
+      const storageRef = ref(storage, path);
+      await uploadBytes(storageRef, blob, { contentType });
+      const downloadUrl = await getDownloadURL(storageRef);
+      urls.push(downloadUrl);
+    }
+    return urls;
   };
 
   const handleConfirm = async () => {
@@ -97,17 +114,26 @@ export default function CustomQuoteRequestForm() {
 
     setSubmitting(true);
     try {
-      await addDoc(collection(firestore, 'quoteRequests'), {
+      const orderRef = await addDoc(collection(firestore, 'repair-orders'), {
         customerId: auth.currentUser.uid,
         categories: selectedCategories,
         vehicleInfo: vehicle,
         description: serviceDescription,
-        location,
-        media,
-        status: 'submitted',
+        locationDetails: { address: location },
+        mediaUrls: [], // populated after upload
+        status: 'Pending',
+        orderType: 'standard',
+        providerId: null,
+        items: [],
         createdAt: serverTimestamp(),
       });
-      Alert.alert('Success', 'Your request has been submitted!');
+
+      if (media.length > 0) {
+        const mediaUrls = await uploadMediaAndGetUrls(media, orderRef.id);
+        await updateDoc(orderRef, { mediaUrls });
+      }
+
+      Alert.alert('Success', 'Your repair order has been submitted!');
       // Reset form after successful submission
       resetForm();
     } catch (e: any) {
@@ -129,7 +155,7 @@ export default function CustomQuoteRequestForm() {
 
       {/* Services Description */}
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Services Description</Text>
+        <Text style={styles.cardTitle}>Services Description<Text style={styles.requiredStar}> *</Text></Text>
         <TextInput
           style={styles.descriptionInput}
           value={serviceDescription}
@@ -143,10 +169,7 @@ export default function CustomQuoteRequestForm() {
       {/* Category */}
       <View style={[styles.card, styles.categoryCard]}>
         <View style={styles.categoryHeader}>
-          <Text style={styles.categoryTitle}>Category</Text>
-          <Pressable style={styles.addButton} onPress={() => Alert.alert('Add Category', 'Feature coming soon')}>
-            <Plus size={20} color="#FFFFFF" />
-          </Pressable>
+          <Text style={styles.categoryTitle}>Category<Text style={styles.requiredStar}> *</Text></Text>
         </View>
         <View style={styles.categoryPills}>
           {categories.map((cat) => (
@@ -166,36 +189,29 @@ export default function CustomQuoteRequestForm() {
 
       {/* Vehicle */}
       <View style={styles.card}>
-        <View style={styles.vehicleHeader}>
-          <Text style={styles.cardTitle}>Vehicle</Text>
-          <Pressable style={styles.addButtonSmall}>
-            <Plus size={20} color="#4E4B66" />
-          </Pressable>
-        </View>
-        {vehicle ? (
-          <View style={styles.vehicleItem}>
-            <View style={styles.vehicleIcon}>
-              <Text style={styles.vehicleIconText}>🚗</Text>
-            </View>
-            <Text style={styles.vehicleText}>{vehicle}</Text>
-            <Pressable onPress={() => setVehicle('')}>
-              <X size={20} color="#4E4B66" />
-            </Pressable>
+        <Text style={styles.cardTitle}>Vehicle<Text style={styles.requiredStar}> *</Text></Text>
+        <View style={styles.vehicleRow}>
+          <View style={styles.vehicleIcon}>
+            <Text style={styles.vehicleIconText}>🚗</Text>
           </View>
-        ) : (
           <TextInput
-            style={styles.input}
+            style={[styles.vehicleInput]}
             placeholder="Enter vehicle (e.g., Toyota Corolla LEA - 7180)"
             placeholderTextColor="#A0A3BD"
             value={vehicle}
             onChangeText={setVehicle}
           />
-        )}
+          {vehicle.length > 0 && (
+            <Pressable style={styles.clearButton} onPress={() => setVehicle('')}>
+              <X size={18} color="#4E4B66" />
+            </Pressable>
+          )}
+        </View>
       </View>
 
       {/* Location */}
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Vehicle Location</Text>
+        <Text style={styles.cardTitle}>Vehicle Location<Text style={styles.requiredStar}> *</Text></Text>
         <View style={styles.locationContainer}>
           <View style={styles.locationInputWrapper}>
             <View style={styles.locationDot} />
@@ -319,6 +335,11 @@ const styles = StyleSheet.create({
   categoryCard: {
     backgroundColor: '#5B57F5',
   },
+  requiredStar: {
+    color: '#EF4444',
+    fontSize: 14,
+    marginLeft: 4,
+  },
   categoryHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -381,23 +402,41 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 8,
   },
-  vehicleIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  vehicleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: '#F7F7FC',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#D9DBE9',
+    paddingHorizontal: 12,
+    height: 52,
+  },
+  vehicleIcon: {
+    width: 28,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
   },
   vehicleIconText: {
-    fontSize: 20,
+    fontSize: 18,
   },
   vehicleText: {
     flex: 1,
     fontSize: 15,
     fontFamily: 'Inter_500Medium',
     color: '#14142B',
+  },
+  vehicleInput: {
+    flex: 1,
+    fontSize: 14,
+    fontFamily: 'Inter_500Medium',
+    color: '#4E4B66',
+    paddingVertical: 0,
+    marginLeft: 8,
+  },
+  clearButton: {
+    paddingHorizontal: 6,
+    paddingVertical: 4,
   },
   locationContainer: {
     paddingLeft: 8,

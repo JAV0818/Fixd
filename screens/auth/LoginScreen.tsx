@@ -1,16 +1,17 @@
-import { View, Text, StyleSheet, TextInput, Pressable, ImageBackground, KeyboardAvoidingView, Platform } from 'react-native';
-// import { useRouter } from 'expo-router';
 import { useState } from 'react';
+import { View, Text, StyleSheet, TextInput, Pressable, KeyboardAvoidingView, Platform, SafeAreaView, ImageBackground } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
-import { auth, firestore } from '@/lib/firebase';
-import { Lock, Mail } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { AuthStackParamList } from '@/navigation/AuthNavigator'; // Import the specific stack param list
+import { Mail, Lock } from 'lucide-react-native';
+
+import { auth, firestore } from '@/lib/firebase';
+import { AuthStackParamList } from '@/navigation/AuthNavigator';
+import { colors, spacing, radius, typography } from '@/styles/theme';
 
 export default function LoginScreen() {
-  // const router = useRouter();
   const navigation = useNavigation<NativeStackNavigationProp<AuthStackParamList>>();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -50,181 +51,181 @@ export default function LoginScreen() {
   };
 
   return (
-    <ImageBackground 
-      source={{ uri: 'https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?w=800&auto=format&fit=crop&q=60' }}
-      style={styles.container}
+    <ImageBackground
+      source={{ uri: 'https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?w=1200&auto=format&fit=crop&q=60' }}
+      style={styles.background}
+      resizeMode="cover"
     >
-      <View style={styles.overlay} />
-      
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.content}
+      <LinearGradient
+        colors={['rgba(255,255,255,0.78)', 'rgba(255,255,255,0.9)']}
+        style={styles.overlay}
       >
-        <View style={styles.logoContainer}>
-          <Text style={styles.title}>QUANTUM</Text>
-          <Text style={styles.subtitle}>MECHANIC</Text>
-          <Text style={styles.tagline}>NEXT-GEN AUTO REPAIR</Text>
-        </View>
-
-        <View style={styles.formContainer}>
-          {error ? (
-            <View style={styles.errorContainer}>
-              <Text style={styles.errorText}>{error}</Text>
+        <SafeAreaView style={styles.container}>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.content}>
+            <View style={styles.header}>
+              <Text style={styles.brand}>Fixd</Text>
+              <Text style={styles.title}>Welcome back</Text>
+              <Text style={styles.subtitle}>Sign in to continue</Text>
             </View>
-          ) : null}
 
-          <View style={styles.inputContainer}>
-            <Mail size={20} color="#00F0FF" />
-            <TextInput
-              style={styles.input}
-              placeholder="Email"
-              placeholderTextColor="#7A89FF"
-              value={email}
-              onChangeText={setEmail}
-              autoCapitalize="none"
-              keyboardType="email-address"
-            />
-          </View>
+            <View style={styles.card}>
+              {error ? (
+                <View style={styles.errorContainer}>
+                  <Text style={styles.errorText}>{error}</Text>
+                </View>
+              ) : null}
 
-          <View style={styles.inputContainer}>
-            <Lock size={20} color="#00F0FF" />
-            <TextInput
-              style={styles.input}
-              placeholder="Password"
-              placeholderTextColor="#7A89FF"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-            />
-          </View>
+              <View style={styles.inputContainer}>
+                <Mail size={18} color={colors.textTertiary} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Email"
+                  placeholderTextColor={colors.textLight}
+                  value={email}
+                  onChangeText={setEmail}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  selectionColor={colors.primary}
+                />
+              </View>
 
-          <Pressable 
-            style={[styles.button, loading && styles.buttonDisabled]}
-            onPress={handleLogin}
-            disabled={loading}
-          >
-            <Text style={styles.buttonText}>
-              {loading ? 'LOGGING IN...' : 'LOGIN'}
-            </Text>
-          </Pressable>
+              <View style={styles.inputContainer}>
+                <Lock size={18} color={colors.textTertiary} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Password"
+                  placeholderTextColor={colors.textLight}
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry
+                  selectionColor={colors.primary}
+                />
+              </View>
 
-          <Pressable 
-            style={styles.signupButton}
-            onPress={() => navigation.navigate('Signup')}
-          >
-            <Text style={styles.signupText}>Don't have an account? Sign Up</Text>
-          </Pressable>
-        </View>
-      </KeyboardAvoidingView>
+              <Pressable style={[styles.button, loading && styles.buttonDisabled]} onPress={handleLogin} disabled={loading}>
+                <Text style={styles.buttonText}>{loading ? 'Logging in...' : 'Log in'}</Text>
+              </Pressable>
+
+              <Pressable style={styles.signupButton} onPress={() => navigation.navigate('Signup')}>
+                <Text style={styles.signupText}>
+                  Don’t have an account? <Text style={styles.signupHighlight}>Sign up</Text>
+                </Text>
+              </Pressable>
+            </View>
+          </KeyboardAvoidingView>
+        </SafeAreaView>
+      </LinearGradient>
     </ImageBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  background: {
     flex: 1,
-    width: '100%',
-    height: '100%',
   },
   overlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(10, 15, 30, 0.85)',
+    flex: 1,
+  },
+  container: {
+    flex: 1,
+    backgroundColor: 'transparent',
   },
   content: {
     flex: 1,
+    padding: spacing.xl,
     justifyContent: 'space-between',
-    padding: 20,
   },
-  logoContainer: {
-    alignItems: 'center',
-    marginTop: 60,
+  header: {
+    marginTop: spacing.lg,
+    gap: spacing.xs,
+  },
+  brand: {
+    fontSize: 44,
+    lineHeight: 50,
+    fontFamily: 'Inter_800ExtraBold',
+    color: colors.primary,
+    letterSpacing: 0.8,
   },
   title: {
-    fontSize: 42,
-    fontFamily: 'Inter_700Bold',
-    color: '#00F0FF',
-    letterSpacing: 4,
-    textShadowColor: '#00F0FF',
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 10,
+    ...typography.h1,
+    fontSize: 28,
+    lineHeight: 34,
   },
   subtitle: {
-    fontSize: 24,
-    fontFamily: 'Inter_600SemiBold',
-    color: '#FFFFFF',
-    letterSpacing: 8,
-    marginTop: -8,
-  },
-  tagline: {
+    ...typography.body,
     fontSize: 16,
-    fontFamily: 'Inter_400Regular',
-    color: '#7A89FF',
-    letterSpacing: 2,
-    marginTop: 8,
+    lineHeight: 22,
   },
-  formContainer: {
-    width: '100%',
-    maxWidth: 400,
-    alignSelf: 'center',
-    marginBottom: 40,
+  card: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.xl,
+    padding: spacing.xl,
+    gap: spacing.md,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 12,
+    elevation: 3,
   },
   errorContainer: {
-    backgroundColor: 'rgba(255, 61, 113, 0.1)',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 16,
+    backgroundColor: colors.dangerLight,
+    borderColor: colors.danger,
     borderWidth: 1,
-    borderColor: '#FF3D71',
+    borderRadius: radius.md,
+    padding: spacing.md,
   },
   errorText: {
-    color: '#FF3D71',
-    fontSize: 14,
-    fontFamily: 'Inter_500Medium',
+    ...typography.body,
+    color: colors.danger,
     textAlign: 'center',
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(122, 137, 255, 0.1)',
-    borderRadius: 8,
-    marginBottom: 16,
-    paddingHorizontal: 16,
+    borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: '#2A3555',
+    borderColor: colors.border,
+    paddingHorizontal: spacing.md,
+    backgroundColor: colors.surfaceAlt,
+    height: 52,
   },
   input: {
     flex: 1,
-    height: 48,
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontFamily: 'Inter_400Regular',
-    marginLeft: 12,
+    marginLeft: spacing.sm,
+    color: colors.textPrimary,
+    fontFamily: 'Inter_500Medium',
+    fontSize: 15,
   },
   button: {
-    backgroundColor: 'rgba(0, 240, 255, 0.1)',
-    height: 48,
-    borderRadius: 8,
-    justifyContent: 'center',
+    backgroundColor: colors.primary,
+    borderRadius: radius.lg,
+    height: 52,
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#00F0FF',
+    justifyContent: 'center',
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    elevation: 4,
   },
   buttonDisabled: {
-    opacity: 0.5,
+    opacity: 0.6,
   },
   buttonText: {
-    color: '#00F0FF',
+    color: '#fff',
+    fontFamily: 'Inter_700Bold',
     fontSize: 16,
-    fontFamily: 'Inter_600SemiBold',
-    letterSpacing: 2,
   },
   signupButton: {
-    marginTop: 16,
     alignItems: 'center',
+    marginTop: spacing.sm,
   },
   signupText: {
-    color: '#7A89FF',
-    fontSize: 14,
-    fontFamily: 'Inter_500Medium',
+    ...typography.body,
+    color: colors.textSecondary,
+  },
+  signupHighlight: {
+    color: colors.primary,
+    fontFamily: 'Inter_600SemiBold',
   },
 }); 

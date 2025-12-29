@@ -24,7 +24,7 @@ service firebase.storage {
     }
 
     match /profileImages/{userId}/{fileName} {
-      allow read: if true;
+      allow read: if isAuthenticated();
       allow write: if isAuthenticated() && isOwner(userId)
         && request.resource.size < 5 * 1024 * 1024
         && request.resource.contentType.matches('image/.*');
@@ -41,6 +41,17 @@ service firebase.storage {
           request.resource.contentType.matches('application/msword') ||
           request.resource.contentType.matches('application/vnd.openxmlformats-officedocument.wordprocessingml.document') ||
           request.resource.contentType.matches('text/plain')
+        );
+    }
+
+    // Media uploaded as part of repair orders
+    match /repairOrders/{userId}/{fileName} {
+      allow read: if isAuthenticated() && (isOwner(userId) || request.auth.uid == userId);
+      allow write: if isAuthenticated() && isOwner(userId)
+        && request.resource.size < 10 * 1024 * 1024
+        && (
+          request.resource.contentType.matches('image/.*') ||
+          request.resource.contentType.matches('application/pdf')
         );
     }
   }

@@ -5,7 +5,6 @@ import {
   StyleSheet,
   TextInput,
   TouchableOpacity,
-  FlatList,
   Alert,
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -20,6 +19,7 @@ import { auth, firestore } from '@/lib/firebase';
 import { collection, addDoc, serverTimestamp, query, where, getDocs, limit, doc, getDoc, Timestamp } from 'firebase/firestore';
 import { UserProfile, CustomCharge } from '../../types/customCharges';
 import { LocationDetails, OrderItem } from '../../types/orders';
+import { colors } from '@/styles/theme';
 
 interface LineItem {
   id: string;
@@ -87,12 +87,14 @@ export default function CreateCustomChargeScreen({ navigation }: Props) {
       setIsSearching(true);
       const usersRef = collection(firestore, 'users');
       const normalizedSearchQuery = searchQuery.toLowerCase();
-      const q = query(usersRef, where('isAdmin', '==', false), limit(15));
+      // Query for customers (role === 'customer')
+      const q = query(usersRef, where('role', '==', 'customer'), limit(15));
       const querySnapshot = await getDocs(q);
-      const potentialUsers = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as UserProfile));
+      const potentialUsers = querySnapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() } as UserProfile));
       const filteredUsers = potentialUsers.filter(user => 
         user.email?.toLowerCase().includes(normalizedSearchQuery) || 
-        user.phone?.includes(normalizedSearchQuery)
+        user.phone?.includes(normalizedSearchQuery) ||
+        `${user.firstName || ''} ${user.lastName || ''}`.toLowerCase().includes(normalizedSearchQuery)
       );
       setSearchResults(filteredUsers);
       setIsSearching(false);
@@ -146,7 +148,7 @@ export default function CreateCustomChargeScreen({ navigation }: Props) {
 
     setIsSubmitting(true);
 
-    const determinedMechanicName = (mechanicProfile?.firstName && mechanicProfile?.lastName)
+    const providerName = (mechanicProfile?.firstName && mechanicProfile?.lastName)
       ? `${mechanicProfile.firstName} ${mechanicProfile.lastName}`
       : mechanicProfile?.email || 'Fixd Mechanic';
 
@@ -161,20 +163,24 @@ export default function CreateCustomChargeScreen({ navigation }: Props) {
       quantity: 1,
     }));
 
-    const vehicleDisplay = `${vehicleYear} ${vehicleMake} ${vehicleModel} - ${licensePlate || 'N/A'}`;
+    const vehicleInfo = `${vehicleYear} ${vehicleMake} ${vehicleModel} - ${licensePlate || 'N/A'}`;
 
-    const customChargeData: Omit<CustomCharge, 'id' | 'createdAt' | 'updatedAt'> & { createdAt: any; updatedAt: any } = {
+    // Build repair order data for 'repair-orders' collection
+    const repairOrderData: Record<string, any> = {
       customerId: selectedCustomer.id,
       customerName: customerName,
-      mechanicId: currentUser.uid,
-      mechanicName: determinedMechanicName,
+      providerId: currentUser.uid, // Required for rules: provider creates custom_quote
+      providerName: providerName,
       items: orderItems,
       totalPrice: totalPrice,
       locationDetails: locationDetails as LocationDetails,
+      vehicleInfo: vehicleInfo,
       status: 'PendingApproval',
+      orderType: 'custom_quote', // Required for rules
       createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-      vehicleDisplay: vehicleDisplay,
+      categories: ['Custom Quote'],
+      mediaUrls: [],
+      description: `Custom quote from ${providerName}`,
     };
 
     // Conditionally add the scheduledAt field if date and time are provided
@@ -182,7 +188,7 @@ export default function CreateCustomChargeScreen({ navigation }: Props) {
       try {
         const parsedDate = new Date(`${serviceDate.trim()}T${serviceTime.trim()}`);
         if (!isNaN(parsedDate.getTime())) {
-          (customChargeData as CustomCharge).scheduledAt = Timestamp.fromDate(parsedDate);
+          repairOrderData.scheduledAt = Timestamp.fromDate(parsedDate);
         } else {
           console.warn("Invalid date/time format provided:", serviceDate, serviceTime);
         }
@@ -192,8 +198,8 @@ export default function CreateCustomChargeScreen({ navigation }: Props) {
     }
 
     try {
-      await addDoc(collection(firestore, 'customCharges'), customChargeData);
-      Alert.alert("Success", "New custom quote created successfully!");
+      await addDoc(collection(firestore, 'repair-orders'), repairOrderData);
+      Alert.alert("Success", "Custom quote created successfully!");
       navigation.goBack();
     } catch (error) {
       console.error("Error creating custom quote:", error);
@@ -203,24 +209,6 @@ export default function CreateCustomChargeScreen({ navigation }: Props) {
     }
   };
 
-  const renderCustomerItem = ({ item }: { item: UserProfile }) => (
-    <TouchableOpacity style={styles.customerItem} onPress={() => handleSelectCustomer(item)}>
-      <Text style={styles.customerName}>{item.firstName || ''} {item.lastName || ''} ({item.email || 'No email'})</Text>
-      <Text style={styles.customerEmail}>{item.phone || 'No phone'}</Text>
-    </TouchableOpacity>
-  );
-
-  const renderLineItem = ({ item }: { item: LineItem }) => (
-    <View style={styles.lineItemContainer}>
-      <View style={styles.lineItemTextContainer}>
-        <Text style={styles.lineItemDescription}>{item.itemDescription}</Text>
-        <Text style={styles.lineItemPrice}>${item.itemPrice.toFixed(2)}</Text>
-      </View>
-      <TouchableOpacity onPress={() => handleRemoveLineItem(item.id)} style={styles.removeButton}>
-        <Trash2 size={20} color="#FF6B6B" />
-      </TouchableOpacity>
-    </View>
-  );
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
@@ -231,10 +219,10 @@ export default function CreateCustomChargeScreen({ navigation }: Props) {
       >
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-            <ArrowLeft size={24} color="#FFFFFF" />
+            <ArrowLeft size={24} color={colors.textPrimary} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Create Repair Order</Text>
-          <View style={{ width: 24 }} />
+          <View style={{ width: 40 }} />
         </View>
 
         <ScrollView
@@ -246,24 +234,25 @@ export default function CreateCustomChargeScreen({ navigation }: Props) {
             <View style={styles.searchSectionContainer}>
               <Text style={styles.label}>1. Find Customer</Text>
               <View style={styles.inputContainer}>
-                <UserSearch size={20} color="#888" style={styles.inputIcon} />
+                <UserSearch size={20} color={colors.textTertiary} style={styles.inputIcon} />
                 <TextInput
                   style={styles.input}
                   placeholder="Search by email or phone..."
-                  placeholderTextColor="#AEAEAE"
+                  placeholderTextColor={colors.textLight}
                   value={searchQuery}
                   onChangeText={setSearchQuery}
                   autoCapitalize="none"
                 />
               </View>
-              {isSearching && <ActivityIndicator style={styles.loader} color="#00F0FF" />}
-              <FlatList
-                data={searchResults}
-                renderItem={renderCustomerItem}
-                keyExtractor={(item) => item.id}
-                style={styles.resultsList}
-                nestedScrollEnabled 
-              />
+              {isSearching && <ActivityIndicator style={styles.loader} color={colors.primary} />}
+              <View style={styles.resultsList}>
+                {searchResults.map((item) => (
+                  <TouchableOpacity key={item.id} style={styles.customerItem} onPress={() => handleSelectCustomer(item)}>
+                    <Text style={styles.customerName}>{item.firstName || ''} {item.lastName || ''} ({item.email || 'No email'})</Text>
+                    <Text style={styles.customerEmail}>{item.phone || 'No phone'}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
             </View>
           ) : (
             <>
@@ -280,31 +269,31 @@ export default function CreateCustomChargeScreen({ navigation }: Props) {
 
               <View style={styles.section}>
                 <Text style={styles.label}>Service Location</Text>
-                <TextInput style={styles.inputMUI} placeholder="Street Address*" placeholderTextColor="#AEAEAE" value={locationDetails.address} onChangeText={val => setLocationDetails(p => ({...p, address: val}))} />
-                <TextInput style={styles.inputMUI} placeholder="City*" placeholderTextColor="#AEAEAE" value={locationDetails.city} onChangeText={val => setLocationDetails(p => ({...p, city: val}))} />
+                <TextInput style={styles.inputMUI} placeholder="Street Address*" placeholderTextColor={colors.textLight} value={locationDetails.address} onChangeText={val => setLocationDetails(p => ({...p, address: val}))} />
+                <TextInput style={styles.inputMUI} placeholder="City*" placeholderTextColor={colors.textLight} value={locationDetails.city} onChangeText={val => setLocationDetails(p => ({...p, city: val}))} />
                 <View style={styles.row}>
-                  <TextInput style={[styles.inputMUI, {flex: 1, marginRight: 8}]} placeholder="State*" placeholderTextColor="#AEAEAE" value={locationDetails.state} onChangeText={val => setLocationDetails(p => ({...p, state: val}))} />
-                  <TextInput style={[styles.inputMUI, {flex: 1}]} placeholder="Zip Code*" placeholderTextColor="#AEAEAE" value={locationDetails.zipCode} onChangeText={val => setLocationDetails(p => ({...p, zipCode: val}))} keyboardType="numeric" />
+                  <TextInput style={[styles.inputMUI, {flex: 1, marginRight: 8}]} placeholder="State*" placeholderTextColor={colors.textLight} value={locationDetails.state} onChangeText={val => setLocationDetails(p => ({...p, state: val}))} />
+                  <TextInput style={[styles.inputMUI, {flex: 1}]} placeholder="Zip Code*" placeholderTextColor={colors.textLight} value={locationDetails.zipCode} onChangeText={val => setLocationDetails(p => ({...p, zipCode: val}))} keyboardType="numeric" />
                 </View>
-                <TextInput style={styles.inputMUI} placeholder="Contact Phone (Optional)" placeholderTextColor="#AEAEAE" value={locationDetails.phoneNumber} onChangeText={val => setLocationDetails(p => ({...p, phoneNumber: val}))} keyboardType="phone-pad" />
-                <TextInput style={styles.textArea} placeholder="Additional Notes (e.g., Apt #, gate code)" placeholderTextColor="#AEAEAE" value={locationDetails.additionalNotes} onChangeText={val => setLocationDetails(p => ({...p, additionalNotes: val}))} multiline />
+                <TextInput style={styles.inputMUI} placeholder="Contact Phone (Optional)" placeholderTextColor={colors.textLight} value={locationDetails.phoneNumber} onChangeText={val => setLocationDetails(p => ({...p, phoneNumber: val}))} keyboardType="phone-pad" />
+                <TextInput style={styles.textArea} placeholder="Additional Notes (e.g., Apt #, gate code)" placeholderTextColor={colors.textLight} value={locationDetails.additionalNotes} onChangeText={val => setLocationDetails(p => ({...p, additionalNotes: val}))} multiline />
               </View>
 
               <View style={styles.section}>
                 <Text style={styles.label}>Vehicle Information</Text>
-                <TextInput style={styles.inputMUI} placeholder="Make*" placeholderTextColor="#AEAEAE" value={vehicleMake} onChangeText={setVehicleMake} />
-                <TextInput style={styles.inputMUI} placeholder="Model*" placeholderTextColor="#AEAEAE" value={vehicleModel} onChangeText={setVehicleModel} />
+                <TextInput style={styles.inputMUI} placeholder="Make*" placeholderTextColor={colors.textLight} value={vehicleMake} onChangeText={setVehicleMake} />
+                <TextInput style={styles.inputMUI} placeholder="Model*" placeholderTextColor={colors.textLight} value={vehicleModel} onChangeText={setVehicleModel} />
                 <View style={styles.row}>
-                  <TextInput style={[styles.inputMUI, {flex: 1, marginRight: 8}]} placeholder="Year*" placeholderTextColor="#AEAEAE" value={vehicleYear} onChangeText={setVehicleYear} keyboardType="numeric" maxLength={4} />
-                  <TextInput style={[styles.inputMUI, {flex: 1}]} placeholder="License Plate (Optional)" placeholderTextColor="#AEAEAE" value={licensePlate} onChangeText={setLicensePlate} />
+                  <TextInput style={[styles.inputMUI, {flex: 1, marginRight: 8}]} placeholder="Year*" placeholderTextColor={colors.textLight} value={vehicleYear} onChangeText={setVehicleYear} keyboardType="numeric" maxLength={4} />
+                  <TextInput style={[styles.inputMUI, {flex: 1}]} placeholder="License Plate (Optional)" placeholderTextColor={colors.textLight} value={licensePlate} onChangeText={setLicensePlate} />
                 </View>
               </View>
 
               <View style={styles.section}>
                 <Text style={styles.label}>Schedule (Optional)</Text>
                 <View style={styles.row}>
-                  <TextInput style={[styles.inputMUI, {flex: 1, marginRight: 8}]} placeholder="Date (YYYY-MM-DD)" placeholderTextColor="#AEAEAE" value={serviceDate} onChangeText={setServiceDate} />
-                  <TextInput style={[styles.inputMUI, {flex: 1}]} placeholder="Time (HH:MM)" placeholderTextColor="#AEAEAE" value={serviceTime} onChangeText={setServiceTime} />
+                  <TextInput style={[styles.inputMUI, {flex: 1, marginRight: 8}]} placeholder="Date (YYYY-MM-DD)" placeholderTextColor={colors.textLight} value={serviceDate} onChangeText={setServiceDate} />
+                  <TextInput style={[styles.inputMUI, {flex: 1}]} placeholder="Time (HH:MM)" placeholderTextColor={colors.textLight} value={serviceTime} onChangeText={setServiceTime} />
                 </View>
               </View>
 
@@ -312,23 +301,29 @@ export default function CreateCustomChargeScreen({ navigation }: Props) {
                 <Text style={styles.label}>Service Items</Text>
                 <View style={styles.lineItemInputRow}>
                   <View style={[styles.inputContainer, {flex: 1, marginRight: 8, marginBottom: 0}]}>
-                    <TextInput style={styles.input} placeholder="Service item description" placeholderTextColor="#AEAEAE" value={currentItemDesc} onChangeText={setCurrentItemDesc} />
+                    <TextInput style={styles.input} placeholder="Service item description" placeholderTextColor={colors.textLight} value={currentItemDesc} onChangeText={setCurrentItemDesc} />
                   </View>
                   <View style={[styles.inputContainer, {width: 100, marginRight: 8, marginBottom: 0}]}>
-                    <TextInput style={styles.input} placeholder="Price" placeholderTextColor="#AEAEAE" value={currentItemPrice} onChangeText={setCurrentItemPrice} keyboardType="numeric" />
+                    <TextInput style={styles.input} placeholder="Price" placeholderTextColor={colors.textLight} value={currentItemPrice} onChangeText={setCurrentItemPrice} keyboardType="numeric" />
                   </View>
                   <TouchableOpacity style={styles.addItemButton} onPress={handleAddLineItem}>
-                    <PlusCircle size={24} color="#00F0FF" />
+                    <PlusCircle size={24} color={colors.primary} />
                   </TouchableOpacity>
                 </View>
 
-                <FlatList
-                  data={lineItems}
-                  renderItem={renderLineItem}
-                  keyExtractor={(item) => item.id}
-                  style={styles.lineItemsList}
-                  scrollEnabled={false}
-                />
+                <View style={styles.lineItemsList}>
+                  {lineItems.map((item) => (
+                    <View key={item.id} style={styles.lineItemContainer}>
+                      <View style={styles.lineItemTextContainer}>
+                        <Text style={styles.lineItemDescription}>{item.itemDescription}</Text>
+                        <Text style={styles.lineItemPrice}>${item.itemPrice.toFixed(2)}</Text>
+                      </View>
+                      <TouchableOpacity onPress={() => handleRemoveLineItem(item.id)} style={styles.removeButton}>
+                        <Trash2 size={20} color={colors.danger} />
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </View>
                 
                 <View style={styles.totalPriceContainer}>
                   <Text style={styles.totalPriceLabel}>Total:</Text>
@@ -352,44 +347,153 @@ export default function CreateCustomChargeScreen({ navigation }: Props) {
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#0A0F1E' },
+  safeArea: { flex: 1, backgroundColor: colors.background },
   keyboardAvoidingContainer: { flex: 1 },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, backgroundColor: '#121827', borderBottomWidth: 1, borderBottomColor: '#2A3555' },
-  backButton: { padding: 8 },
-  headerTitle: { fontSize: 18, fontFamily: 'Inter_600SemiBold', color: '#FFFFFF' },
+  header: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'space-between', 
+    paddingHorizontal: 16, 
+    paddingVertical: 12, 
+    backgroundColor: colors.background, 
+  },
+  backButton: { 
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.surfaceAlt,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerTitle: { fontSize: 18, fontFamily: 'Inter_600SemiBold', color: colors.textPrimary },
   scrollableContent: { flex: 1, paddingHorizontal: 20 },
-  scrollContentContainer: { flexGrow: 1, paddingBottom: 100 },
+  scrollContentContainer: { flexGrow: 1, paddingBottom: 100, paddingTop: 16 },
   searchSectionContainer: { marginBottom: 10 },
   section: { marginBottom: 20 },
-  label: { fontSize: 16, fontFamily: 'Inter_500Medium', color: '#E0E0E0', marginBottom: 12 },
-  inputContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(42, 53, 85, 0.5)', borderRadius: 8, paddingHorizontal: 12, borderWidth: 1, borderColor: '#7A89FF', height: 48, marginBottom: 12, },
+  label: { fontSize: 16, fontFamily: 'Inter_500Medium', color: colors.textPrimary, marginBottom: 12 },
+  inputContainer: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    backgroundColor: colors.surfaceAlt, 
+    borderRadius: 12, 
+    paddingHorizontal: 12, 
+    borderWidth: 1, 
+    borderColor: colors.primary, 
+    height: 52, 
+    marginBottom: 12, 
+  },
   inputIcon: { marginRight: 8 },
-  input: { flex: 1, height: '100%', color: '#FFFFFF', fontFamily: 'Inter_400Regular', fontSize: 15 },
-  inputMUI: { height: 48, color: '#FFFFFF', fontFamily: 'Inter_400Regular', fontSize: 15, backgroundColor: 'rgba(42, 53, 85, 0.5)', borderRadius: 8, paddingHorizontal: 12, borderWidth: 1, borderColor: '#7A89FF', marginBottom: 12 },
-  textArea: { minHeight: 100, textAlignVertical: 'top', paddingVertical: 10, backgroundColor: 'rgba(42, 53, 85, 0.5)', borderRadius: 8, paddingHorizontal: 12, borderWidth: 1, borderColor: '#7A89FF', color: '#FFFFFF', fontFamily: 'Inter_400Regular', fontSize: 15 },
+  input: { flex: 1, height: '100%', color: colors.textPrimary, fontFamily: 'Inter_400Regular', fontSize: 15 },
+  inputMUI: { 
+    height: 52, 
+    color: colors.textPrimary, 
+    fontFamily: 'Inter_400Regular', 
+    fontSize: 15, 
+    backgroundColor: colors.surfaceAlt, 
+    borderRadius: 12, 
+    paddingHorizontal: 14, 
+    borderWidth: 1, 
+    borderColor: colors.primary, 
+    marginBottom: 12,
+  },
+  textArea: { 
+    minHeight: 100, 
+    textAlignVertical: 'top', 
+    paddingVertical: 12, 
+    backgroundColor: colors.surfaceAlt, 
+    borderRadius: 12, 
+    paddingHorizontal: 14, 
+    borderWidth: 1, 
+    borderColor: colors.primary, 
+    color: colors.textPrimary, 
+    fontFamily: 'Inter_400Regular', 
+    fontSize: 15,
+  },
   row: { flexDirection: 'row', justifyContent: 'space-between' },
   resultsList: { maxHeight: 200 },
-  customerItem: { paddingVertical: 12, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: '#2A3555' },
-  customerName: { color: '#FFFFFF', fontFamily: 'Inter_500Medium', fontSize: 15 },
-  customerEmail: { color: '#AEAEAE', fontFamily: 'Inter_400Regular', fontSize: 13 },
-  selectedCustomerContainer: { padding: 16, backgroundColor: '#1C2333', borderRadius: 8, borderColor: '#00F0FF', borderWidth: 1, marginBottom: 20 },
+  customerItem: { 
+    paddingVertical: 14, 
+    paddingHorizontal: 16, 
+    borderBottomWidth: 1, 
+    borderBottomColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  customerName: { color: colors.textPrimary, fontFamily: 'Inter_500Medium', fontSize: 15 },
+  customerEmail: { color: colors.textTertiary, fontFamily: 'Inter_400Regular', fontSize: 13, marginTop: 2 },
+  selectedCustomerContainer: { 
+    padding: 16, 
+    backgroundColor: colors.surface, 
+    borderRadius: 16, 
+    borderColor: colors.primary, 
+    borderWidth: 1.5, 
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
   selectedCustomerInfo: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  selectedCustomerName: { fontSize: 16, fontFamily: 'Inter_600SemiBold', color: '#FFFFFF' },
-  selectedCustomerDetails: { fontSize: 14, fontFamily: 'Inter_400Regular', color: '#AEAEAE', marginTop: 4 },
-  changeCustomerText: { fontSize: 14, fontFamily: 'Inter_500Medium', color: '#00F0FF' },
+  selectedCustomerName: { fontSize: 16, fontFamily: 'Inter_600SemiBold', color: colors.textPrimary },
+  selectedCustomerDetails: { fontSize: 14, fontFamily: 'Inter_400Regular', color: colors.textTertiary, marginTop: 4 },
+  changeCustomerText: { fontSize: 14, fontFamily: 'Inter_500Medium', color: colors.primary },
   lineItemInputRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
-  addItemButton: { width: 48, height: 48, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0, 240, 255, 0.1)', borderColor: '#00F0FF', borderWidth: 1, borderRadius: 8, },
+  addItemButton: { 
+    width: 52, 
+    height: 52, 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    backgroundColor: colors.primaryLight, 
+    borderColor: colors.primary, 
+    borderWidth: 1.5, 
+    borderRadius: 12, 
+  },
   lineItemsList: { marginBottom: 10 },
-  lineItemContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 12, backgroundColor: '#1C2333', borderRadius: 6, marginBottom: 6 },
+  lineItemContainer: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'center', 
+    paddingVertical: 12, 
+    paddingHorizontal: 14, 
+    backgroundColor: colors.surfaceAlt, 
+    borderRadius: 12, 
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
   lineItemTextContainer: { flex: 1 },
-  lineItemDescription: { color: '#E0E0E0', fontFamily: 'Inter_400Regular', fontSize: 14 },
-  lineItemPrice: { color: '#FFFFFF', fontFamily: 'Inter_500Medium', fontSize: 14 },
-  removeButton: { padding: 6 },
-  totalPriceContainer: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', marginTop: 16, paddingVertical: 10, borderTopWidth: 1, borderTopColor: '#2A3555' },
-  totalPriceLabel: { fontSize: 16, fontFamily: 'Inter_500Medium', color: '#E0E0E0', marginRight: 8 },
-  totalPriceAmount: { fontSize: 18, fontFamily: 'Inter_600SemiBold', color: '#FFFFFF' },
-  sendButton: { backgroundColor: '#00F0FF', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', height: BUTTON_HEIGHT, borderRadius: 8, marginTop: 20 },
-  sendButtonDisabled: { backgroundColor: 'rgba(0, 240, 255, 0.3)' },
-  sendButtonText: { color: '#0A0F1E', fontSize: 16, fontFamily: 'Inter_600SemiBold' },
+  lineItemDescription: { color: colors.textSecondary, fontFamily: 'Inter_400Regular', fontSize: 14 },
+  lineItemPrice: { color: colors.textPrimary, fontFamily: 'Inter_600SemiBold', fontSize: 15, marginTop: 2 },
+  removeButton: { padding: 8 },
+  totalPriceContainer: { 
+    flexDirection: 'row', 
+    justifyContent: 'flex-end', 
+    alignItems: 'center', 
+    marginTop: 16, 
+    paddingVertical: 12, 
+    borderTopWidth: 1, 
+    borderTopColor: colors.border,
+  },
+  totalPriceLabel: { fontSize: 16, fontFamily: 'Inter_500Medium', color: colors.textSecondary, marginRight: 8 },
+  totalPriceAmount: { fontSize: 20, fontFamily: 'Inter_700Bold', color: colors.textPrimary },
+  sendButton: { 
+    backgroundColor: colors.primary, 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    height: BUTTON_HEIGHT, 
+    borderRadius: 14, 
+    marginTop: 20,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  sendButtonDisabled: { 
+    backgroundColor: colors.textLight, 
+    shadowOpacity: 0,
+  },
+  sendButtonText: { color: '#FFFFFF', fontSize: 16, fontFamily: 'Inter_600SemiBold' },
   loader: { marginVertical: 10 },
 });

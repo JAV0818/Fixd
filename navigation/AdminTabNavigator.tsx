@@ -2,6 +2,7 @@ import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { View, StyleSheet, Animated, Easing } from 'react-native';
 import { ClipboardList, Wrench, MessagesSquare, User } from 'lucide-react-native';
+import { colors } from '@/styles/theme';
 
 import AdminRequestsScreen from '@/screens/admin/AdminRequestsScreen';
 import AdminRepairQueueScreen from '@/screens/admin/AdminRepairQueueScreen';
@@ -59,10 +60,10 @@ export default function AdminTabNavigator() {
           if (route.name === 'AdminProfile') return <GlowingIcon Icon={User} color={color} size={size} focused={focused} />;
           return <GlowingIcon Icon={ClipboardList} color={color} size={size} focused={focused} />;
         },
-        tabBarActiveTintColor: '#00F0FF',
-        tabBarInactiveTintColor: '#7A89FF',
-        tabBarStyle: { backgroundColor: '#0A0F1E', borderTopColor: '#2A3555', height: 65 },
-        tabBarItemStyle: { height: 60 },
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.textLight,
+        tabBarStyle: { backgroundColor: colors.surface, borderTopColor: colors.border, height: 80, elevation: 4, shadowOpacity: 0.08, shadowRadius: 8 },
+        tabBarItemStyle: { height: 70 },
       })}
     >
       <Tab.Screen name="AdminRequests" component={AdminRequestsScreen} options={{ tabBarLabel: 'REQUESTS' }} />

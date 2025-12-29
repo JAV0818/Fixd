@@ -1,16 +1,16 @@
-import { View, Text, StyleSheet, TextInput, Pressable, ImageBackground, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
-// import { useRouter } from 'expo-router';
 import { useState } from 'react';
+import { View, Text, StyleSheet, TextInput, Pressable, KeyboardAvoidingView, Platform, ScrollView, SafeAreaView } from 'react-native';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { auth, firestore } from '@/lib/firebase';
-import { ArrowLeft, Mail, Lock, User, Phone } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { AuthStackParamList } from '@/navigation/AuthNavigator'; // Adjust path if needed
+import { ArrowLeft, Mail, Lock, User, Phone } from 'lucide-react-native';
+
+import { auth, firestore } from '@/lib/firebase';
+import { AuthStackParamList } from '@/navigation/AuthNavigator';
+import { colors, spacing, radius, typography } from '@/styles/theme';
 
 export default function SignupScreen() {
-  // const router = useRouter();
   const navigation = useNavigation<NativeStackNavigationProp<AuthStackParamList>>();
   const [formData, setFormData] = useState({
     firstName: '',
@@ -50,15 +50,15 @@ export default function SignupScreen() {
         formData.password
       );
 
-      // Create user profile in Firestore with isAdmin field and server timestamp
+      // Create user profile in Firestore with a default customer role
       await setDoc(doc(firestore, 'users', userCredential.user.uid), {
         firstName: formData.firstName,
         lastName: formData.lastName,
         email: formData.email,
         phone: formData.phone,
-        isAdmin: false, // Default to customer
-        createdAt: serverTimestamp(), // Use server timestamp
-      });
+        role: 'customer',
+        createdAt: serverTimestamp(),
+      }, { merge: true });
 
       // Redirect to customer dashboard
       // TODO: Replace with React Navigation
@@ -76,27 +76,17 @@ export default function SignupScreen() {
   };
 
   return (
-    <ImageBackground 
-      source={{ uri: 'https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?w=800&auto=format&fit=crop&q=60' }}
-      style={styles.container}
-    >
-      <View style={styles.overlay} />
-      
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.content}
-      >
+    <SafeAreaView style={styles.container}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.content}>
         <ScrollView showsVerticalScrollIndicator={false}>
-          <Pressable 
-            style={styles.backButton}
-            onPress={() => navigation.goBack()}
-          >
-            <ArrowLeft size={24} color="#00F0FF" />
+          <Pressable style={styles.backButton} onPress={() => navigation.goBack()}>
+            <ArrowLeft size={22} color={colors.textPrimary} />
           </Pressable>
 
           <View style={styles.header}>
-            <Text style={styles.title}>Create Account</Text>
-            <Text style={styles.subtitle}>Join the next generation of auto repair</Text>
+            <Text style={styles.pretitle}>Create account</Text>
+            <Text style={styles.title}>Join Fixd</Text>
+            <Text style={styles.subtitle}>Set up your profile to get started.</Text>
           </View>
 
           {error ? (
@@ -107,206 +97,220 @@ export default function SignupScreen() {
 
           <View style={styles.formContainer}>
             <View style={styles.inputRow}>
-              <View style={[styles.inputContainer, { flex: 1, marginRight: 8 }]}>
-                <User size={20} color="#00F0FF" />
-                <TextInput
-                  style={styles.input}
-                  placeholder="First Name"
-                  placeholderTextColor="#7A89FF"
-                  value={formData.firstName}
-                  onChangeText={(text) => setFormData({ ...formData, firstName: text })}
-                  selectionColor={'#00F0FF'}
-                  autoCorrect={false}
-                  spellCheck={false}
-                />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.label}>First name<Text style={styles.requiredStar}> *</Text></Text>
+                <View style={styles.inputContainer}>
+                  <User size={18} color={colors.textTertiary} />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="First name"
+                    placeholderTextColor={colors.textLight}
+                    value={formData.firstName}
+                    onChangeText={(text) => setFormData({ ...formData, firstName: text })}
+                    selectionColor={colors.primary}
+                    autoCorrect={false}
+                    spellCheck={false}
+                  />
+                </View>
               </View>
-              <View style={[styles.inputContainer, { flex: 1 }]}>
-                <User size={20} color="#00F0FF" />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Last Name"
-                  placeholderTextColor="#7A89FF"
-                  value={formData.lastName}
-                  onChangeText={(text) => setFormData({ ...formData, lastName: text })}
-                  selectionColor={'#00F0FF'}
-                  autoCorrect={false}
-                  spellCheck={false}
-                />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.label}>Last name<Text style={styles.requiredStar}> *</Text></Text>
+                <View style={styles.inputContainer}>
+                  <User size={18} color={colors.textTertiary} />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Last name"
+                    placeholderTextColor={colors.textLight}
+                    value={formData.lastName}
+                    onChangeText={(text) => setFormData({ ...formData, lastName: text })}
+                    selectionColor={colors.primary}
+                    autoCorrect={false}
+                    spellCheck={false}
+                  />
+                </View>
               </View>
             </View>
 
+            <Text style={styles.label}>Email<Text style={styles.requiredStar}> *</Text></Text>
             <View style={styles.inputContainer}>
-              <Mail size={20} color="#00F0FF" />
+              <Mail size={18} color={colors.textTertiary} />
               <TextInput
                 style={styles.input}
                 placeholder="Email"
-                placeholderTextColor="#7A89FF"
+                placeholderTextColor={colors.textLight}
                 value={formData.email}
                 onChangeText={(text) => setFormData({ ...formData, email: text })}
                 autoCapitalize="none"
                 keyboardType="email-address"
-                selectionColor={'#00F0FF'}
+                selectionColor={colors.primary}
                 autoCorrect={false}
                 spellCheck={false}
               />
             </View>
 
+            <Text style={styles.label}>Phone number<Text style={styles.requiredStar}> *</Text></Text>
             <View style={styles.inputContainer}>
-              <Phone size={20} color="#00F0FF" />
+              <Phone size={18} color={colors.textTertiary} />
               <TextInput
                 style={styles.input}
-                placeholder="Phone Number"
-                placeholderTextColor="#7A89FF"
+                placeholder="Phone number"
+                placeholderTextColor={colors.textLight}
                 value={formData.phone}
                 onChangeText={(text) => setFormData({ ...formData, phone: text })}
                 keyboardType="phone-pad"
-                selectionColor={'#00F0FF'}
+                selectionColor={colors.primary}
                 autoCorrect={false}
                 spellCheck={false}
               />
             </View>
 
+            <Text style={styles.label}>Password<Text style={styles.requiredStar}> *</Text></Text>
             <View style={styles.inputContainer}>
-              <Lock size={20} color="#00F0FF" />
+              <Lock size={18} color={colors.textTertiary} />
               <TextInput
                 style={styles.input}
                 placeholder="Password"
-                placeholderTextColor="#7A89FF"
+                placeholderTextColor={colors.textLight}
                 value={formData.password}
                 onChangeText={(text) => setFormData({ ...formData, password: text })}
                 secureTextEntry
-                selectionColor={'#00F0FF'}
+                selectionColor={colors.primary}
                 autoCorrect={false}
                 spellCheck={false}
               />
             </View>
 
+            <Text style={styles.label}>Confirm password<Text style={styles.requiredStar}> *</Text></Text>
             <View style={styles.inputContainer}>
-              <Lock size={20} color="#00F0FF" />
+              <Lock size={18} color={colors.textTertiary} />
               <TextInput
                 style={styles.input}
-                placeholder="Confirm Password"
-                placeholderTextColor="#7A89FF"
+                placeholder="Confirm password"
+                placeholderTextColor={colors.textLight}
                 value={formData.confirmPassword}
                 onChangeText={(text) => setFormData({ ...formData, confirmPassword: text })}
                 secureTextEntry
-                selectionColor={'#00F0FF'}
+                selectionColor={colors.primary}
                 autoCorrect={false}
                 spellCheck={false}
               />
             </View>
 
-            <Pressable 
-              style={[styles.button, loading && styles.buttonDisabled]}
-              onPress={handleSignup}
-              disabled={loading}
-            >
-              <Text style={styles.buttonText}>
-                {loading ? 'CREATING ACCOUNT...' : 'CREATE ACCOUNT'}
-              </Text>
+            <Pressable style={[styles.button, loading && styles.buttonDisabled]} onPress={handleSignup} disabled={loading}>
+              <Text style={styles.buttonText}>{loading ? 'Creating account...' : 'Create account'}</Text>
             </Pressable>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
-    </ImageBackground>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    width: '100%',
-    height: '100%',
-  },
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(10, 15, 30, 0.85)',
+    backgroundColor: colors.background,
   },
   content: {
     flex: 1,
-    padding: 20,
+    padding: spacing.xl,
   },
   backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(0, 240, 255, 0.1)',
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: colors.surface,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: spacing.lg,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
   header: {
-    marginBottom: 32,
+    marginBottom: spacing.xl,
+    gap: spacing.xs,
+  },
+  pretitle: {
+    ...typography.caption,
+    color: colors.textLight,
   },
   title: {
-    fontSize: 32,
-    fontFamily: 'Inter_700Bold',
-    color: '#00F0FF',
-    marginBottom: 8,
+    ...typography.h1,
   },
   subtitle: {
-    fontSize: 16,
-    fontFamily: 'Inter_400Regular',
-    color: '#7A89FF',
+    ...typography.body,
   },
   formContainer: {
     width: '100%',
-    maxWidth: 400,
+    maxWidth: 480,
     alignSelf: 'center',
+    gap: spacing.md,
   },
   errorContainer: {
-    backgroundColor: 'rgba(255, 61, 113, 0.1)',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 16,
+    backgroundColor: colors.dangerLight,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    marginBottom: spacing.md,
     borderWidth: 1,
-    borderColor: '#FF3D71',
+    borderColor: colors.danger,
   },
   errorText: {
-    color: '#FF3D71',
-    fontSize: 14,
-    fontFamily: 'Inter_500Medium',
+    ...typography.body,
+    color: colors.danger,
     textAlign: 'center',
   },
   inputRow: {
     flexDirection: 'row',
-    marginBottom: 16,
+    gap: spacing.md,
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(122, 137, 255, 0.1)',
-    borderRadius: 8,
-    marginBottom: 16,
-    paddingHorizontal: 16,
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    paddingHorizontal: spacing.md,
     borderWidth: 1,
-    borderColor: '#2A3555',
+    borderColor: colors.border,
+    height: 52,
   },
   input: {
     flex: 1,
     height: 48,
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontFamily: 'Inter_400Regular',
-    marginLeft: 12,
+    color: colors.textPrimary,
+    fontSize: 15,
+    fontFamily: 'Inter_500Medium',
+    marginLeft: spacing.sm,
+  },
+  label: {
+    ...typography.body,
+    color: colors.textSecondary,
+    marginBottom: spacing.xs,
+  },
+  requiredStar: {
+    color: colors.danger,
   },
   button: {
-    backgroundColor: 'rgba(0, 240, 255, 0.1)',
-    height: 48,
-    borderRadius: 8,
+    backgroundColor: colors.primary,
+    height: 52,
+    borderRadius: radius.lg,
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#00F0FF',
-    marginTop: 8, // Add some margin
+    marginTop: spacing.sm,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    elevation: 4,
   },
   buttonDisabled: {
     opacity: 0.5,
   },
   buttonText: {
-    color: '#00F0FF',
+    color: '#fff',
     fontSize: 16,
-    fontFamily: 'Inter_600SemiBold',
-    letterSpacing: 2,
+    fontFamily: 'Inter_700Bold',
   },
 }); 

@@ -4,9 +4,10 @@ import { MapPin, Clock, Check, ChevronRight, MessageCircle, AlertCircle } from '
 import ProgressBar from '@/components/ui/ProgressBar';
 import { firestore } from '@/lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
+import { colors } from '@/styles/theme';
 
 // Define the type for order items - align with Firestore data
-export type OrderStatus = 'Pending' | 'Scheduled' | 'Waiting' | 'In Progress' | 'InProgress' | 'Completed' | 'Cancelled' | 'Denied' | 'Accepted';
+export type OrderStatus = 'Pending' | 'Scheduled' | 'Waiting' | 'In Progress' | 'InProgress' | 'Completed' | 'Cancelled' | 'Denied' | 'Accepted' | 'PendingApproval';
 
 // Represents a single item within an order
 export type OrderItemDetail = {
@@ -14,8 +15,8 @@ export type OrderItemDetail = {
   name: string;
   price: number;
   quantity: number;
-  vehicleId: string | null;
-  vehicleDisplay: string | null;
+  vehicleId?: string | null; // Allow both null and undefined
+  vehicleDisplay?: string | null;
 };
 
 // Represents the overall order document
@@ -65,12 +66,12 @@ const GlowingBorder = () => {
   
   const borderColorAnim = pulseAnim.interpolate({
     inputRange: [0, 0.5, 1],
-    outputRange: ['rgba(0, 240, 255, 0.6)', 'rgba(0, 240, 255, 1)', 'rgba(0, 240, 255, 0.6)'],
+    outputRange: ['rgba(91, 87, 245, 0.4)', 'rgba(91, 87, 245, 0.8)', 'rgba(91, 87, 245, 0.4)'],
   });
   
   const shadowOpacityAnim = pulseAnim.interpolate({
     inputRange: [0, 0.5, 1],
-    outputRange: [0.5, 0.9, 0.5],
+    outputRange: [0.2, 0.4, 0.2],
   });
   
   return (
@@ -198,14 +199,14 @@ const OrderCard: React.FC<OrderCardProps> = ({ order, onViewDetails, onChatPress
         </View>
 
         <View style={styles.orderDetail}>
-          <Clock size={16} color="#7A89FF" />
+          <Clock size={16} color={colors.textTertiary} />
           <Text style={styles.orderDetailText}>
             {formattedDate} • {formattedTime}
           </Text>
         </View>
 
         <View style={styles.orderDetail}>
-          <MapPin size={14} color="#7A89FF" />
+          <MapPin size={14} color={colors.textTertiary} />
           <Text style={styles.orderDetailText}>{order.locationDetails?.address || 'Address unavailable'}</Text>
         </View>
 
@@ -234,9 +235,9 @@ const OrderCard: React.FC<OrderCardProps> = ({ order, onViewDetails, onChatPress
 
         {isPending && (
           <View style={styles.pendingInfo}>
-             <AlertCircle size={14} color="#FFB800" />
-             <Text style={styles.pendingText}>Waiting for provider assignment / scheduling</Text>
-           </View>
+            <AlertCircle size={14} color={colors.warning} />
+            <Text style={styles.pendingText}>Waiting for provider assignment / scheduling</Text>
+          </View>
         )}
 
         {isCancelled && (
@@ -252,7 +253,7 @@ const OrderCard: React.FC<OrderCardProps> = ({ order, onViewDetails, onChatPress
             onPress={() => onViewDetails(order.id)}
           >
             <Text style={styles.viewDetailsText}>View Details</Text>
-            <ChevronRight size={18} color="#00F0FF" />
+            <ChevronRight size={18} color={colors.primary} />
           </Pressable>
           
           {/* Only show chat if applicable */} 
@@ -261,7 +262,7 @@ const OrderCard: React.FC<OrderCardProps> = ({ order, onViewDetails, onChatPress
               style={styles.chatButton}
               onPress={() => onChatPress(order.id/* , order.providerName */)}
             >
-              <MessageCircle size={18} color="#00F0FF" />
+              <MessageCircle size={18} color={colors.primary} />
               <Text style={styles.chatButtonText}>
                 {chatButtonText}
               </Text>
@@ -284,32 +285,36 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    borderRadius: 12,
+    borderRadius: 16,
     borderWidth: 2,
     backgroundColor: 'transparent',
-    shadowColor: '#00F0FF',
+    shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 0 },
-    shadowRadius: 6,
+    shadowRadius: 8,
     elevation: 10,
     zIndex: 0,
   },
   orderCard: {
-    backgroundColor: 'rgba(26, 33, 56, 1)', // Updated background
-    borderRadius: 12,
+    backgroundColor: colors.surface,
+    borderRadius: 16,
     padding: 16,
-    borderWidth: 1,
-    borderColor: '#2A3555',
+    borderWidth: 1.5,
+    borderColor: colors.primary,
     zIndex: 1,
-    overflow: 'hidden', // Ensure glow doesn't overlap content badly
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
   },
   activeOrderCard: {
-    borderColor: '#00F0FF',
-    borderWidth: 1, // Keep subtle border even when active
+    borderColor: colors.primary,
+    borderWidth: 2,
   },
   cancelledOrderCard: {
-     borderColor: '#4B5563', // Grey border for cancelled
-     backgroundColor: 'rgba(42, 53, 85, 0.6)', // Dimmed background
-     opacity: 0.7,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceAlt,
+    opacity: 0.7,
   },
   orderHeader: {
     flexDirection: 'row',
@@ -318,63 +323,80 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   orderService: {
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     fontSize: 18,
     fontFamily: 'Inter_600SemiBold',
+    flex: 1,
+    marginRight: 12,
   },
   statusBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
   },
   activeStatusBadge: { 
-    backgroundColor: 'rgba(0, 122, 255, 0.2)', // A vibrant blue
-    borderColor: '#007BFF',
+    backgroundColor: colors.primaryLight,
+    borderColor: colors.primary,
     borderWidth: 1,
   },
-  pendingStatusBadge: { backgroundColor: 'rgba(255, 184, 0, 0.2)' }, // Yellow/Orange
-  completedStatusBadge: { backgroundColor: 'rgba(56, 229, 77, 0.2)' }, // Green
+  pendingStatusBadge: { 
+    backgroundColor: colors.warningLight,
+    borderColor: colors.warning,
+    borderWidth: 1,
+  },
+  completedStatusBadge: { 
+    backgroundColor: colors.successLight,
+    borderColor: colors.success,
+    borderWidth: 1,
+  },
   acceptedStatusBadge: {
-    backgroundColor: 'rgba(128, 0, 128, 0.2)',
-    borderColor: 'rgba(128, 0, 128, 1)',
+    backgroundColor: colors.primaryLight,
+    borderColor: colors.primary,
     borderWidth: 1,
   },
-  cancelledStatusBadge: { backgroundColor: 'rgba(107, 114, 128, 0.2)' }, // Grey
+  cancelledStatusBadge: { 
+    backgroundColor: '#F3F4F6',
+    borderColor: '#D1D5DB',
+    borderWidth: 1,
+  },
   statusText: {
-    fontSize: 10, // Smaller status text
+    fontSize: 11,
     fontFamily: 'Inter_600SemiBold',
     letterSpacing: 0.5,
   },
-  activeStatusText: { color: '#00A2FF' }, // Bright blue text
-  pendingStatusText: { color: '#FFB800' },
-  completedStatusText: { color: '#38E54D' },
-  acceptedStatusText: { color: '#C070FF' },
-  cancelledStatusText: { color: '#9CA3AF' },
+  activeStatusText: { color: colors.primary },
+  pendingStatusText: { color: colors.warning },
+  completedStatusText: { color: colors.success },
+  acceptedStatusText: { color: colors.primary },
+  cancelledStatusText: { color: '#6B7280' },
   orderDetail: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 10,
   },
   orderDetailText: {
-    color: '#D0DFFF',
+    color: colors.textSecondary,
     fontSize: 14,
     fontFamily: 'Inter_400Regular',
     marginLeft: 8,
+    flex: 1,
   },
   estimatedArrival: {
-    backgroundColor: 'rgba(0, 240, 255, 0.1)',
-    borderRadius: 8,
+    backgroundColor: colors.primaryLight,
+    borderRadius: 12,
     padding: 12,
     marginVertical: 12,
+    borderWidth: 1,
+    borderColor: colors.primary,
   },
   arrivalLabel: {
-    color: '#7A89FF',
-    fontSize: 14,
-    fontFamily: 'Inter_400Regular',
+    color: colors.textTertiary,
+    fontSize: 13,
+    fontFamily: 'Inter_500Medium',
     marginBottom: 4,
   },
   arrivalTime: {
-    color: '#00F0FF',
+    color: colors.primary,
     fontSize: 18,
     fontFamily: 'Inter_700Bold',
     marginBottom: 10,
@@ -383,61 +405,86 @@ const styles = StyleSheet.create({
     marginTop: 5,
     marginBottom: 0,
   },
-  providerInfo: { marginVertical: 12, },
-  providerLabel: { color: '#7A89FF', fontSize: 12, marginBottom: 2 },
-  providerName: { color: '#FFFFFF', fontSize: 14, fontFamily: 'Inter_500Medium' },
+  providerInfo: { 
+    marginVertical: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: 8,
+  },
+  providerLabel: { 
+    color: colors.textTertiary, 
+    fontSize: 12, 
+    fontFamily: 'Inter_500Medium',
+    marginBottom: 4,
+  },
+  providerName: { 
+    color: colors.textPrimary, 
+    fontSize: 15, 
+    fontFamily: 'Inter_600SemiBold',
+  },
   buttonContainer: {
     gap: 10,
-    marginTop: 8,
+    marginTop: 16,
   },
   viewDetailsButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(10, 15, 30, 0.6)',
-    borderRadius: 8,
-    paddingVertical: 12,
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: 12,
+    paddingVertical: 14,
     borderWidth: 1,
-    borderColor: '#2A3555',
+    borderColor: colors.border,
   },
   viewDetailsText: {
-    color: '#00F0FF',
-    fontSize: 14,
-    fontFamily: 'Inter_500Medium',
+    color: colors.primary,
+    fontSize: 15,
+    fontFamily: 'Inter_600SemiBold',
     marginRight: 4,
   },
   chatButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(0, 240, 255, 0.1)',
-    borderRadius: 8,
-    paddingVertical: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(0, 240, 255, 0.3)',
+    backgroundColor: colors.primary,
+    borderRadius: 12,
+    paddingVertical: 14,
   },
   chatButtonText: {
-    color: '#00F0FF',
-    fontSize: 14,
-    fontFamily: 'Inter_500Medium',
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontFamily: 'Inter_600SemiBold',
     marginLeft: 8,
   },
   pendingInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 184, 0, 0.1)',
-    padding: 10,
+    backgroundColor: colors.warningLight,
+    padding: 12,
     borderRadius: 8,
     marginVertical: 12,
+    borderWidth: 1,
+    borderColor: colors.warning,
   },
   pendingText: {
-    color: '#FFB800',
+    color: colors.warning,
     fontSize: 13,
     marginLeft: 8,
+    fontFamily: 'Inter_500Medium',
+    flex: 1,
+  },
+  cancelledInfo: { 
+    marginVertical: 12,
+    padding: 12,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 8,
+  },
+  cancelledText: { 
+    color: '#6B7280', 
+    fontSize: 13, 
     fontFamily: 'Inter_400Regular',
   },
-  cancelledInfo: { marginVertical: 12, },
-  cancelledText: { color: '#9CA3AF', fontSize: 13, fontStyle: 'italic' },
 });
 
 export default OrderCard; 

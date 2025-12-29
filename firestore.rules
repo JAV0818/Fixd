@@ -22,7 +22,8 @@ service cloud.firestore {
         USERS
        ===================================================================== */
     match /users/{userId} {
-      allow read:  if request.auth != null && (request.auth.uid == userId || isAdmin());
+      // Allow users to read their own doc, admins to read all, and providers to read customers for search
+      allow read:  if request.auth != null && (request.auth.uid == userId || isAdmin() || isProvider());
 
       // Prevent users from elevating their own role. Only admins can change 'role'.
       allow create: if request.auth != null && request.auth.uid == userId && (
@@ -58,9 +59,8 @@ service cloud.firestore {
       // GET: Allow if customer, assigned provider, or an admin/provider viewing an unassigned order.
       allow get: if isOrderCustomer() || isOrderProvider() || ((isAdmin() || isProvider()) && resource.data.providerId == null);
 
-      // LIST: Allow queries for:
-      // 1. A customer's own orders.
-      allow list: if request.auth.uid == resource.data.customerId;
+      // LIST: Allow customers to list their own, and admins/providers to list for admin/provider views.
+      allow list: if request.auth.uid == resource.data.customerId || isAdmin() || isProvider();
 
       // CREATE: Allow customer to create standard orders, or provider to create custom quotes.
       allow create: if request.auth != null &&

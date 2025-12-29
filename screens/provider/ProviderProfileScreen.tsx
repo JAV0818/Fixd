@@ -12,6 +12,7 @@ import { doc, updateDoc, getDoc, Timestamp } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, uploadBytesResumable } from "firebase/storage";
 import { LinearGradient } from 'expo-linear-gradient';
 import StarRatingDisplay from '@/components/ui/StarRatingDisplay';
+import { colors } from '@/styles/theme';
 
 // Helper function to safely convert Firestore Timestamps or other date formats
 const toDateSafe = (timestamp: any): Date => {
@@ -54,28 +55,28 @@ const performanceMetrics = [
     value: '$1,250',
     change: '+15%',
     icon: DollarSign,
-    color: '#00F0FF',
+    color: colors.primary,
   },
   {
     title: 'SERVICES',
     value: '24',
     change: '+8%',
     icon: Tool,
-    color: '#7A89FF',
+    color: colors.accent,
   },
   {
     title: 'CLIENT INDEX',
     value: '18',
     change: '+12%',
     icon: Users,
-    color: '#FF3D71',
+    color: colors.warning,
   },
   {
     title: 'TOTAL HOURS',
     value: '156',
     change: '+5%',
     icon: Clock,
-    color: '#00F0FF',
+    color: colors.primary,
   },
 ];
 
@@ -101,7 +102,7 @@ export default function ProviderProfileScreen() {
   const [savingYears, setSavingYears] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
 
-  const defaultProfileImageUrl = 'https://via.placeholder.com/150/2A3555/00F0FF?text=FixD';
+  const defaultProfileImageUrl = 'https://via.placeholder.com/150/5B57F5/FFFFFF?text=Fixd';
 
   useEffect(() => {
     const fetchProfileData = async () => {
@@ -283,7 +284,7 @@ export default function ProviderProfileScreen() {
     if (uploadingImage) {
       return (
         <View style={[styles.profileImage, styles.placeholderAvatar, { justifyContent: 'center', alignItems: 'center' }]}>
-          <ActivityIndicator size="large" color="#00F0FF" />
+          <ActivityIndicator size="large" color={colors.primary} />
         </View>
       );
     }
@@ -309,15 +310,15 @@ export default function ProviderProfileScreen() {
 
   if (loadingProfile) {
     return (
-      <SafeAreaView style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#00F0FF" />
+      <SafeAreaView style={styles.loadingContainer} edges={['top', 'left', 'right']}>
+        <ActivityIndicator size="large" color={colors.primary} />
       </SafeAreaView>
     );
   }
   
   if (!profileData) {
      return (
-      <SafeAreaView style={styles.loadingContainer}>
+      <SafeAreaView style={styles.loadingContainer} edges={['top', 'left', 'right']}>
         <Text style={styles.errorText}>Could not load profile data.</Text>
       </SafeAreaView>
     );
@@ -337,8 +338,8 @@ export default function ProviderProfileScreen() {
               <Camera size={18} color="#0A0F1E" />
             </View>
           </Pressable>
-          <Text style={styles.name}>{displayName.toUpperCase()}</Text>
-          <Text style={styles.membershipLevel}>{membershipDate}</Text>
+          <Text style={styles.name}>{displayName || 'MECHANIC NAME'}</Text>
+          <Text style={styles.membershipLevel}>Fixd Mechanic • {membershipDate}</Text>
           
           <View style={styles.statsContainer}>
             <View style={styles.statItem}>
@@ -347,8 +348,8 @@ export default function ProviderProfileScreen() {
                 starSize={16} 
                 showRatingNumber={true}
                 ratingNumberStyle={styles.statValue}
-                starColorFilled="#00F0FF"
-                starColorEmpty="#4A5588"
+                starColorFilled={colors.primary}
+                starColorEmpty={colors.border}
                 starContainerStyle={styles.starsContainer}
               />
               <Text style={styles.statLabel}>OVERALL RATING</Text>
@@ -356,7 +357,7 @@ export default function ProviderProfileScreen() {
             <View style={styles.statDivider} />
             <View style={styles.statItem}>
               <View style={styles.statValueRow}>
-                <Briefcase size={16} color="#00F0FF" />
+                <Briefcase size={16} color={colors.primary} />
                 <Text style={styles.statValue}>{jobsCompleted}</Text>
               </View>
               <Text style={styles.statLabel}>JOBS COMPLETED</Text>
@@ -366,7 +367,7 @@ export default function ProviderProfileScreen() {
           <View style={[styles.statsContainer, { marginTop: 10 }]}>
             <View style={styles.statItem}>
               <View style={styles.statValueRow}>
-                <Award size={16} color="#00F0FF" />
+                <Award size={16} color={colors.primary} />
                 <Text style={styles.statValue}>{experienceYears}</Text>
               </View>
               <Text style={styles.statLabel}>YEARS EXP</Text>
@@ -465,11 +466,11 @@ export default function ProviderProfileScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0A0F1E',
+    backgroundColor: colors.background,
   },
   loadingContainer: {
     flex: 1,
-    backgroundColor: '#0A0F1E',
+    backgroundColor: colors.background,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -480,7 +481,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 24,
     borderBottomWidth: 1,
-    borderBottomColor: '#2A3555',
+    borderBottomColor: colors.border,
+    backgroundColor: colors.surface,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
   },
   profileImageContainer: {
     position: 'relative',
@@ -491,10 +498,10 @@ const styles = StyleSheet.create({
     height: 120,
     borderRadius: 60,
     borderWidth: 3,
-    borderColor: '#00F0FF',
+    borderColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#1A2138',
+    backgroundColor: colors.surfaceAlt,
   },
   profileInitials: {
     fontSize: 42,
@@ -509,16 +516,16 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 0,
     right: 0,
-    backgroundColor: '#00F0FF',
+    backgroundColor: colors.primary,
     padding: 8,
     borderRadius: 20,
     borderWidth: 2,
-    borderColor: '#0A0F1E',
+    borderColor: colors.surface,
   },
   name: {
     fontSize: 22,
     fontFamily: 'Inter_700Bold',
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     marginBottom: 2,
     letterSpacing: 1.5,
     textAlign: 'center',
@@ -526,7 +533,7 @@ const styles = StyleSheet.create({
   membershipLevel: {
     fontSize: 12,
     fontFamily: 'Inter_500Medium',
-    color: '#7A89FF',
+    color: colors.textSecondary,
     marginBottom: 16,
     textAlign: 'center',
   },
@@ -536,11 +543,16 @@ const styles = StyleSheet.create({
     width: '100%',
     paddingVertical: 12,
     paddingHorizontal: 8,
-    backgroundColor: 'rgba(10, 15, 30, 0.7)',
+    backgroundColor: colors.surface,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#2A3555',
+    borderColor: colors.border,
     marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
   },
   statItem: {
     alignItems: 'center',
@@ -553,7 +565,7 @@ const styles = StyleSheet.create({
   statValue: {
     fontSize: 16,
     fontFamily: 'Inter_700Bold',
-    color: '#00F0FF',
+    color: colors.textPrimary,
     marginLeft: 4,
   },
   starsContainer: {
@@ -562,29 +574,31 @@ const styles = StyleSheet.create({
   statLabel: {
     fontSize: 10,
     fontFamily: 'Inter_500Medium',
-    color: '#7A89FF',
+    color: colors.textTertiary,
     textAlign: 'center',
     textTransform: 'uppercase',
   },
   statDivider: {
     width: 1,
-    backgroundColor: '#2A3555',
+    backgroundColor: colors.border,
     marginVertical: 4,
   },
   bioSection: {
     paddingHorizontal: 24,
     paddingVertical: 16,
+    backgroundColor: colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: '#2A3555',
+    borderBottomColor: colors.border,
   },
   experienceSection: {
     paddingHorizontal: 24,
     paddingVertical: 16,
+    backgroundColor: colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: '#2A3555',
+    borderBottomColor: colors.border,
   },
   sectionTitle: {
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     fontSize: 14,
     fontFamily: 'Inter_600SemiBold',
     letterSpacing: 0.5,
@@ -603,40 +617,40 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     paddingHorizontal: 8,
     borderRadius: 6,
-    backgroundColor: 'rgba(122, 137, 255, 0.15)',
+    backgroundColor: colors.surfaceAlt,
   },
   editButtonText: {
-    color: '#7A89FF',
+    color: colors.textSecondary,
     fontSize: 13,
     fontFamily: 'Inter_500Medium',
     marginLeft: 6,
   },
   bioInput: {
-    backgroundColor: '#121827',
+    backgroundColor: colors.surfaceAlt,
     borderWidth: 1,
-    borderColor: '#2A3555',
+    borderColor: colors.border,
     borderRadius: 8,
     padding: 12,
-    color: '#E0EFFF',
+    color: colors.textPrimary,
     fontSize: 15,
     fontFamily: 'Inter_400Regular',
     minHeight: 80,
     textAlignVertical: 'top',
   },
   bioText: {
-    color: '#D0DFFF',
+    color: colors.textSecondary,
     fontSize: 15,
     fontFamily: 'Inter_400Regular',
     lineHeight: 22,
   },
   yearsInput: {
-    backgroundColor: '#121827',
+    backgroundColor: colors.surfaceAlt,
     borderWidth: 1,
-    borderColor: '#2A3555',
+    borderColor: colors.border,
     borderRadius: 8,
     paddingVertical: 10,
     paddingHorizontal: 12,
-    color: '#E0EFFF',
+    color: colors.textPrimary,
     fontSize: 15,
     fontFamily: 'Inter_400Regular',
     width: 100,
@@ -649,17 +663,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     padding: 16,
-    backgroundColor: 'rgba(122, 137, 255, 0.1)',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#2A3555',
+    borderColor: colors.border,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
   },
   menuText: {
     flex: 1,
     marginLeft: 16,
     fontSize: 16,
     fontFamily: 'Inter_500Medium',
-    color: '#00F0FF',
+    color: colors.textPrimary,
   },
   logoutButton: {
     flexDirection: 'row',
@@ -667,20 +686,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     margin: 16,
     padding: 16,
-    backgroundColor: 'rgba(255, 61, 113, 0.1)',
+    backgroundColor: colors.dangerLight,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#FF3D71',
+    borderColor: '#FFD6D6',
   },
   logoutText: {
     marginLeft: 8,
     fontSize: 16,
     fontFamily: 'Inter_600SemiBold',
-    color: '#FF3D71',
+    color: colors.danger,
     letterSpacing: 2,
   },
   errorText: {
-    color: '#FF3D71',
+    color: colors.textPrimary,
     fontSize: 16,
     textAlign: 'center',
     fontFamily: 'Inter_600SemiBold',

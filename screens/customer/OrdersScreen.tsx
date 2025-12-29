@@ -4,13 +4,14 @@ import { collection, query, where, onSnapshot, orderBy } from 'firebase/firestor
 import { auth, firestore } from '@/lib/firebase';
 import ServiceOrderList from '@/components/orders/ServiceOrderList';
 import { RepairOrder } from '@/types/orders';
+import { Order as DisplayOrder } from '@/components/orders/OrderCard';
 import { globalStyles, colors } from '@/styles/theme';
 
 // Types for filter options
 type FilterType = 'All' | 'Active' | 'PendingApproval' | 'Scheduled' | 'Completed' | 'Cancelled';
 
 export default function OrdersScreen() {
-  const [orders, setOrders] = useState<RepairOrder[]>([]);
+  const [orders, setOrders] = useState<DisplayOrder[]>([]);
   const [activeFilter, setActiveFilter] = useState<FilterType>('All');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -43,12 +44,20 @@ export default function OrdersScreen() {
         const createdAt = data.createdAt?.toDate ? data.createdAt.toDate() : new Date();
         const scheduledAt = data.scheduledAt?.toDate ? data.scheduledAt.toDate() : null;
         
-        return {
+        // Map RepairOrder to DisplayOrder format
+        const displayOrder: DisplayOrder = {
           id: doc.id,
-          ...data,
+          items: data.items || [],
+          totalPrice: data.totalPrice || 0,
+          status: data.status,
           createdAt,
-          scheduledAt,
-        } as RepairOrder;
+          customerId: data.customerId,
+          locationDetails: data.locationDetails || { address: '' },
+          providerId: data.providerId || null,
+          providerName: data.providerName || null,
+        };
+        
+        return displayOrder;
       });
       setOrders(fetchedOrders);
       setLoading(false);
@@ -69,13 +78,13 @@ export default function OrdersScreen() {
         case 'Active':
           return order.status === 'InProgress' || order.status === 'Accepted' || order.status === 'Scheduled';
         case 'PendingApproval':
-          return order.status === 'PendingApproval';
+          return order.status === 'PendingApproval' || order.status === 'Pending';
         case 'Scheduled':
           return order.status === 'Scheduled' || order.status === 'Accepted';
         case 'Completed':
           return order.status === 'Completed';
         case 'Cancelled':
-          return order.status === 'Cancelled' || order.status === 'DeclinedByCustomer';
+          return order.status === 'Cancelled' || order.status === 'Denied';
         default:
           return false;
       }
@@ -101,13 +110,13 @@ export default function OrdersScreen() {
         case 'Active':
           return order.status === 'InProgress' || order.status === 'Accepted' || order.status === 'Scheduled';
         case 'PendingApproval':
-          return order.status === 'PendingApproval';
+          return order.status === 'PendingApproval' || order.status === 'Pending';
         case 'Scheduled':
-          return ['Scheduled', 'Accepted'].includes(order.status as string);
+          return order.status === 'Scheduled' || order.status === 'Accepted';
         case 'Completed':
           return order.status === 'Completed';
         case 'Cancelled':
-          return ['Cancelled', 'DeclinedByCustomer'].includes(order.status as string);
+          return order.status === 'Cancelled' || order.status === 'Denied';
         default:
           return false;
       }
@@ -118,7 +127,7 @@ export default function OrdersScreen() {
     return (
       <SafeAreaView style={globalStyles.container}>
         <View style={globalStyles.centeredContainer}>
-          <ActivityIndicator size="large" color={colors.accent} />
+          <ActivityIndicator size="large" color={colors.primary} />
         </View>
       </SafeAreaView>
     );

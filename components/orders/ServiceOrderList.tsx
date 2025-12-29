@@ -202,7 +202,7 @@ const ServiceOrderList: React.FC<ServiceOrderListProps> = ({
         height={6}
         animated={true}
       />
-      <ActivityIndicator size="large" color={colors.accent} style={styles.activityIndicator} />
+      <ActivityIndicator size="large" color={colors.primary} style={styles.activityIndicator} />
       <Text style={styles.stateMessage}>{loadingStateMessage}</Text>
     </View>
   );
@@ -210,7 +210,7 @@ const ServiceOrderList: React.FC<ServiceOrderListProps> = ({
   // Render empty state
   const renderEmptyState = () => (
     <View style={styles.stateContainer}>
-      <Clock size={50} color="#7A89FF" style={styles.stateIcon} />
+      <Clock size={60} color={colors.textTertiary} style={styles.stateIcon} />
       <Text style={styles.stateTitle}>No orders yet</Text>
       <Text style={styles.stateMessage}>{emptyStateMessage}</Text>
     </View>
@@ -219,7 +219,7 @@ const ServiceOrderList: React.FC<ServiceOrderListProps> = ({
   // Render error state
   const renderErrorState = () => (
     <View style={styles.stateContainer}>
-      <AlertTriangle size={50} color="#FF3D71" style={styles.stateIcon} />
+      <AlertTriangle size={60} color={colors.danger} style={styles.stateIcon} />
       <Text style={styles.stateTitle}>Oops!</Text>
       <Text style={styles.stateMessage}>{errorStateMessage}</Text>
       {onRefresh && (
@@ -275,7 +275,7 @@ const ServiceOrderList: React.FC<ServiceOrderListProps> = ({
                    pagination.currentPage === 1 && componentStyles.tealButtonDisabled,
                  ]}
                >
-                 <ChevronLeft size={18} color={colors.accent} />
+                 <ChevronLeft size={18} color={colors.primary} />
                </Pressable>
                <Text style={componentStyles.pagerLabel}>Page {pagination.currentPage} of {pagination.totalPages}</Text>
                <Pressable
@@ -288,7 +288,7 @@ const ServiceOrderList: React.FC<ServiceOrderListProps> = ({
                    pagination.currentPage === pagination.totalPages && componentStyles.tealButtonDisabled,
                  ]}
                >
-                 <ChevronRight size={18} color={colors.accent} />
+                 <ChevronRight size={18} color={colors.primary} />
                </Pressable>
              </View>
            </View>
@@ -361,8 +361,8 @@ const ServiceOrderList: React.FC<ServiceOrderListProps> = ({
                 <RefreshControl
                   refreshing={refreshing}
                   onRefresh={handleRefresh}
-                  tintColor={colors.accent}
-                  colors={[colors.accent, colors.textSecondary]}
+                  tintColor={colors.primary}
+                  colors={[colors.primary, colors.textSecondary]}
                 />
               ) : undefined
             }
@@ -393,17 +393,18 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   title: {
-    fontSize: 20,
+    fontSize: 22,
     fontFamily: 'Inter_700Bold',
-    color: '#FFFFFF',
-    letterSpacing: 1,
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 4, // Reduced space between title and filters
+    color: colors.textPrimary,
+    letterSpacing: 0.5,
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 8,
   },
   listContent: {
-    paddingHorizontal: 16,
-    paddingTop: 8, // Keep first item away from filters
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 100, // Extra padding for tab bar
   },
   stateContainer: {
     flex: 1,
@@ -418,97 +419,99 @@ const styles = StyleSheet.create({
     marginVertical: 20,
   },
   stateTitle: {
-    fontSize: 18,
-    fontFamily: 'Inter_600SemiBold',
-    color: '#FFFFFF',
+    fontSize: 20,
+    fontFamily: 'Inter_700Bold',
+    color: colors.textPrimary,
     marginBottom: 8,
   },
   stateMessage: {
-    fontSize: 14,
+    fontSize: 15,
     fontFamily: 'Inter_400Regular',
-    color: '#D0DFFF',
+    color: colors.textSecondary,
     textAlign: 'center',
     marginBottom: 20,
   },
   retryButton: {
-    backgroundColor: 'rgba(0, 240, 255, 0.2)',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 8,
+    backgroundColor: colors.primaryLight,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: colors.accent,
+    borderColor: colors.primary,
   },
   retryButtonText: {
-    color: colors.accent,
-    fontSize: 14,
-    fontFamily: 'Inter_500Medium',
+    color: colors.primary,
+    fontSize: 15,
+    fontFamily: 'Inter_600SemiBold',
   },
   sectionHeader: {
-    fontSize: 16,
-    fontFamily: 'Inter_600SemiBold',
-    color: '#7A89FF',
-    marginTop: 24, 
-    marginBottom: 8,
-    paddingHorizontal: 16, // Match list padding
+    fontSize: 14,
+    fontFamily: 'Inter_700Bold',
+    color: colors.textTertiary,
+    marginTop: 24,
+    marginBottom: 12,
     textTransform: 'uppercase',
     letterSpacing: 1,
   },
-  // Add styles for filters
+  // Filter styles
   filterBarContainer: {
-    backgroundColor: 'rgba(10, 15, 30, 0.9)',
+    backgroundColor: colors.background,
     borderBottomWidth: 1,
-    borderBottomColor: '#2A3555',
+    borderBottomColor: colors.border,
+    paddingTop: 8,
   },
   filterContainer: {
-    paddingVertical: 4,
-    paddingHorizontal: 16,
-    marginBottom: 8, // Space between filters and list
+    paddingVertical: 8,
+    paddingHorizontal: 20,
+    marginBottom: 4,
   },
   filterContent: {
     alignItems: 'center',
   },
   filterChip: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 16,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: '#2A3555',
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceAlt,
     marginRight: 8,
   },
   activeFilterChip: {
-    backgroundColor: 'rgba(0, 240, 255, 0.15)',
-    borderColor: colors.accent,
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   filterText: {
     fontSize: 14,
-    fontFamily: 'Inter_500Medium',
-    color: '#7A89FF',
+    fontFamily: 'Inter_600SemiBold',
+    color: colors.textSecondary,
   },
   activeFilterText: {
-    color: colors.accent,
+    color: '#FFFFFF',
   },
   centeredMessageContainer: {
     alignItems: 'center',
     padding: 20,
-    marginTop: 16, // space below filters
+    marginTop: 16,
   },
   pagerButton: {
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: 'rgba(0, 240, 255, 0.3)',
-    backgroundColor: 'rgba(0, 240, 255, 0.1)'
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceAlt,
   },
   pagerDisabled: {
-    opacity: 0.5,
+    opacity: 0.4,
   },
   pagerText: {
     color: colors.textPrimary,
-    fontFamily: 'Inter_600SemiBold'
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 14,
   },
   pagerPressed: {
-    backgroundColor: 'rgba(0, 240, 255, 0.2)',
+    backgroundColor: colors.surface,
   },
   pagerRow: {},
   pagerLabel: {},

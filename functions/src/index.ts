@@ -1,12 +1,32 @@
 import * as admin from "firebase-admin";
-// import * as functions from "firebase-functions"; // For functions.config()
+import * as functions from "firebase-functions/v1";
 // import {https as v1https} from "firebase-functions/v1"; // Specific import for v1 https services
 // import Stripe from "stripe";
 
 if (!admin.apps.length) { // Ensure Firebase is initialized only once
   admin.initializeApp();
 }
-// const db = admin.firestore(); // Ensure db is initialized
+const db = admin.firestore(); // Ensure db is initialized
+
+// Create a Firestore user profile document for every new auth user.
+export const onAuthUserCreate = functions.auth.user().onCreate(async (user: functions.auth.UserRecord) => {
+  const userDocRef = db.collection("users").doc(user.uid);
+  const existing = await userDocRef.get();
+  const existingRole = existing.exists ? existing.data()?.role : undefined;
+
+  const role = existingRole || "customer";
+  const profile = {
+    role,
+    email: user.email || null,
+    firstName: user.displayName?.split(" ")?.[0] || null,
+    lastName: user.displayName?.split(" ")?.slice(1).join(" ") || null,
+    phone: user.phoneNumber || null,
+    photoUrl: user.photoURL || null,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+
+  await userDocRef.set(profile, {merge: true});
+});
 
 // Initialize Stripe with secret key and API version
 // const stripeClient = new Stripe(functions.config().stripe.secret, {

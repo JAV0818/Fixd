@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Animated, ViewStyle, TextStyle } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { colors } from '@/styles/theme';
 
 interface ProgressBarProps {
   progress: number; // 0 to 1 (percentage)
@@ -24,8 +25,8 @@ const ProgressBar: React.FC<ProgressBarProps> = ({
   containerStyle,
   labelStyle,
   percentageStyle,
-  gradientColors = ['#00C2FF', '#0080FF'] as [string, string],
-  backgroundColor = 'rgba(42, 53, 85, 0.5)',
+  gradientColors = ['#7B77FF', '#5B57F5'] as [string, string],
+  backgroundColor = colors.border,
   animated = true,
   animationDuration = 800,
 }) => {
@@ -85,22 +86,22 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 14,
     fontFamily: 'Inter_500Medium',
-    color: '#7A89FF',
+    color: colors.textTertiary,
     marginBottom: 4,
   },
   progressContainer: {
     width: '100%',
-    borderRadius: 4,
+    borderRadius: 8,
     overflow: 'hidden',
   },
   progressBar: {
     height: '100%',
-    borderRadius: 4,
+    borderRadius: 8,
   },
   percentage: {
     fontSize: 12,
     fontFamily: 'Inter_600SemiBold',
-    color: '#00F0FF',
+    color: colors.primary,
     marginTop: 4,
     textAlign: 'right',
   },

@@ -17,6 +17,7 @@ import AccountSettingsScreen from '../screens/provider/AccountSettingsScreen';
 
 // Import the ProviderNavigator stack
 import ProviderNavigator, { ProviderStackParamList } from './ProviderNavigator';
+import { colors } from '@/styles/theme';
 
 // Define ParamList for the Profile Stack
 export type ProfileStackParamList = {
@@ -172,19 +173,20 @@ export default function ProviderTabNavigator() {
           // Default fallback
           return <GlowingIcon Icon={Home} color={color} size={size} focused={focused} />;
         },
-        tabBarActiveTintColor: '#00F0FF', 
-        tabBarInactiveTintColor: '#7A89FF',
+        tabBarActiveTintColor: colors.primary, 
+        tabBarInactiveTintColor: colors.textLight,
         tabBarStyle: {
-          backgroundColor: '#0A0F1E', 
-          borderTopColor: '#2A3555',
-          height: 65, // Increase tab bar height
+          backgroundColor: colors.surface, 
+          borderTopColor: colors.border,
+          height: 80,
           position: 'absolute',
           borderTopWidth: 1,
-          elevation: 0, // Remove Android shadow
-          shadowOpacity: 0, // Remove iOS shadow
+          elevation: 4,
+          shadowOpacity: 0.08,
+          shadowRadius: 8,
         },
         tabBarItemStyle: {
-          height: 60, // Apply to all tabs
+          height: 70,
         },
         tabBarHideOnKeyboard: true,
       })}

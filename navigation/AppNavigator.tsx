@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
-import { auth, firestore } from '@/lib/firebase'; 
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
+
+import { auth, firestore } from '@/lib/firebase'; 
 import LoginScreen from '@/screens/auth/LoginScreen';
 import SignupScreen from '@/screens/auth/SignupScreen';
 import CustomerNavigator from './CustomerNavigator'; // Your Bottom Tab Navigator
@@ -34,7 +34,8 @@ import CustomQuoteRequestScreen from '@/screens/customer/CustomQuoteRequestScree
 import AdminRequestsScreen from '@/screens/admin/AdminRequestsScreen';
 import CustomerQuotesScreen from '@/screens/customer/CustomerQuotesScreen';
 // import SupportChatScreen from '@/screens/shared/SupportChatScreen';
-import { CustomCharge } from '@/types/customCharges';
+import SplashScreen from '../components/ui/SplashScreen';
+import CreateCustomChargeScreen from '@/screens/provider/CreateCustomChargeScreen';
 
 // Combine all param lists for the root navigator
 // Use NavigatorScreenParams to type nested navigator params
@@ -67,33 +68,52 @@ function useAuthNavigation() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
-      if (currentUser) {
-        // Introduce a small delay to allow other Firestore operations (like FCM token save)
-        // to potentially complete and for data to be more consistent for this read.
-        setTimeout(async () => {
-          try {
-            const userDocRef = doc(firestore, 'users', currentUser.uid);
-            const userDoc = await getDoc(userDocRef);
-            console.log('[AppNavigator with Delay] User document for role check (UID:', currentUser.uid, '):', userDoc.data());
-            if (userDoc.exists()) {
-              const userData = userDoc.data();
-              const r = (userData.role as string) || (userData.isAdmin ? 'admin' : 'customer');
-              setRole(r === 'admin' || r === 'provider' ? (r as any) : 'customer');
-            } else {
-              setRole('customer');
-            }
-          } catch (error) {
-            console.error("Error fetching user role (with delay):", error);
-            setIsAdmin(false);
-          } finally {
-            setLoading(false); // Role determination complete, stop loading
-          }
-        }, 750); // Delay of 750ms (adjust if needed)
-      } else {
-        // No user, clear admin state and stop loading immediately
+      if (!currentUser) {
         setRole(null);
         setLoading(false);
+        return;
       }
+
+      const resolveRole = async () => {
+        try {
+          const userDocRef = doc(firestore, 'users', currentUser.uid);
+          const userDoc = await getDoc(userDocRef);
+          const existingData = userDoc.exists() ? userDoc.data() : undefined;
+
+          // Only set a default role if none exists; do not overwrite an existing role
+          if (!userDoc.exists()) {
+            await setDoc(userDocRef, {
+              email: currentUser.email || null,
+              role: 'customer',
+              firstName: currentUser.displayName?.split(' ')?.[0] || null,
+              lastName: currentUser.displayName?.split(' ')?.slice(1).join(' ') || null,
+            }, { merge: true });
+          } else if (!existingData?.role) {
+            await setDoc(userDocRef, {
+              role: 'customer',
+              email: existingData?.email ?? currentUser.email ?? null,
+              firstName: existingData?.firstName ?? currentUser.displayName?.split(' ')?.[0] ?? null,
+              lastName: existingData?.lastName ?? currentUser.displayName?.split(' ')?.slice(1).join(' ') ?? null,
+            }, { merge: true });
+          }
+
+          const userDocFinal = userDoc.exists() ? userDoc : await getDoc(userDocRef);
+          if (userDocFinal.exists()) {
+            const userData = userDocFinal.data();
+            const r = (userData.role as string) || (userData.isAdmin ? 'admin' : 'customer');
+            setRole(r === 'admin' || r === 'provider' ? (r as any) : 'customer');
+          } else {
+            setRole('customer');
+          }
+        } catch (error) {
+          console.error('Error fetching user role:', error);
+          setRole('customer');
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      resolveRole();
     });
 
     return () => unsubscribe();
@@ -106,8 +126,7 @@ export default function AppNavigator() {
   const { user, role, loading } = useAuthNavigation();
 
   if (loading) {
-    // Optional: Show a loading spinner/splash screen
-    return null; 
+    return <SplashScreen />;
   }
 
   return (
@@ -117,6 +136,8 @@ export default function AppNavigator() {
         role === 'admin' ? (
           <>
             <Stack.Screen name="ProviderApp" component={AdminTabNavigator} />
+            <Stack.Screen name="CreateCustomCharge" component={CreateCustomChargeScreen} />
+            <Stack.Screen name="RequestDetail" component={RequestDetailScreen} />
           </>
         ) : role === 'provider' ? (
           <>

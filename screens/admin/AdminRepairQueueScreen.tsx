@@ -25,7 +25,7 @@ export default function AdminRepairQueueScreen() {
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
-        <View style={styles.center}><ActivityIndicator color={colors.accent} /></View>
+        <View style={styles.center}><ActivityIndicator color={colors.primary} /></View>
       </SafeAreaView>
     );
   }
@@ -75,18 +75,18 @@ export default function AdminRepairQueueScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0A0F1E' },
+  container: { flex: 1, backgroundColor: colors.background },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   content: { padding: 16 },
-  title: { color: colors.accent, fontFamily: 'Inter_700Bold', fontSize: 22, marginBottom: 8 },
-  empty: { color: '#7A89FF', fontFamily: 'Inter_500Medium' },
-  card: { borderWidth: 1, borderColor: '#2A3555', borderRadius: 12, padding: 12, backgroundColor: 'rgba(18,24,39,0.85)', marginBottom: 12 },
-  cardTitle: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', marginBottom: 6 },
-  cardText: { color: '#D0DFFF' },
-  cardHint: { color: '#7A89FF', marginTop: 4 },
-  divider: { color: '#2A3555', marginVertical: 4 },
-  sectionTitle: { color: colors.accent, fontFamily: 'Inter_600SemiBold', marginTop: 4, marginBottom: 6 },
-  detailsBox: { marginTop: 8, borderWidth: 1, borderColor: '#2A3555', borderRadius: 8, padding: 8, backgroundColor: 'rgba(10,15,30,0.6)' },
+  title: { color: colors.textPrimary, fontFamily: 'Inter_700Bold', fontSize: 22, marginBottom: 8 },
+  empty: { color: colors.textSecondary, fontFamily: 'Inter_500Medium' },
+  card: { borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 12, backgroundColor: colors.surface, marginBottom: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2 },
+  cardTitle: { color: colors.textPrimary, fontFamily: 'Inter_600SemiBold', marginBottom: 6 },
+  cardText: { color: colors.textSecondary },
+  cardHint: { color: colors.textTertiary, marginTop: 4 },
+  divider: { color: colors.border, marginVertical: 4 },
+  sectionTitle: { color: colors.textSecondary, fontFamily: 'Inter_600SemiBold', marginTop: 4, marginBottom: 6 },
+  detailsBox: { marginTop: 8, borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: 8, backgroundColor: colors.surfaceAlt },
 });
 
 

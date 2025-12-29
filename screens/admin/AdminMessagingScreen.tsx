@@ -44,7 +44,7 @@ export default function AdminMessagingScreen() {
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
-        <ActivityIndicator color={colors.accent} />
+        <ActivityIndicator color={colors.primary} />
       </SafeAreaView>
     );
   }
@@ -74,35 +74,40 @@ export default function AdminMessagingScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0A0F1E',
+    backgroundColor: colors.background,
     padding: 16,
   },
   title: {
-    color: colors.accent,
+    color: colors.textPrimary,
     fontSize: 24,
     fontFamily: 'Inter_700Bold',
     marginBottom: 20,
   },
   card: {
-    backgroundColor: 'rgba(26, 33, 56, 1)',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#2A3555',
+    borderColor: colors.border,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
   },
   cardTitle: {
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     fontFamily: 'Inter_600SemiBold',
     fontSize: 16,
   },
   cardText: {
-    color: '#D0DFFF',
+    color: colors.textSecondary,
     fontFamily: 'Inter_400Regular',
     marginTop: 4,
   },
   emptyText: {
-    color: '#7A89FF',
+    color: colors.textSecondary,
     textAlign: 'center',
     marginTop: 50,
   },
