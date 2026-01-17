@@ -30,7 +30,7 @@ export default function RequestsScreen({ navigation: stackNavigation }: Props) {
     setLoading(true);
     setError(null);
 
-    const ordersRef = collection(firestore, 'repairOrders');
+    const ordersRef = collection(firestore, 'repair-orders');
     // Fetch pending requests; filter unassigned and sort client-side to avoid index/null issues
     const q = query(
       ordersRef,

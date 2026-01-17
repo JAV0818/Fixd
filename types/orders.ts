@@ -20,6 +20,9 @@ export interface LocationDetails {
   additionalNotes?: string;
 }
 
+// Order status type
+export type OrderStatus = 'Pending' | 'Claimed' | 'Accepted' | 'Scheduled' | 'InProgress' | 'Completed' | 'Cancelled' | 'PendingApproval';
+
 // Type for the Repair Order document
 export interface RepairOrder {
   id: string; // Firestore document ID
@@ -28,16 +31,32 @@ export interface RepairOrder {
   totalPrice: number;
   locationDetails: LocationDetails;
   paymentMethod: 'creditCard' | 'paypal' | null;
-  status: 'Pending' | 'Accepted' | 'Scheduled' | 'InProgress' | 'Completed' | 'Cancelled' | 'PendingApproval';
+  status: OrderStatus;
   createdAt: Timestamp;
   providerId: string | null;
   providerName?: string;
   customerName?: string;
   customerPhotoURL?: string;
-  // Optional fields that might be added later
+  
+  // Claim system fields
+  claimedAt?: Timestamp | null;        // When the order was claimed
+  claimExpiresAt?: Timestamp | null;   // When the claim auto-expires (1 hour from claim)
+  assignedByAdmin?: boolean;           // True if owner assigned directly
+  
+  // Additional order fields
+  description?: string;
+  vehicleInfo?: string;
+  categories?: string[];
+  mediaUrls?: string[];
+  orderType?: 'standard' | 'custom_quote';
+  
+  // Timestamps
   acceptedAt?: Timestamp;
   startedAt?: Timestamp;
   completedAt?: Timestamp;
+  updatedAt?: Timestamp;
+  
+  // Notes & Ratings
   providerNotes?: string;
   customerRating?: number;
   providerRating?: number;

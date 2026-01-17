@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  TextInput,
   TouchableOpacity,
   Alert,
   ActivityIndicator,
@@ -15,11 +14,13 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ProviderStackParamList } from '../../navigation/ProviderNavigator';
 import { ArrowLeft, UserSearch, Send, PlusCircle, Trash2 } from 'lucide-react-native';
+import { TextInput as PaperTextInput } from 'react-native-paper';
 import { auth, firestore } from '@/lib/firebase';
 import { collection, addDoc, serverTimestamp, query, where, getDocs, limit, doc, getDoc, Timestamp } from 'firebase/firestore';
 import { UserProfile, CustomCharge } from '../../types/customCharges';
 import { LocationDetails, OrderItem } from '../../types/orders';
 import { colors } from '@/styles/theme';
+import { ThemedButton } from '@/components/ui/ThemedButton';
 
 interface LineItem {
   id: string;
@@ -233,17 +234,15 @@ export default function CreateCustomChargeScreen({ navigation }: Props) {
           {!selectedCustomer ? (
             <View style={styles.searchSectionContainer}>
               <Text style={styles.label}>1. Find Customer</Text>
-              <View style={styles.inputContainer}>
-                <UserSearch size={20} color={colors.textTertiary} style={styles.inputIcon} />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Search by email or phone..."
-                  placeholderTextColor={colors.textLight}
-                  value={searchQuery}
-                  onChangeText={setSearchQuery}
-                  autoCapitalize="none"
-                />
-              </View>
+              <PaperTextInput
+                label="Search by email or phone..."
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                mode="outlined"
+                left={<PaperTextInput.Icon icon="account-search" />}
+                autoCapitalize="none"
+                style={styles.input}
+              />
               {isSearching && <ActivityIndicator style={styles.loader} color={colors.primary} />}
               <View style={styles.resultsList}>
                 {searchResults.map((item) => (
@@ -269,43 +268,130 @@ export default function CreateCustomChargeScreen({ navigation }: Props) {
 
               <View style={styles.section}>
                 <Text style={styles.label}>Service Location</Text>
-                <TextInput style={styles.inputMUI} placeholder="Street Address*" placeholderTextColor={colors.textLight} value={locationDetails.address} onChangeText={val => setLocationDetails(p => ({...p, address: val}))} />
-                <TextInput style={styles.inputMUI} placeholder="City*" placeholderTextColor={colors.textLight} value={locationDetails.city} onChangeText={val => setLocationDetails(p => ({...p, city: val}))} />
+                <PaperTextInput
+                  label="Street Address*"
+                  value={locationDetails.address}
+                  onChangeText={val => setLocationDetails(p => ({...p, address: val}))}
+                  mode="outlined"
+                  style={styles.inputMUI}
+                />
+                <PaperTextInput
+                  label="City*"
+                  value={locationDetails.city}
+                  onChangeText={val => setLocationDetails(p => ({...p, city: val}))}
+                  mode="outlined"
+                  style={styles.inputMUI}
+                />
                 <View style={styles.row}>
-                  <TextInput style={[styles.inputMUI, {flex: 1, marginRight: 8}]} placeholder="State*" placeholderTextColor={colors.textLight} value={locationDetails.state} onChangeText={val => setLocationDetails(p => ({...p, state: val}))} />
-                  <TextInput style={[styles.inputMUI, {flex: 1}]} placeholder="Zip Code*" placeholderTextColor={colors.textLight} value={locationDetails.zipCode} onChangeText={val => setLocationDetails(p => ({...p, zipCode: val}))} keyboardType="numeric" />
+                  <PaperTextInput
+                    label="State*"
+                    value={locationDetails.state}
+                    onChangeText={val => setLocationDetails(p => ({...p, state: val}))}
+                    mode="outlined"
+                    style={[styles.inputMUI, {flex: 1, marginRight: 8}]}
+                  />
+                  <PaperTextInput
+                    label="Zip Code*"
+                    value={locationDetails.zipCode}
+                    onChangeText={val => setLocationDetails(p => ({...p, zipCode: val}))}
+                    mode="outlined"
+                    keyboardType="numeric"
+                    style={[styles.inputMUI, {flex: 1}]}
+                  />
                 </View>
-                <TextInput style={styles.inputMUI} placeholder="Contact Phone (Optional)" placeholderTextColor={colors.textLight} value={locationDetails.phoneNumber} onChangeText={val => setLocationDetails(p => ({...p, phoneNumber: val}))} keyboardType="phone-pad" />
-                <TextInput style={styles.textArea} placeholder="Additional Notes (e.g., Apt #, gate code)" placeholderTextColor={colors.textLight} value={locationDetails.additionalNotes} onChangeText={val => setLocationDetails(p => ({...p, additionalNotes: val}))} multiline />
+                <PaperTextInput
+                  label="Contact Phone (Optional)"
+                  value={locationDetails.phoneNumber}
+                  onChangeText={val => setLocationDetails(p => ({...p, phoneNumber: val}))}
+                  mode="outlined"
+                  keyboardType="phone-pad"
+                  style={styles.inputMUI}
+                />
+                <PaperTextInput
+                  label="Additional Notes (e.g., Apt #, gate code)"
+                  value={locationDetails.additionalNotes}
+                  onChangeText={val => setLocationDetails(p => ({...p, additionalNotes: val}))}
+                  mode="outlined"
+                  multiline
+                  numberOfLines={3}
+                  style={styles.textArea}
+                />
               </View>
 
               <View style={styles.section}>
                 <Text style={styles.label}>Vehicle Information</Text>
-                <TextInput style={styles.inputMUI} placeholder="Make*" placeholderTextColor={colors.textLight} value={vehicleMake} onChangeText={setVehicleMake} />
-                <TextInput style={styles.inputMUI} placeholder="Model*" placeholderTextColor={colors.textLight} value={vehicleModel} onChangeText={setVehicleModel} />
+                <PaperTextInput
+                  label="Make*"
+                  value={vehicleMake}
+                  onChangeText={setVehicleMake}
+                  mode="outlined"
+                  style={styles.inputMUI}
+                />
+                <PaperTextInput
+                  label="Model*"
+                  value={vehicleModel}
+                  onChangeText={setVehicleModel}
+                  mode="outlined"
+                  style={styles.inputMUI}
+                />
                 <View style={styles.row}>
-                  <TextInput style={[styles.inputMUI, {flex: 1, marginRight: 8}]} placeholder="Year*" placeholderTextColor={colors.textLight} value={vehicleYear} onChangeText={setVehicleYear} keyboardType="numeric" maxLength={4} />
-                  <TextInput style={[styles.inputMUI, {flex: 1}]} placeholder="License Plate (Optional)" placeholderTextColor={colors.textLight} value={licensePlate} onChangeText={setLicensePlate} />
+                  <PaperTextInput
+                    label="Year*"
+                    value={vehicleYear}
+                    onChangeText={setVehicleYear}
+                    mode="outlined"
+                    keyboardType="numeric"
+                    maxLength={4}
+                    style={[styles.inputMUI, {flex: 1, marginRight: 8}]}
+                  />
+                  <PaperTextInput
+                    label="License Plate (Optional)"
+                    value={licensePlate}
+                    onChangeText={setLicensePlate}
+                    mode="outlined"
+                    style={[styles.inputMUI, {flex: 1}]}
+                  />
                 </View>
               </View>
 
               <View style={styles.section}>
                 <Text style={styles.label}>Schedule (Optional)</Text>
                 <View style={styles.row}>
-                  <TextInput style={[styles.inputMUI, {flex: 1, marginRight: 8}]} placeholder="Date (YYYY-MM-DD)" placeholderTextColor={colors.textLight} value={serviceDate} onChangeText={setServiceDate} />
-                  <TextInput style={[styles.inputMUI, {flex: 1}]} placeholder="Time (HH:MM)" placeholderTextColor={colors.textLight} value={serviceTime} onChangeText={setServiceTime} />
+                  <PaperTextInput
+                    label="Date (YYYY-MM-DD)"
+                    value={serviceDate}
+                    onChangeText={setServiceDate}
+                    mode="outlined"
+                    style={[styles.inputMUI, {flex: 1, marginRight: 8}]}
+                  />
+                  <PaperTextInput
+                    label="Time (HH:MM)"
+                    value={serviceTime}
+                    onChangeText={setServiceTime}
+                    mode="outlined"
+                    style={[styles.inputMUI, {flex: 1}]}
+                  />
                 </View>
               </View>
 
               <View style={styles.section}>
                 <Text style={styles.label}>Service Items</Text>
                 <View style={styles.lineItemInputRow}>
-                  <View style={[styles.inputContainer, {flex: 1, marginRight: 8, marginBottom: 0}]}>
-                    <TextInput style={styles.input} placeholder="Service item description" placeholderTextColor={colors.textLight} value={currentItemDesc} onChangeText={setCurrentItemDesc} />
-                  </View>
-                  <View style={[styles.inputContainer, {width: 100, marginRight: 8, marginBottom: 0}]}>
-                    <TextInput style={styles.input} placeholder="Price" placeholderTextColor={colors.textLight} value={currentItemPrice} onChangeText={setCurrentItemPrice} keyboardType="numeric" />
-                  </View>
+                  <PaperTextInput
+                    label="Service item description"
+                    value={currentItemDesc}
+                    onChangeText={setCurrentItemDesc}
+                    mode="outlined"
+                    style={[styles.input, {flex: 1, marginRight: 8}]}
+                  />
+                  <PaperTextInput
+                    label="Price"
+                    value={currentItemPrice}
+                    onChangeText={setCurrentItemPrice}
+                    mode="outlined"
+                    keyboardType="numeric"
+                    style={[styles.input, {width: 100, marginRight: 8}]}
+                  />
                   <TouchableOpacity style={styles.addItemButton} onPress={handleAddLineItem}>
                     <PlusCircle size={24} color={colors.primary} />
                   </TouchableOpacity>
@@ -331,13 +417,16 @@ export default function CreateCustomChargeScreen({ navigation }: Props) {
                 </View>
               </View>
               
-              <TouchableOpacity
-                style={[styles.sendButton, (isSubmitting || lineItems.length === 0) && styles.sendButtonDisabled]}
+              <ThemedButton
+                variant="primary"
                 onPress={handleCreateCustomCharge}
                 disabled={isSubmitting || lineItems.length === 0}
+                loading={isSubmitting}
+                icon="send"
+                style={styles.sendButton}
               >
-                {isSubmitting ? <ActivityIndicator color="#FFFFFF" /> : <><Send size={20} color="#FFFFFF" style={{marginRight: 8}}/><Text style={styles.sendButtonText}>Create Custom Quote</Text></>}
-              </TouchableOpacity>
+                Create Custom Quote
+              </ThemedButton>
             </>
           )}
         </ScrollView>

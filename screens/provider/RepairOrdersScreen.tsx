@@ -11,6 +11,7 @@ import { RepairOrder, OrderItem } from '@/types/orders';
 import { CustomCharge } from '@/types/customCharges';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { componentStyles, colors } from '@/styles/theme';
+import { ThemedButton } from '@/components/ui/ThemedButton';
 
 // Define all possible statuses
 type AllStatus = RepairOrder['status'] | CustomCharge['status'];
@@ -384,77 +385,75 @@ export default function RepairOrdersScreen() {
               
               <View style={styles.actionButtons}>
                 {item.itemType === 'order' && item.status === 'Accepted' && (
-                  <Pressable 
-                    style={[styles.actionButton, isButtonLoading && styles.disabledButton]}
+                  <ThemedButton
+                    variant="primary"
                     onPress={() => !isButtonLoading && handleInitiateService(item.id!)}
                     disabled={isButtonLoading}
+                    loading={isButtonLoading}
+                    style={styles.actionButtonFlex}
                   >
-                    {isButtonLoading ? (
-                      <ActivityIndicator color="#00F0FF" size="small" />
-                    ) : (
-                      <Text style={styles.actionButtonText}>START SERVICE</Text>
-                    )}
-                  </Pressable>
+                    START SERVICE
+                  </ThemedButton>
                 )}
                 {item.itemType === 'order' && item.status === 'InProgress' && (
-                  <Pressable 
-                    style={styles.actionButton}
+                  <ThemedButton
+                    variant="primary"
                     onPress={() => navigation.navigate('Requests', { screen: 'RequestStart', params: { orderId: item.id } })}
+                    style={styles.actionButtonFlex}
                   >
-                    <Text style={styles.actionButtonText}>VIEW ACTIVE DETAILS</Text>
-                  </Pressable>
+                    VIEW ACTIVE DETAILS
+                  </ThemedButton>
                 )}
                 {item.itemType === 'order' && item.status === 'Completed' && (
-                  <Pressable 
-                    style={styles.actionButton}
+                  <ThemedButton
+                    variant="primary"
                     onPress={() => navigation.navigate('Requests', { screen: 'InspectionChecklist', params: { orderId: item.id } })}
+                    style={styles.actionButtonFlex}
                   >
-                    <Text style={styles.actionButtonText}>VIEW INSPECTION/DETAILS</Text>
-                  </Pressable>
+                    VIEW INSPECTION/DETAILS
+                  </ThemedButton>
                 )}
                 {(item.itemType === 'order' && (item.status === 'Accepted' || item.status === 'InProgress')) && (
-                  <Pressable 
-                    style={[styles.actionButton, (item.status !== 'Accepted' && item.status !== 'InProgress') && styles.disabledButton]}
+                  <ThemedButton
+                    variant="primary"
                     onPress={() => navigation.navigate('Requests', { screen: 'UpdateStatus', params: { orderId: item.id } })}
                     disabled={item.status !== 'Accepted' && item.status !== 'InProgress'}
+                    style={styles.actionButtonFlex}
                   >
-                    <Text style={styles.actionButtonText}>UPDATE STATUS</Text>
-                  </Pressable>
+                    UPDATE STATUS
+                  </ThemedButton>
                 )}
                 {(item.itemType === 'order' && (item.status === 'Accepted' || item.status === 'InProgress')) && (
-                  <Pressable 
-                    style={[styles.actionButton, styles.secondaryButton, (item.status !== 'Accepted' && item.status !== 'InProgress') && styles.disabledButton]}
+                  <ThemedButton
+                    variant="secondary"
                     onPress={() => (item.status === 'Accepted' || item.status === 'InProgress') && navigation.navigate('Requests', { screen: 'RequestContact', params: { orderId: item.id } })}
                     disabled={item.status !== 'Accepted' && item.status !== 'InProgress'}
+                    style={styles.actionButtonFlex}
                   >
-                    <Text style={styles.secondaryButtonText}>CONTACT CUSTOMER</Text>
-                  </Pressable>
+                    CONTACT CUSTOMER
+                  </ThemedButton>
                 )}
                 {item.itemType === 'order' && item.status === 'Pending' && (
-                  <Pressable
-                    style={[styles.actionButton, styles.cancelButton]}
+                  <ThemedButton
+                    variant="danger"
                     onPress={() => handleCancelOrder(item.id!)}
                     disabled={isButtonLoading}
+                    loading={isButtonLoading}
+                    style={styles.actionButtonFlex}
                   >
-                    {isButtonLoading ? (
-                      <ActivityIndicator color="#FFF" />
-                    ) : (
-                      <Text style={[styles.actionButtonText, styles.cancelButtonText]}>CANCEL ORDER</Text>
-                    )}
-                  </Pressable>
+                    CANCEL ORDER
+                  </ThemedButton>
                 )}
                 {item.itemType === 'quote' && item.status === 'PendingApproval' && (
-                  <Pressable
-                    style={[styles.actionButton, styles.cancelButton, {backgroundColor: '#FFA500'}]}
+                  <ThemedButton
+                    variant="danger"
                     onPress={() => handleCancelQuote(item.id!)}
                     disabled={isButtonLoading}
+                    loading={isButtonLoading}
+                    style={styles.actionButtonFlex}
                   >
-                    {isButtonLoading ? (
-                      <ActivityIndicator color="#FFF" />
-                    ) : (
-                      <Text style={[styles.actionButtonText, styles.cancelButtonText]}>CANCEL QUOTE</Text>
-                    )}
-                  </Pressable>
+                    CANCEL QUOTE
+                  </ThemedButton>
                 )}
               </View>
             </Pressable>
@@ -672,34 +671,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 8,
   },
-  actionButton: {
+  actionButtonFlex: {
     flex: 1,
-    backgroundColor: colors.primaryLight,
-    borderWidth: 1,
-    borderColor: colors.primary,
-    borderRadius: 8,
-    paddingVertical: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  actionButtonText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontFamily: 'Inter_600SemiBold',
-    textAlign: 'center',
-  },
-  secondaryButton: {
-    backgroundColor: colors.surfaceAlt,
-    borderColor: colors.border,
-  },
-  secondaryButtonText: {
-    color: colors.textPrimary,
-    fontSize: 12,
-    fontFamily: 'Inter_600SemiBold',
-    textAlign: 'center',
-  },
-  disabledButton: {
-    opacity: 0.5,
   },
   centeredContainer: {
     flex: 1,

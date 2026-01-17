@@ -9,7 +9,6 @@ import { RequestsProvider } from '@/contexts/RequestsContext';
 // TODO: Adjust paths if files are moved/renamed later
 import HomeScreen from '../screens/customer/HomeScreen';
 import ProfileScreen from '../screens/customer/ProfileScreen';
-import OrdersScreen from '../screens/customer/OrdersScreen';
 import PastChatsScreen from '../screens/customer/PastChatsScreen';
 import ServiceScheduleScreen from '../screens/customer/ServiceScheduleScreen';
 import CustomQuoteRequestScreen from '../screens/customer/CustomQuoteRequestScreen';
@@ -216,7 +215,7 @@ export default function CustomerNavigator() {
     >
       {/* Replace Services with Requests stack */}
       <Tab.Screen name="Services" component={RequestsStackNavigator} options={{ tabBarLabel: 'Request' }} />
-      <Tab.Screen name="Orders" component={OrdersScreen} options={{ tabBarLabel: 'Orders' }} />
+      <Tab.Screen name="Orders" component={CustomerQuotesScreen} options={{ tabBarLabel: 'Orders' }} />
       {/* <Tab.Screen
         name="Support"
         component={SupportChatScreen}

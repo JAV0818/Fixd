@@ -7,6 +7,8 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { AuthStackParamList } from '@/navigation/AuthNavigator'; // Adjust path if needed
 import { RootStackParamList } from '@/navigation/AppNavigator'; // Root needed for screens outside tabs
+import { ThemedButton } from '@/components/ui/ThemedButton';
+import { Card } from 'react-native-paper';
 
 const todayJobs = [
   {
@@ -168,14 +170,20 @@ export default function ProviderDashboardScreen() {
               </View>
 
               <View style={styles.jobActions}>
-                <Pressable style={styles.actionButton}>
-                  <Text style={styles.actionButtonText}>START</Text>
-                  <View style={styles.buttonGlow} />
-                </Pressable>
-                <Pressable style={[styles.actionButton, styles.secondaryButton]}>
-                  <Text style={styles.secondaryButtonText}>CONTACT</Text>
-                  <View style={[styles.buttonGlow, styles.secondaryGlow]} />
-                </Pressable>
+                <ThemedButton
+                  variant="primary"
+                  onPress={() => {}}
+                  style={styles.actionButtonFlex}
+                >
+                  START
+                </ThemedButton>
+                <ThemedButton
+                  variant="outlined"
+                  onPress={() => {}}
+                  style={styles.actionButtonFlex}
+                >
+                  CONTACT
+                </ThemedButton>
               </View>
 
               <View style={styles.jobLine} />
@@ -441,6 +449,10 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: 'Inter_500Medium',
     color: '#00F0FF',
+  },
+  actionButtonFlex: {
+    flex: 1,
+    marginHorizontal: 4,
   },
   jobActions: {
     flexDirection: 'row',

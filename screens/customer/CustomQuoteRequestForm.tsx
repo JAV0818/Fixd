@@ -12,8 +12,8 @@ import { X, Trash2, MapPin, Plus } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { auth, firestore, storage } from '@/lib/firebase';
 import { addDoc, collection, serverTimestamp, updateDoc } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { useRequestsContext } from '@/contexts/RequestsContext';
+import { ref, uploadString, getDownloadURL } from 'firebase/storage';
+import { useRequestsContext, MediaItem } from '@/contexts/RequestsContext';
 
 type Category = 'Car Towing' | 'Just Check' | 'Oil Change' | 'Brake Service' | 'Diagnostics';
 
@@ -69,32 +69,91 @@ export default function CustomQuoteRequestForm() {
     }
   };
 
-  const pickImage = async () => {
+  const handleAddMedia = () => {
+    Alert.alert(
+      'Add Photo',
+      'Choose an option',
+      [
+        { text: 'Take Photo', onPress: takePhoto },
+        { text: 'Choose from Library', onPress: pickFromLibrary },
+        { text: 'Cancel', style: 'cancel' },
+      ]
+    );
+  };
+
+  const pickFromLibrary = async () => {
+    // Request permission first
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    
+    if (status !== 'granted') {
+      Alert.alert(
+        'Permission Required',
+        'Please allow access to your photo library to upload images.'
+      );
+      return;
+    }
+
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: [ImagePicker.MediaType.IMAGE],
+      mediaTypes: ['images'],
       allowsMultipleSelection: true,
-      quality: 0.8,
+      quality: 0.7,
+      base64: true, // Get base64 data for reliable upload
     });
 
     if (!result.canceled && result.assets) {
-      setMedia([...media, ...result.assets.map((asset) => asset.uri)]);
+      // Store both URI (for display) and base64 (for upload)
+      const newMedia: MediaItem[] = result.assets.map((asset) => ({
+        uri: asset.uri,
+        base64: asset.base64 || '',
+        mimeType: asset.mimeType || 'image/jpeg',
+      }));
+      setMedia([...media, ...newMedia]);
+    }
+  };
+
+  const takePhoto = async () => {
+    // Request camera permission first
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    
+    if (status !== 'granted') {
+      Alert.alert(
+        'Permission Required',
+        'Please allow camera access to take photos.'
+      );
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      quality: 0.7,
+      base64: true, // Get base64 data for reliable upload
+    });
+
+    if (!result.canceled && result.assets) {
+      const newMedia: MediaItem[] = result.assets.map((asset) => ({
+        uri: asset.uri,
+        base64: asset.base64 || '',
+        mimeType: asset.mimeType || 'image/jpeg',
+      }));
+      setMedia([...media, ...newMedia]);
     }
   };
 
   const removeMedia = (uri: string) => {
-    setMedia(media.filter((m) => m !== uri));
+    setMedia(media.filter((m: MediaItem) => m.uri !== uri));
   };
 
-  const uploadMediaAndGetUrls = async (uris: string[], orderId: string) => {
+  const uploadMediaAndGetUrls = async (mediaItems: MediaItem[], orderId: string) => {
     const urls: string[] = [];
-    for (let i = 0; i < uris.length; i++) {
-      const uri = uris[i];
-      const response = await fetch(uri);
-      const blob = await response.blob();
-      const contentType = (blob as any)?.type || 'application/octet-stream';
-      const path = `repairOrders/${auth.currentUser!.uid}/${orderId}-${i}`;
+    for (let i = 0; i < mediaItems.length; i++) {
+      const item = mediaItems[i];
+      const contentType = item.mimeType || 'image/jpeg';
+      const extension = contentType.split('/')[1] || 'jpg';
+      const fileName = `${orderId}-${i}.${extension}`;
+      const path = `repairOrders/${auth.currentUser!.uid}/${fileName}`;
       const storageRef = ref(storage, path);
-      await uploadBytes(storageRef, blob, { contentType });
+      
+      // Upload using base64 string (more reliable in React Native)
+      await uploadString(storageRef, item.base64, 'base64', { contentType });
       const downloadUrl = await getDownloadURL(storageRef);
       urls.push(downloadUrl);
     }
@@ -230,22 +289,22 @@ export default function CustomQuoteRequestForm() {
       <View style={styles.card}>
         <View style={styles.vehicleHeader}>
           <Text style={styles.cardTitle}>Media</Text>
-          <Pressable style={styles.addButtonSmall} onPress={pickImage}>
+          <Pressable style={styles.addButtonSmall} onPress={handleAddMedia}>
             <Plus size={20} color="#4E4B66" />
           </Pressable>
         </View>
         {media.length > 0 && (
           <View style={styles.mediaList}>
-            {media.map((uri, index) => (
+            {media.map((item: MediaItem, index: number) => (
               <View key={index} style={styles.mediaItem}>
                 <View style={styles.mediaThumbnail}>
                   <Text style={styles.mediaText}>📷</Text>
                 </View>
                 <View style={styles.mediaInfo}>
                   <Text style={styles.mediaName}>image-{index + 1}.jpg</Text>
-                  <Text style={styles.mediaSize}>20 mb</Text>
+                  <Text style={styles.mediaSize}>Ready to upload</Text>
                 </View>
-                <Pressable onPress={() => removeMedia(uri)}>
+                <Pressable onPress={() => removeMedia(item.uri)}>
                   <Trash2 size={20} color="#EF4444" />
                 </Pressable>
               </View>

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Image, TextInput, ScrollView, Pressable, Platform, KeyboardAvoidingView } from 'react-native';
 import { Send, Image as ImageIcon, Paperclip, Clock, Check, CheckCheck, ArrowLeft } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { IconButton } from 'react-native-paper';
 
 export type Message = {
   id: string;
@@ -183,13 +184,14 @@ export default function ChatThread({
             </Pressable>
           </View>
         </View>
-        <Pressable 
+        <IconButton
+          icon="send"
+          size={24}
+          iconColor={newMessage ? '#00F0FF' : '#7A89FF'}
           style={[styles.sendButton, !newMessage && styles.sendButtonDisabled]}
           onPress={handleSend}
           disabled={!newMessage}
-        >
-          <Send size={20} color={newMessage ? '#00F0FF' : '#7A89FF'} />
-        </Pressable>
+        />
       </View>
     </KeyboardAvoidingView>
   );

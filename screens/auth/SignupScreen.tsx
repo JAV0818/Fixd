@@ -1,14 +1,16 @@
 import { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, Pressable, KeyboardAvoidingView, Platform, ScrollView, SafeAreaView } from 'react-native';
+import { View, Text, StyleSheet, KeyboardAvoidingView, Platform, ScrollView, SafeAreaView, Pressable } from 'react-native';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { ArrowLeft, Mail, Lock, User, Phone } from 'lucide-react-native';
+import { TextInput as PaperTextInput } from 'react-native-paper';
 
 import { auth, firestore } from '@/lib/firebase';
 import { AuthStackParamList } from '@/navigation/AuthNavigator';
 import { colors, spacing, radius, typography } from '@/styles/theme';
+import { ThemedButton } from '@/components/ui/ThemedButton';
 
 export default function SignupScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<AuthStackParamList>>();
@@ -97,108 +99,78 @@ export default function SignupScreen() {
 
           <View style={styles.formContainer}>
             <View style={styles.inputRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.label}>First name<Text style={styles.requiredStar}> *</Text></Text>
-                <View style={styles.inputContainer}>
-                  <User size={18} color={colors.textTertiary} />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="First name"
-                    placeholderTextColor={colors.textLight}
-                    value={formData.firstName}
-                    onChangeText={(text) => setFormData({ ...formData, firstName: text })}
-                    selectionColor={colors.primary}
-                    autoCorrect={false}
-                    spellCheck={false}
-                  />
-                </View>
+              <View style={{ flex: 1, marginRight: spacing.xs }}>
+                <PaperTextInput
+                  label="First name"
+                  value={formData.firstName}
+                  onChangeText={(text) => setFormData({ ...formData, firstName: text })}
+                  mode="outlined"
+                  left={<PaperTextInput.Icon icon="account" />}
+                  style={styles.input}
+                />
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.label}>Last name<Text style={styles.requiredStar}> *</Text></Text>
-                <View style={styles.inputContainer}>
-                  <User size={18} color={colors.textTertiary} />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Last name"
-                    placeholderTextColor={colors.textLight}
-                    value={formData.lastName}
-                    onChangeText={(text) => setFormData({ ...formData, lastName: text })}
-                    selectionColor={colors.primary}
-                    autoCorrect={false}
-                    spellCheck={false}
-                  />
-                </View>
+              <View style={{ flex: 1, marginLeft: spacing.xs }}>
+                <PaperTextInput
+                  label="Last name"
+                  value={formData.lastName}
+                  onChangeText={(text) => setFormData({ ...formData, lastName: text })}
+                  mode="outlined"
+                  left={<PaperTextInput.Icon icon="account" />}
+                  style={styles.input}
+                />
               </View>
             </View>
 
-            <Text style={styles.label}>Email<Text style={styles.requiredStar}> *</Text></Text>
-            <View style={styles.inputContainer}>
-              <Mail size={18} color={colors.textTertiary} />
-              <TextInput
-                style={styles.input}
-                placeholder="Email"
-                placeholderTextColor={colors.textLight}
-                value={formData.email}
-                onChangeText={(text) => setFormData({ ...formData, email: text })}
-                autoCapitalize="none"
-                keyboardType="email-address"
-                selectionColor={colors.primary}
-                autoCorrect={false}
-                spellCheck={false}
-              />
-            </View>
+            <PaperTextInput
+              label="Email"
+              value={formData.email}
+              onChangeText={(text) => setFormData({ ...formData, email: text })}
+              mode="outlined"
+              keyboardType="email-address"
+              autoCapitalize="none"
+              left={<PaperTextInput.Icon icon="email" />}
+              style={styles.input}
+            />
 
-            <Text style={styles.label}>Phone number<Text style={styles.requiredStar}> *</Text></Text>
-            <View style={styles.inputContainer}>
-              <Phone size={18} color={colors.textTertiary} />
-              <TextInput
-                style={styles.input}
-                placeholder="Phone number"
-                placeholderTextColor={colors.textLight}
-                value={formData.phone}
-                onChangeText={(text) => setFormData({ ...formData, phone: text })}
-                keyboardType="phone-pad"
-                selectionColor={colors.primary}
-                autoCorrect={false}
-                spellCheck={false}
-              />
-            </View>
+            <PaperTextInput
+              label="Phone number"
+              value={formData.phone}
+              onChangeText={(text) => setFormData({ ...formData, phone: text })}
+              mode="outlined"
+              keyboardType="phone-pad"
+              left={<PaperTextInput.Icon icon="phone" />}
+              style={styles.input}
+            />
 
-            <Text style={styles.label}>Password<Text style={styles.requiredStar}> *</Text></Text>
-            <View style={styles.inputContainer}>
-              <Lock size={18} color={colors.textTertiary} />
-              <TextInput
-                style={styles.input}
-                placeholder="Password"
-                placeholderTextColor={colors.textLight}
-                value={formData.password}
-                onChangeText={(text) => setFormData({ ...formData, password: text })}
-                secureTextEntry
-                selectionColor={colors.primary}
-                autoCorrect={false}
-                spellCheck={false}
-              />
-            </View>
+            <PaperTextInput
+              label="Password"
+              value={formData.password}
+              onChangeText={(text) => setFormData({ ...formData, password: text })}
+              mode="outlined"
+              secureTextEntry
+              left={<PaperTextInput.Icon icon="lock" />}
+              style={styles.input}
+            />
 
-            <Text style={styles.label}>Confirm password<Text style={styles.requiredStar}> *</Text></Text>
-            <View style={styles.inputContainer}>
-              <Lock size={18} color={colors.textTertiary} />
-              <TextInput
-                style={styles.input}
-                placeholder="Confirm password"
-                placeholderTextColor={colors.textLight}
-                value={formData.confirmPassword}
-                onChangeText={(text) => setFormData({ ...formData, confirmPassword: text })}
-                secureTextEntry
-                selectionColor={colors.primary}
-                autoCorrect={false}
-                spellCheck={false}
-              />
-            </View>
+            <PaperTextInput
+              label="Confirm password"
+              value={formData.confirmPassword}
+              onChangeText={(text) => setFormData({ ...formData, confirmPassword: text })}
+              mode="outlined"
+              secureTextEntry
+              left={<PaperTextInput.Icon icon="lock" />}
+              style={styles.input}
+            />
 
-            <Pressable style={[styles.button, loading && styles.buttonDisabled]} onPress={handleSignup} disabled={loading}>
-              <Text style={styles.buttonText}>{loading ? 'Creating account...' : 'Create account'}</Text>
-            </Pressable>
+            <ThemedButton
+              variant="primary"
+              onPress={handleSignup}
+              disabled={loading}
+              loading={loading}
+              style={styles.button}
+            >
+              {loading ? 'Creating account...' : 'Create account'}
+            </ThemedButton>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -264,53 +236,13 @@ const styles = StyleSheet.create({
   },
   inputRow: {
     flexDirection: 'row',
-    gap: spacing.md,
-  },
-  inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    paddingHorizontal: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    height: 52,
+    marginBottom: spacing.md,
   },
   input: {
-    flex: 1,
-    height: 48,
-    color: colors.textPrimary,
-    fontSize: 15,
-    fontFamily: 'Inter_500Medium',
-    marginLeft: spacing.sm,
-  },
-  label: {
-    ...typography.body,
-    color: colors.textSecondary,
-    marginBottom: spacing.xs,
-  },
-  requiredStar: {
-    color: colors.danger,
+    marginBottom: spacing.md,
+    backgroundColor: 'transparent',
   },
   button: {
-    backgroundColor: colors.primary,
-    height: 52,
-    borderRadius: radius.lg,
-    justifyContent: 'center',
-    alignItems: 'center',
     marginTop: spacing.sm,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 10,
-    elevation: 4,
-  },
-  buttonDisabled: {
-    opacity: 0.5,
-  },
-  buttonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontFamily: 'Inter_700Bold',
   },
 }); 

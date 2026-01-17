@@ -72,7 +72,7 @@ export default function ProfileScreen() {
         // Fetch Completed Order Count
         setLoadingCount(true);
         try {
-          const ordersRef = collection(firestore, 'repairOrders');
+          const ordersRef = collection(firestore, 'repair-orders');
           const q = query(ordersRef, where('customerId', '==', user.uid), where('status', '==', 'Completed'));
           const snapshot = await getCountFromServer(q);
           setCompletedOrderCount(snapshot.data().count);

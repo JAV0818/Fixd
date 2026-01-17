@@ -60,14 +60,14 @@ export default function ServiceScheduleScreen() {
     setLoading(true);
     setError(null);
 
-    const repairOrdersRef = collection(firestore, 'repairOrders');
-    const repairOrdersQuery = query(
-      repairOrdersRef,
+    const ordersRef = collection(firestore, 'repair-orders');
+    const ordersQuery = query(
+      ordersRef,
       where('customerId', '==', user.uid),
       orderBy('createdAt', 'desc')
     );
 
-    const unsubscribe = onSnapshot(repairOrdersQuery, async (snapshot) => {
+    const unsubscribe = onSnapshot(ordersQuery, async (snapshot) => {
       const fetchedOrders = snapshot.docs.map((docSnapshot) => {
         const orderData = docSnapshot.data() as Omit<DisplayableOrder, 'id'>;
         return { 

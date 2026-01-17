@@ -3,57 +3,54 @@ import {
   View, 
   Text, 
   StyleSheet, 
-  TouchableOpacity, 
-  Image, 
   TextInput, 
   Alert, 
   KeyboardAvoidingView, 
   Platform, 
   ActivityIndicator,
   FlatList,
-  Dimensions,
   Pressable,
-  Animated,
   Modal,
-  Linking,
+  Image,
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { RootStackParamList } from '../../navigation/AppNavigator'; // Changed from ProviderStackParamList
+import { RootStackParamList } from '../../navigation/AppNavigator';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft, Send, Paperclip, Image as ImageIcon, Camera, File, Download, X } from 'lucide-react-native';
-import { RepairOrder } from '@/types/orders'; // Assuming this type is general enough
+import { ArrowLeft, Send, Paperclip, Image as ImageIcon, Camera, File, X, Download } from 'lucide-react-native';
+import { IconButton } from 'react-native-paper';
+import { RepairOrder } from '@/types/orders';
 import { auth, firestore, storage } from '@/lib/firebase';
 import {
   doc, getDoc, onSnapshot, collection, query, orderBy, addDoc,
   serverTimestamp, Timestamp
 } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'; // Added for image upload
-import * as ImagePicker from 'expo-image-picker'; // Added for image picking
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
-import { LinearGradient } from 'expo-linear-gradient';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
+import { colors } from '@/styles/theme';
 
-// Define structure for PreAcceptanceChatMessage (same as in RequestContactScreen)
 interface PreAcceptanceChatMessage {
   id: string;
   senderId: string;
-  text?: string; // Make text optional for attachment-only messages
+  text?: string;
   createdAt: Timestamp;
   sentBy: 'customer' | 'provider';
-  attachmentUrl?: string; // New field for attachment URL
-  attachmentType?: 'image' | 'document' | 'camera'; // New field for attachment type
-  attachmentName?: string; // New field for file names
-  attachmentSize?: number; // New field for file sizes
+  attachmentUrl?: string;
+  attachmentType?: 'image' | 'document' | 'camera';
+  attachmentName?: string;
+  attachmentSize?: number;
 }
 
-// Define structure for the other user (could be a generic provider or specific one)
-interface OtherUser {
+interface ProviderInfo {
   displayName?: string;
+  firstName?: string;
+  lastName?: string;
   profileImageUrl?: string;
 }
 
-type Props = NativeStackScreenProps<RootStackParamList, 'PreAcceptanceChat'>; // Changed to RootStackParamList and 'PreAcceptanceChat'
+type Props = NativeStackScreenProps<RootStackParamList, 'PreAcceptanceChat'>;
 
 export default function PreAcceptanceChatScreen({ navigation, route }: Props) {
   const { orderId } = route.params;
@@ -62,30 +59,40 @@ export default function PreAcceptanceChatScreen({ navigation, route }: Props) {
   const [sending, setSending] = useState(false);
   const [uploadingAttachment, setUploadingAttachment] = useState(false);
   const [order, setOrder] = useState<RepairOrder | null>(null);
+  const [provider, setProvider] = useState<ProviderInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showAttachmentModal, setShowAttachmentModal] = useState(false);
   const flatListRef = useRef<FlatList>(null);
   const currentUser = auth.currentUser;
   const insets = useSafeAreaInsets();
-  const fadeAnim = useRef(new Animated.Value(0)).current;
 
-  // Fetch Order details (simplified, as customer may not need full provider details here)
+  // Fetch Order and Provider details
   useEffect(() => {
     setLoading(true);
-    const orderDocRef = doc(firestore, 'repairOrders', orderId);
+    const orderDocRef = doc(firestore, 'repair-orders', orderId);
 
-    const unsubscribeOrder = onSnapshot(orderDocRef, (docSnap) => {
+    const unsubscribeOrder = onSnapshot(orderDocRef, async (docSnap) => {
       if (docSnap.exists()) {
         const orderData = { id: docSnap.id, ...docSnap.data() } as RepairOrder;
         setOrder(orderData);
         setError(null);
-        // If needed, fetch details of providers who have sent messages, or assume generic "Support"
+
+        // Fetch provider info if available
+        if (orderData.providerId) {
+          try {
+            const providerDoc = await getDoc(doc(firestore, 'users', orderData.providerId));
+            if (providerDoc.exists()) {
+              setProvider(providerDoc.data() as ProviderInfo);
+            }
+          } catch (err) {
+            console.error("Error fetching provider:", err);
+          }
+        }
       } else {
         setError("Order not found.");
         setOrder(null);
       }
-      // setLoading(false); // Moved to messages useEffect
     }, (err) => {
       console.error("Error fetching order details:", err);
       setError("Failed to load order details.");
@@ -95,23 +102,30 @@ export default function PreAcceptanceChatScreen({ navigation, route }: Props) {
     return () => unsubscribeOrder();
   }, [orderId]);
 
-  // Fetch Pre-Acceptance Messages
+  // Fetch Messages
   useEffect(() => {
     if (!order) return;
 
-    const messagesRef = collection(firestore, 'repairOrders', orderId, 'preAcceptanceChats');
+    let chatCollectionPath = 'preAcceptanceChats';
+    if (order.status === 'Accepted' || order.status === 'InProgress') {
+      chatCollectionPath = 'activeChat';
+    }
+
+    const messagesRef = collection(firestore, 'repair-orders', orderId, chatCollectionPath);
     const q = query(messagesRef, orderBy('createdAt', 'asc'));
 
     const unsubscribeMessages = onSnapshot(q, (querySnapshot) => {
-      const fetchedMessages = querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      } as PreAcceptanceChatMessage));
+      const fetchedMessages = querySnapshot.docs
+        .map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        } as PreAcceptanceChatMessage))
+        .filter(msg => msg.createdAt && msg.createdAt.toDate); // Filter out messages without valid createdAt
       setMessages(fetchedMessages);
-      setLoading(false); 
+      setLoading(false);
       setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
     }, (err) => {
-      console.error("Error fetching pre-acceptance messages:", err);
+      console.error("Error fetching messages:", err);
       setError("Failed to load messages.");
       setLoading(false);
     });
@@ -120,75 +134,52 @@ export default function PreAcceptanceChatScreen({ navigation, route }: Props) {
   }, [orderId, order]);
 
   useEffect(() => {
-    setTimeout(() => {
-      flatListRef.current?.scrollToEnd({ animated: true });
-    }, 100);
+    setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
   }, [messages]);
 
-  useEffect(() => {
-    Animated.timing(fadeAnim, {
-      toValue: 1,
-      duration: 800,
-      useNativeDriver: true,
-    }).start();
-  }, []);
-
-  // Enhanced image picker with camera option
   const handlePickImage = async () => {
     const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permissionResult.granted) {
-      Alert.alert("Permission Denied", "Permission to access camera roll is required!");
+      Alert.alert("Permission Denied", "Permission to access photos is required!");
       return;
     }
-
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'],
       allowsEditing: false,
       quality: 0.7,
-      allowsMultipleSelection: true, // Enable multiple selection
     });
-
     if (!result.canceled && result.assets && result.assets.length > 0) {
-      for (const asset of result.assets) {
-        await handleSendAttachment(asset.uri, 'image', asset.fileName || 'image.jpg', asset.fileSize);
-      }
+      const chatCollectionPath = order?.status === 'Accepted' || order?.status === 'InProgress' ? 'activeChat' : 'preAcceptanceChats';
+      await handleSendAttachment(result.assets[0].uri, 'image', chatCollectionPath, result.assets[0].fileName || 'image.jpg');
     }
     setShowAttachmentModal(false);
   };
 
-  // New camera capture function
   const handleTakePhoto = async () => {
     const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
     if (!permissionResult.granted) {
       Alert.alert("Permission Denied", "Permission to access camera is required!");
       return;
     }
-
     const result = await ImagePicker.launchCameraAsync({
-      allowsEditing: false,
       quality: 0.7,
     });
-
     if (!result.canceled && result.assets && result.assets.length > 0) {
-      const asset = result.assets[0];
-      await handleSendAttachment(asset.uri, 'camera', asset.fileName || 'photo.jpg', asset.fileSize);
+      const chatCollectionPath = order?.status === 'Accepted' || order?.status === 'InProgress' ? 'activeChat' : 'preAcceptanceChats';
+      await handleSendAttachment(result.assets[0].uri, 'camera', chatCollectionPath, 'photo.jpg');
     }
     setShowAttachmentModal(false);
   };
 
-  // New document picker function
   const handlePickDocument = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
-        type: ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain'],
+        type: ['application/pdf', 'application/msword', 'text/plain'],
         copyToCacheDirectory: true,
-        multiple: true, // Allow multiple files
       });
-
       if (!result.canceled && result.assets) {
-        for (const asset of result.assets) {
-          await handleSendAttachment(asset.uri, 'document', asset.name, asset.size);
-        }
+        const chatCollectionPath = order?.status === 'Accepted' || order?.status === 'InProgress' ? 'activeChat' : 'preAcceptanceChats';
+        await handleSendAttachment(result.assets[0].uri, 'document', chatCollectionPath, result.assets[0].name);
       }
     } catch (error) {
       console.error("Error picking document:", error);
@@ -196,36 +187,31 @@ export default function PreAcceptanceChatScreen({ navigation, route }: Props) {
     }
     setShowAttachmentModal(false);
   };
-  
-  // Enhanced send attachment function
-  const handleSendAttachment = async (uri: string, type: 'image' | 'document' | 'camera', fileName?: string, fileSize?: number) => {
-    if (!currentUser || !order) return;
 
+  const handleSendAttachment = async (uri: string, type: 'image' | 'document' | 'camera', chatCollectionPath: string, fileName?: string) => {
+    if (!currentUser || !order) return;
     setUploadingAttachment(true);
     try {
       const response = await fetch(uri);
       const blob = await response.blob();
       
-      // Validate file size (10MB limit)
       if (blob.size > 10 * 1024 * 1024) {
         Alert.alert("File Too Large", "Please select a file smaller than 10MB.");
         return;
       }
 
-      const fileExtension = fileName?.split('.').pop() || (type === 'image' || type === 'camera' ? 'jpg' : 'pdf');
-      const uploadFileName = `${Date.now()}-${currentUser.uid}-${fileName || `file.${fileExtension}`}`;
-      const attachmentRef = ref(storage, `chatAttachments/preAcceptance/${orderId}/${uploadFileName}`);
+      const uploadFileName = `${Date.now()}-${currentUser.uid}-${fileName || 'file'}`;
+      const attachmentRef = ref(storage, `chatAttachments/${chatCollectionPath}/${orderId}/${uploadFileName}`);
       
       await uploadBytes(attachmentRef, blob);
-      const downloadURL = await getDownloadURL(attachmentRef);
-
-      const messagesRef = collection(firestore, 'repairOrders', orderId, 'preAcceptanceChats');
+      const downloadUrl = await getDownloadURL(attachmentRef);
+      const messagesRef = collection(firestore, 'repair-orders', orderId, chatCollectionPath);
       await addDoc(messagesRef, {
         senderId: currentUser.uid,
-        attachmentUrl: downloadURL,
+        attachmentUrl: downloadUrl,
         attachmentType: type,
-        attachmentName: fileName || `${type}.${fileExtension}`,
-        attachmentSize: fileSize || blob.size,
+        attachmentName: fileName,
+        attachmentSize: blob.size,
         createdAt: serverTimestamp(),
         sentBy: 'customer',
         text: '',
@@ -239,443 +225,362 @@ export default function PreAcceptanceChatScreen({ navigation, route }: Props) {
     }
   };
 
-  // Helper function to format file size
-  const formatFileSize = (bytes?: number) => {
-    if (!bytes) return '';
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  };
-
-  // Helper function to get file icon
-  const getFileIcon = (type?: string, fileName?: string) => {
-    if (type === 'image' || type === 'camera') return ImageIcon;
-    if (fileName?.toLowerCase().includes('.pdf')) return File;
-    return File;
-  };
-
   const handleSendMessage = async () => {
-    if ((!message.trim() && !uploadingAttachment) || !currentUser || !order) { // Ensure not sending empty if no attachment either
-        return;
-    }
+    if (!message.trim() || !currentUser || !order) return;
     
     setSending(true);
     const messageText = message;
-    setMessage(''); 
+    setMessage('');
 
-    const messagesRef = collection(firestore, 'repairOrders', orderId, 'preAcceptanceChats');
+    let chatCollectionPath = 'preAcceptanceChats';
+    if (order.status === 'Accepted' || order.status === 'InProgress') {
+      chatCollectionPath = 'activeChat';
+    }
+    
+    const messagesRef = collection(firestore, 'repair-orders', orderId, chatCollectionPath);
 
     try {
       await addDoc(messagesRef, {
         senderId: currentUser.uid,
-        text: messageText, // Only text if no attachment process is active for this send
+        text: messageText,
         createdAt: serverTimestamp(),
-        sentBy: 'customer' 
+        sentBy: 'customer'
       });
       setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
     } catch (error) {
-      console.error("Firestore Error sending message:", error);
+      console.error("Error sending message:", error);
       Alert.alert("Error", "Could not send message.");
-      setMessage(messageText); 
+      setMessage(messageText);
     } finally {
       setSending(false);
     }
   };
 
-  const formatTime = (date: Date) => {
-    if (!date || !(date instanceof Date)) return 'N/A'; 
-    const hours = date.getHours();
-    const minutes = date.getMinutes();
-    return `${hours % 12 || 12}:${minutes < 10 ? '0' : ''}${minutes} ${hours >= 12 ? 'PM' : 'AM'}`;
-  };
-
-  const groupMessagesByDate = () => {
-    const groupedMessages: { date: string; data: PreAcceptanceChatMessage[] }[] = [];
-    messages?.forEach((msg) => { // Renamed to avoid conflict
-      if (!msg.createdAt?.toDate) {
-        return; 
-      }
-      const messageDate = msg.createdAt.toDate();
-      const dateString = messageDate.toDateString();
-      const existingGroup = groupedMessages.find(group => group.date === dateString);
-      if (existingGroup) {
-        existingGroup.data.push(msg);
-      } else {
-        groupedMessages.push({ date: dateString, data: [msg] });
-      }
-    });
-    return groupedMessages;
-  };
-
-  const renderDateSeparator = (date: string) => {
-    const today = new Date().toDateString();
-    const yesterday = new Date(Date.now() - 86400000).toDateString();
-    let displayDate = date;
-    if (date === today) displayDate = "Today";
-    else if (date === yesterday) displayDate = "Yesterday";
-    return (
-      <View style={styles.dateSeparator}>
-        <View style={styles.dateLine} />
-        <Text style={styles.dateText}>{displayDate}</Text>
-        <View style={styles.dateLine} />
-      </View>
-    );
-  };
-
-  const renderMessageItem = ({ item }: { item: PreAcceptanceChatMessage }) => {
-    const isSentByMe = item.senderId === currentUser?.uid;
-    if (!item.createdAt?.toDate) return null;
-    
-    const FileIconComponent = getFileIcon(item.attachmentType, item.attachmentName);
-
-    return (
-      <View style={[styles.messageContainer, isSentByMe ? styles.userMessageContainer : styles.otherUserMessageContainer]}>
-        <LinearGradient
-          colors={isSentByMe ? ['#00C2FF', '#0080FF'] : ['#2A3555', '#272A3A']}
-          start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-          style={[styles.messageBubble, isSentByMe ? styles.userMessageBubble : styles.otherUserMessageBubble]}
-        >
-          {item.text ? (
-            <Text style={[styles.messageText, isSentByMe ? styles.userMessageText : styles.otherUserMessageText]}>
-              {item.text}
-            </Text>
-          ) : null}
-          
-          {/* Image Attachments */}
-          {item.attachmentUrl && (item.attachmentType === 'image' || item.attachmentType === 'camera') && (
-            <Pressable onPress={() => handleImagePress(item.attachmentUrl!)}>
-              <Image source={{ uri: item.attachmentUrl }} style={styles.chatImageAttachment} resizeMode="cover" />
-              {item.attachmentSize && (
-                <Text style={styles.attachmentSize}>{formatFileSize(item.attachmentSize)}</Text>
-              )}
-            </Pressable>
-          )}
-          
-          {/* Document Attachments */}
-          {item.attachmentUrl && item.attachmentType === 'document' && (
-            <Pressable style={styles.documentAttachment} onPress={() => handleDocumentPress(item.attachmentUrl!, item.attachmentName!)}>
-              <FileIconComponent size={24} color={isSentByMe ? "#FFFFFF" : "#00F0FF"} />
-              <View style={styles.documentInfo}>
-                <Text style={[styles.documentName, isSentByMe ? styles.userMessageText : styles.otherUserMessageText]}>
-                  {item.attachmentName || 'Document'}
-                </Text>
-                {item.attachmentSize && (
-                  <Text style={styles.documentSize}>{formatFileSize(item.attachmentSize)}</Text>
-                )}
-              </View>
-              <Download size={16} color={isSentByMe ? "#FFFFFF" : "#7A89FF"} />
-            </Pressable>
-          )}
-          
-          <View style={styles.messageFooter}>
-            <Text style={[styles.messageTimestamp, isSentByMe ? styles.userTimestamp : styles.otherUserTimestamp]}>
-              {formatTime(item.createdAt.toDate())}
-            </Text>
-          </View>
-        </LinearGradient>
-      </View>
-    );
-  };
-
-  // Handle image press for full screen view
-  const handleImagePress = (imageUrl: string) => {
-    // You can implement a full-screen image viewer here
-    Alert.alert("Image View", "Full screen image viewer - implement with react-native-image-zoom-viewer or similar");
-  };
-
-  // Handle document press for download/view
-  const handleDocumentPress = async (documentUrl: string, fileName: string) => {
+  const handleDownloadAttachment = async (url: string, fileName?: string) => {
     try {
-      const localUri = FileSystem.cacheDirectory + fileName.replace(/[^a-zA-Z0-9.]/g, '_'); // Sanitize filename
-      
-      console.log('Downloading document from:', documentUrl);
-      console.log('Saving document to:', localUri);
-
-      const { uri } = await FileSystem.downloadAsync(documentUrl, localUri);
-      console.log('Downloaded to:', uri);
-
-      if (!(await Sharing.isAvailableAsync())) {
-        Alert.alert("Sharing not available", "Sharing is not available on your device.");
-        return;
+      const downloadPath = `${FileSystem.documentDirectory}${fileName || 'download'}`;
+      const { uri } = await FileSystem.downloadAsync(url, downloadPath);
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(uri);
+      } else {
+        Alert.alert("Downloaded", `File saved to ${uri}`);
       }
-      await Sharing.shareAsync(uri, { dialogTitle: fileName, mimeType: 'application/octet-stream' });
     } catch (error) {
-      console.error("Error handling document press:", error);
-      Alert.alert("Error", "Could not open or download document. Please try again.");
+      console.error("Error downloading:", error);
+      Alert.alert("Error", "Could not download file.");
     }
   };
 
-  const renderMessageGroup = ({ item }: { item: { date: string; data: PreAcceptanceChatMessage[] } }) => {
-    return (
-      <View>
-        {renderDateSeparator(item.date)}
-        {item.data?.map(chatMsg => ( // Renamed to avoid conflict
-          <React.Fragment key={chatMsg.id}>
-            {renderMessageItem({ item: chatMsg })}
-          </React.Fragment>
-        ))}
-      </View>
-    );
+  const formatTime = (timestamp: Timestamp | undefined) => {
+    if (!timestamp) return '';
+    const date = timestamp.toDate();
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
+  const formatDateHeader = (timestamp: Timestamp | undefined) => {
+    if (!timestamp) return '';
+    const date = timestamp.toDate();
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    
+    if (date.toDateString() === today.toDateString()) return 'Today';
+    if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
+    return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  };
+
+  const groupMessagesByDate = () => {
+    const grouped: { date: string; messages: PreAcceptanceChatMessage[] }[] = [];
+    let currentDate = '';
+    
+    messages.forEach(msg => {
+      const dateStr = formatDateHeader(msg.createdAt);
+      if (dateStr !== currentDate) {
+        currentDate = dateStr;
+        grouped.push({ date: dateStr, messages: [msg] });
+      } else {
+        if (grouped.length > 0) {
+          grouped[grouped.length - 1].messages.push(msg);
+        }
+      }
+    });
+    return grouped;
+  };
+
+  const providerName = provider?.firstName 
+    ? `${provider.firstName} ${provider.lastName || ''}`.trim()
+    : provider?.displayName || order?.providerName || 'Mechanic';
+
   if (loading) {
-     return (
-      <SafeAreaView style={[styles.container, {paddingTop: insets.top, paddingBottom: insets.bottom}]}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-            <ArrowLeft size={24} color="#00F0FF" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Order Chat</Text>
-          <View style={{ width: 24 }} /> 
-        </View>
-        <View style={styles.centeredLoadingContainer}>
-          <ActivityIndicator size="large" color="#00F0FF" />
-          <Text style={styles.loadingText}>Loading Chat...</Text>
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.center}>
+          <ActivityIndicator color={colors.primary} size="large" />
+          <Text style={styles.loadingText}>Loading conversation...</Text>
         </View>
       </SafeAreaView>
     );
   }
 
-  if (error || !order) {
+  if (error) {
     return (
-      <SafeAreaView style={[styles.container, {paddingTop: insets.top, paddingBottom: insets.bottom}]}>
-         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-            <ArrowLeft size={24} color="#00F0FF" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Error</Text>
-          <View style={{ width: 24 }} /> 
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <Pressable style={styles.backButton} onPress={() => navigation.goBack()}>
+            <ArrowLeft size={22} color={colors.textPrimary} />
+          </Pressable>
+          <Text style={styles.headerTitle}>Chat</Text>
+          <View style={{ width: 40 }} />
         </View>
-        <View style={styles.centeredLoadingContainer}>
-          <Text style={styles.errorText}>{error || "Could not load order details."}</Text>
+        <View style={styles.center}>
+          <Text style={styles.errorText}>{error}</Text>
         </View>
       </SafeAreaView>
     );
   }
-  
-  // Determine the chat title - could be "Chat with Support" or provider name if available
-  const chatPartnerName = "Support / Provider"; // Placeholder
+
+  const groupedMessages = groupMessagesByDate();
 
   return (
-    <Animated.View style={[styles.container, { paddingTop: insets.top, opacity: fadeAnim }]}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+      {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <ArrowLeft size={24} color="#00F0FF" />
-        </TouchableOpacity>
-        <View style={styles.headerTitleContainer}>
-          {/* For customer, maybe show "Chat about Order" or with Provider if one messaged */}
-          <Text style={styles.headerTitle}>Chat with {chatPartnerName}</Text>
-          <Text style={styles.headerSubtitle}>Order #{orderId.substring(0,6)}...</Text>
+        <Pressable style={styles.backButton} onPress={() => navigation.goBack()}>
+          <ArrowLeft size={22} color={colors.textPrimary} />
+        </Pressable>
+        <View style={styles.headerInfo}>
+          <Text style={styles.headerTitle}>{providerName}</Text>
+          <Text style={styles.headerSubtitle}>
+            {order?.status === 'Claimed' ? 'Reviewing your request' : 'Your mechanic'}
+          </Text>
         </View>
-        <View style={{ width: 24 }} /> 
+        <View style={{ width: 40 }} />
       </View>
-      
-      {/* Optional: Display a small card about the order or context if needed */}
-      {/* <View style={styles.contextCard}> ... </View> */}
-      
+
       <KeyboardAvoidingView 
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={Platform.OS === "ios" ? insets.top + 60 : 0} // Increased offset slightly for iOS
-        style={{ flex: 1 }}
+        style={styles.keyboardAvoid} 
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
       >
-         <FlatList
-             ref={flatListRef}
-             data={groupMessagesByDate()}
-             renderItem={renderMessageGroup}
-             keyExtractor={item => item.date}
-             style={styles.messagesListContainer}
-             contentContainerStyle={[styles.messagesListContent, { paddingBottom: 10 }]}
-             showsVerticalScrollIndicator={false}
-         />
-
-          {sending && (
-             <View style={styles.sendingIndicatorContainer}>
-               <LinearGradient
-                 colors={['rgba(0, 240, 255, 0.2)', 'rgba(122, 137, 255, 0.2)']}
-                 start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-                 style={styles.sendingBubble}
-               >
-                 <ActivityIndicator size="small" color="#00F0FF" />
-                 <Text style={styles.sendingText}>Sending...</Text>
-               </LinearGradient>
-             </View>
-          )}
-
-          {/* Input Area */}
-          <LinearGradient
-            colors={['#121827', '#0A0F1E']}
-            style={[
-              styles.inputToolbar,
-              { paddingBottom: Platform.OS === 'ios' ? Math.max(insets.bottom, 10) : 10 }
-            ]}
-          >
-            <Pressable 
-              style={styles.utilityButton} 
-              onPress={() => setShowAttachmentModal(true)} 
-              disabled={uploadingAttachment || sending}
-            >
-              <LinearGradient colors={['#7A89FF', '#5A6AD0']} style={styles.iconButtonWrapper}>
-                <Paperclip size={18} color={uploadingAttachment || sending ? "#555" : "#FFFFFF"} />
-              </LinearGradient>
-            </Pressable>
-            <View style={styles.textInputWrapper}> 
-              <TextInput
-                style={styles.messageTextInput}
-                placeholder="Type your message..."
-                placeholderTextColor="#6E7191"
-                value={message}
-                onChangeText={setMessage}
-                multiline
-              />
-            </View>
-            <View style={styles.inputActionButtons}>
-              {message.length === 0 ? (
-                <>
-                  <Pressable style={styles.utilityButton} onPress={handleTakePhoto} disabled={uploadingAttachment || sending}>
-                    <LinearGradient colors={['#7A89FF', '#5A6AD0']} style={styles.iconButtonWrapper}>
-                      <Camera size={18} color={uploadingAttachment || sending ? "#555" : "#FFFFFF"} />
-                    </LinearGradient>
-                  </Pressable>
-                </>
-              ) : (
-                <Pressable 
-                  style={styles.sendIconWrapper}
-                  onPress={handleSendMessage}
-                  disabled={sending || uploadingAttachment || !message.trim()}
-                >
-                  <LinearGradient colors={['#00C2FF', '#0080FF']} style={styles.sendGradientWrapper}>
-                    <Send size={18} color="#FFFFFF" />
-                  </LinearGradient>
-                </Pressable>
-              )}
-            </View>
-          </LinearGradient>
-
-          {/* Attachment Selection Modal */}
-          <Modal
-            visible={showAttachmentModal}
-            transparent={true}
-            animationType="slide"
-            onRequestClose={() => setShowAttachmentModal(false)}
-          >
-            <View style={styles.modalOverlay}>
-              <View style={styles.modalContent}>
-                <LinearGradient
-                  colors={['#1A2138', '#0A0F1E']}
-                  style={styles.modalGradient}
-                >
-                  <View style={styles.modalHeader}>
-                    <Text style={styles.modalTitle}>Select Attachment</Text>
-                    <Pressable onPress={() => setShowAttachmentModal(false)} style={styles.closeButton}>
-                      <X size={24} color="#FFFFFF" />
-                    </Pressable>
+        {/* Messages */}
+        <FlatList
+          ref={flatListRef}
+          data={groupedMessages}
+          keyExtractor={(item, index) => `group-${index}`}
+          contentContainerStyle={styles.messagesContent}
+          renderItem={({ item: group }) => {
+            if (!group || !group.messages) return null;
+            return (
+              <View>
+                {/* Date Header */}
+                <View style={styles.dateHeader}>
+                  <View style={styles.dateLine} />
+                  <Text style={styles.dateText}>{group.date}</Text>
+                  <View style={styles.dateLine} />
+                </View>
+                
+                {/* Messages for this date */}
+                {group.messages.map(msg => {
+                const isMe = msg.sentBy === 'customer';
+                return (
+                  <View 
+                    key={msg.id} 
+                    style={[
+                      styles.messageRow,
+                      isMe ? styles.messageRowRight : styles.messageRowLeft
+                    ]}
+                  >
+                    <View style={[
+                      styles.messageBubble,
+                      isMe ? styles.myBubble : styles.theirBubble
+                    ]}>
+                      {msg.attachmentUrl && (
+                        msg.attachmentType === 'image' || msg.attachmentType === 'camera' ? (
+                          <Pressable onPress={() => handleDownloadAttachment(msg.attachmentUrl!, msg.attachmentName)}>
+                            <Image source={{ uri: msg.attachmentUrl }} style={styles.attachmentImage} />
+                          </Pressable>
+                        ) : (
+                          <Pressable 
+                            style={styles.documentAttachment}
+                            onPress={() => handleDownloadAttachment(msg.attachmentUrl!, msg.attachmentName)}
+                          >
+                            <File size={20} color={isMe ? '#FFFFFF' : colors.primary} />
+                            <Text style={[styles.documentName, isMe && styles.documentNameMe]}>
+                              {msg.attachmentName || 'Document'}
+                            </Text>
+                            <Download size={16} color={isMe ? '#FFFFFF' : colors.primary} />
+                          </Pressable>
+                        )
+                      )}
+                      {msg.text ? (
+                        <Text style={[styles.messageText, isMe ? styles.myText : styles.theirText]}>
+                          {msg.text}
+                        </Text>
+                      ) : null}
+                      <Text style={[styles.timestamp, isMe ? styles.myTimestamp : styles.theirTimestamp]}>
+                        {formatTime(msg.createdAt)}
+                      </Text>
+                    </View>
                   </View>
-                  
-                  <View style={styles.attachmentOptions}>
-                    <Pressable style={styles.attachmentOption} onPress={handleTakePhoto}>
-                      <LinearGradient colors={['#00C2FF', '#0080FF']} style={styles.optionIcon}>
-                        <Camera size={24} color="#FFFFFF" />
-                      </LinearGradient>
-                      <View style={styles.optionText}>
-                        <Text style={styles.optionTitle}>Camera</Text>
-                        <Text style={styles.optionDescription}>Take a photo</Text>
-                      </View>
-                    </Pressable>
-                    
-                    <Pressable style={styles.attachmentOption} onPress={handlePickImage}>
-                      <LinearGradient colors={['#7A89FF', '#5A6AD0']} style={styles.optionIcon}>
-                        <ImageIcon size={24} color="#FFFFFF" />
-                      </LinearGradient>
-                      <View style={styles.optionText}>
-                        <Text style={styles.optionTitle}>Photo Library</Text>
-                        <Text style={styles.optionDescription}>Choose from gallery</Text>
-                      </View>
-                    </Pressable>
-                    
-                    <Pressable style={styles.attachmentOption} onPress={handlePickDocument}>
-                      <LinearGradient colors={['#FF6B6B', '#E74C3C']} style={styles.optionIcon}>
-                        <File size={24} color="#FFFFFF" />
-                      </LinearGradient>
-                      <View style={styles.optionText}>
-                        <Text style={styles.optionTitle}>Document</Text>
-                        <Text style={styles.optionDescription}>PDF, Word, Text files</Text>
-                      </View>
-                    </Pressable>
-                  </View>
-                </LinearGradient>
+                );
+              })}
               </View>
+            );
+          }}
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyText}>No messages yet</Text>
+              <Text style={styles.emptySubtext}>Start the conversation!</Text>
             </View>
-          </Modal>
+          }
+        />
+
+        {/* Uploading indicator */}
+        {uploadingAttachment && (
+          <View style={styles.uploadingContainer}>
+            <ActivityIndicator size="small" color={colors.primary} />
+            <Text style={styles.uploadingText}>Uploading...</Text>
+          </View>
+        )}
+
+        {/* Input Area */}
+        <View style={[styles.inputArea, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+          <Pressable style={styles.attachButton} onPress={() => setShowAttachmentModal(true)}>
+            <Paperclip size={22} color={colors.textSecondary} />
+          </Pressable>
+          
+          <View style={styles.inputWrapper}>
+            <TextInput
+              style={styles.textInput}
+              placeholder="Type a message..."
+              placeholderTextColor={colors.textTertiary}
+              value={message}
+              onChangeText={setMessage}
+              multiline
+              maxLength={1000}
+            />
+          </View>
+          
+          <IconButton
+            icon="send"
+            size={24}
+            iconColor="#FFFFFF"
+            style={[styles.sendButton, (!message.trim() || sending) && styles.sendButtonDisabled]}
+            onPress={handleSendMessage}
+            disabled={sending || !message.trim()}
+          />
+        </View>
       </KeyboardAvoidingView>
-    </Animated.View>
+
+      {/* Attachment Modal */}
+      <Modal
+        visible={showAttachmentModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowAttachmentModal(false)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setShowAttachmentModal(false)}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Add Attachment</Text>
+              <Pressable onPress={() => setShowAttachmentModal(false)}>
+                <X size={24} color={colors.textSecondary} />
+              </Pressable>
+            </View>
+            
+            <View style={styles.modalOptions}>
+              <Pressable style={styles.modalOption} onPress={handleTakePhoto}>
+                <View style={[styles.optionIcon, { backgroundColor: colors.primaryLight }]}>
+                  <Camera size={24} color={colors.primary} />
+                </View>
+                <Text style={styles.optionLabel}>Camera</Text>
+              </Pressable>
+              
+              <Pressable style={styles.modalOption} onPress={handlePickImage}>
+                <View style={[styles.optionIcon, { backgroundColor: colors.successLight }]}>
+                  <ImageIcon size={24} color={colors.success} />
+                </View>
+                <Text style={styles.optionLabel}>Photos</Text>
+              </Pressable>
+              
+              <Pressable style={styles.modalOption} onPress={handlePickDocument}>
+                <View style={[styles.optionIcon, { backgroundColor: colors.warningLight }]}>
+                  <File size={24} color={colors.warning} />
+                </View>
+                <Text style={styles.optionLabel}>Document</Text>
+              </Pressable>
+            </View>
+          </View>
+        </Pressable>
+      </Modal>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  // Main container
   container: {
     flex: 1,
-    backgroundColor: '#030515', // Darker background consistent with other customer screens
+    backgroundColor: colors.background,
   },
-  // Header styles
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingText: {
+    color: colors.textSecondary,
+    fontFamily: 'Inter_500Medium',
+    marginTop: 12,
+  },
+  errorText: {
+    color: colors.danger,
+    fontFamily: 'Inter_500Medium',
+    textAlign: 'center',
+  },
+  
+  // Header
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 12,
+    backgroundColor: colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: '#2A3555', // Standard border color
+    borderBottomColor: colors.border,
   },
   backButton: {
-    padding: 8,
+    width: 40,
+    height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(0, 240, 255, 0.1)', 
+    backgroundColor: colors.surfaceAlt,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  headerTitleContainer: {
+  headerInfo: {
     flex: 1,
     alignItems: 'center',
   },
   headerTitle: {
-    fontSize: 18,
-    fontFamily: 'Inter_700Bold',
-    color: '#FFFFFF',
-    letterSpacing: 0.5,
+    fontSize: 17,
+    fontFamily: 'Inter_600SemiBold',
+    color: colors.textPrimary,
   },
   headerSubtitle: {
-    color: '#7A89FF',
     fontSize: 12,
     fontFamily: 'Inter_400Regular',
+    color: colors.textTertiary,
     marginTop: 2,
   },
-  // Loading and Error states
-  centeredLoadingContainer: { // Renamed from centeredContainer for clarity
+  
+  // Messages
+  keyboardAvoid: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
-  loadingText: {
-    color: '#00F0FF',
-    marginTop: 16,
-    fontSize: 16,
-    fontFamily: 'Inter_600SemiBold',
+  messagesContent: {
+    padding: 16,
+    paddingBottom: 8,
   },
-  errorText: {
-    color: '#FF3D71',
-    fontSize: 16,
-    fontFamily: 'Inter_600SemiBold',
-    textAlign: 'center',
-  },
-  // Message list area
-  messagesListContainer: {
-    flex: 1,
-    paddingHorizontal: 16,
-  },
-  messagesListContent: {
-    paddingVertical: 16,
-  },
-  // Date Separator (same as provider chat)
-  dateSeparator: {
+  dateHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     marginVertical: 16,
@@ -683,37 +588,37 @@ const styles = StyleSheet.create({
   dateLine: {
     flex: 1,
     height: 1,
-    backgroundColor: '#2A3555',
+    backgroundColor: colors.border,
   },
   dateText: {
-    color: '#7A89FF',
+    color: colors.textTertiary,
     fontSize: 12,
     fontFamily: 'Inter_500Medium',
-    marginHorizontal: 10,
+    marginHorizontal: 12,
   },
-  // Individual message item
-  messageContainer: {
-    flexDirection: 'row',
+  messageRow: {
     marginVertical: 4,
   },
-  userMessageContainer: { // Sent by current user (customer)
-    justifyContent: 'flex-end',
-    marginLeft: '20%', 
+  messageRowRight: {
+    alignItems: 'flex-end',
   },
-  otherUserMessageContainer: { // Received (from provider/support)
-    justifyContent: 'flex-start',
-    marginRight: '20%',
+  messageRowLeft: {
+    alignItems: 'flex-start',
   },
   messageBubble: {
+    maxWidth: '80%',
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: 18,
-    maxWidth: '100%', 
   },
-  userMessageBubble: {
+  myBubble: {
+    backgroundColor: colors.primary,
     borderBottomRightRadius: 4,
   },
-  otherUserMessageBubble: {
+  theirBubble: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
     borderBottomLeftRadius: 4,
   },
   messageText: {
@@ -721,205 +626,168 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_400Regular',
     lineHeight: 20,
   },
-  userMessageText: {
+  myText: {
     color: '#FFFFFF',
   },
-  otherUserMessageText: {
-    color: '#E0EFFF',
+  theirText: {
+    color: colors.textPrimary,
   },
-  messageFooter: {
-    marginTop: 4,
-    alignItems: 'flex-end',
-  },
-  messageTimestamp: {
+  timestamp: {
     fontSize: 11,
     fontFamily: 'Inter_400Regular',
+    marginTop: 4,
   },
-  userTimestamp: {
-    color: 'rgba(255, 255, 255, 0.7)',
+  myTimestamp: {
+    color: 'rgba(255,255,255,0.7)',
+    textAlign: 'right',
   },
-  otherUserTimestamp: {
-    color: '#7A89FF',
+  theirTimestamp: {
+    color: colors.textTertiary,
   },
-  chatImageAttachment: { // New style for image attachments
-    width: 200, // Or use Dimensions to make it responsive
-    height: 200,
-    borderRadius: 10,
-    marginTop: 5,
-    marginBottom: 5,
-  },
-  // Sending indicator
-  sendingIndicatorContainer: {
-    alignItems: 'flex-end', // Align to right for sent messages
-    marginRight: 16,
-    marginBottom: 8,
-  },
-  sendingBubble: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 18,
-    borderBottomRightRadius: 4,
-  },
-  sendingText: {
-    color: '#00F0FF',
-    fontSize: 13,
-    fontFamily: 'Inter_500Medium',
-    marginLeft: 8,
-  },
-  // Input Toolbar (bottom area)
-  inputToolbar: { // Renamed from inputContainer
-    flexDirection: 'row',
-    alignItems: 'flex-end', // Align items to bottom for multiline input
-    paddingHorizontal: 12,
-    paddingTop: 12, // Add some top padding
-    borderTopWidth: 1,
-    borderTopColor: '#2A3555',
-  },
-  textInputWrapper: { // Renamed from textInputContainer
-    flex: 1,
-    flexDirection: 'row',
-    backgroundColor: 'rgba(42, 53, 85, 0.5)', // Input field background
-    borderRadius: 22,
-    paddingHorizontal: 12,
-    paddingVertical: Platform.OS === 'ios' ? 10 : 0, // Adjust padding for OS
-    minHeight: 44, // Ensure decent height
-    alignItems: 'center', // Center placeholder text vertically
-    marginHorizontal: 8,
-  },
-  messageTextInput: { // Renamed from textInput
-    flex: 1,
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontFamily: 'Inter_400Regular',
-    maxHeight: 100, // Limit multiline height
-    paddingTop: Platform.OS === 'android' ? 8 : 0, // Android multiline padding
-    paddingBottom: Platform.OS === 'android' ? 8 : 0,
-  },
-  inputActionButtons: { // Renamed from rightButtons
-    flexDirection: 'row',
-    alignItems: 'flex-end', // Align with bottom of input field
-    paddingBottom: Platform.OS === 'ios' ? 0 : 8, // Adjust for Android
-  },
-  utilityButton: { // Renamed from attachButton / mediaButton
-    padding: 6,
-  },
-  iconButtonWrapper: { // Renamed from iconButton
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  sendIconWrapper: { // Renamed from sendButton
-    paddingLeft: 6, // Add some space before send icon
-    paddingBottom: Platform.OS === 'ios' ? 0 : 2, // Fine-tune alignment
-  },
-  sendGradientWrapper: { // Renamed from sendGradient
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    justifyContent: 'center',
-    alignItems: 'center',
+  
+  // Attachments
+  attachmentImage: {
+    width: 200,
+    height: 150,
+    borderRadius: 12,
+    marginBottom: 6,
   },
   documentAttachment: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 10,
-    borderWidth: 1,
-    borderColor: '#2A3555',
-    borderRadius: 10,
-  },
-  documentInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
+    gap: 8,
+    paddingVertical: 4,
   },
   documentName: {
     flex: 1,
+    color: colors.primary,
+    fontFamily: 'Inter_500Medium',
+    fontSize: 13,
+  },
+  documentNameMe: {
+    color: '#FFFFFF',
+  },
+  
+  // Empty state
+  emptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+  },
+  emptyText: {
+    color: colors.textPrimary,
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 16,
+    marginBottom: 4,
+  },
+  emptySubtext: {
+    color: colors.textTertiary,
+    fontFamily: 'Inter_400Regular',
+    fontSize: 14,
+  },
+  
+  // Uploading
+  uploadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    gap: 8,
+  },
+  uploadingText: {
+    color: colors.primary,
+    fontFamily: 'Inter_500Medium',
+    fontSize: 13,
+  },
+  
+  // Input area
+  inputArea: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    paddingHorizontal: 12,
+    paddingTop: 12,
+    backgroundColor: colors.surface,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  attachButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.surfaceAlt,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  inputWrapper: {
+    flex: 1,
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: 22,
+    marginHorizontal: 8,
+    paddingHorizontal: 16,
+    paddingVertical: Platform.OS === 'ios' ? 10 : 4,
+    minHeight: 44,
+    justifyContent: 'center',
+  },
+  textInput: {
+    color: colors.textPrimary,
     fontSize: 15,
     fontFamily: 'Inter_400Regular',
+    maxHeight: 100,
   },
-  documentSize: {
-    fontSize: 12,
-    fontFamily: 'Inter_400Regular',
-    color: '#7A89FF',
+  sendButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  attachmentSize: {
-    fontSize: 12,
-    fontFamily: 'Inter_400Regular',
-    color: '#7A89FF',
+  sendButtonDisabled: {
+    backgroundColor: colors.textTertiary,
   },
+  
+  // Modal
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: '#0A0F1E',
-    borderRadius: 20,
-    margin: 20,
-    width: '90%',
-    maxWidth: 400,
-  },
-  modalGradient: {
-    borderRadius: 20,
-    padding: 0,
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 20,
+    paddingBottom: 40,
   },
   modalHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#2A3555',
+    alignItems: 'center',
+    marginBottom: 20,
   },
   modalTitle: {
     fontSize: 18,
-    fontFamily: 'Inter_700Bold',
-    color: '#FFFFFF',
+    fontFamily: 'Inter_600SemiBold',
+    color: colors.textPrimary,
   },
-  closeButton: {
-    padding: 8,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  attachmentOptions: {
-    padding: 20,
-    gap: 16,
-  },
-  attachmentOption: {
+  modalOptions: {
     flexDirection: 'row',
+    justifyContent: 'space-around',
+  },
+  modalOption: {
     alignItems: 'center',
-    padding: 16,
-    backgroundColor: 'rgba(42, 53, 85, 0.3)',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#2A3555',
   },
   optionIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    justifyContent: 'center',
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
   },
-  optionText: {
-    marginLeft: 16,
-    flex: 1,
-  },
-  optionTitle: {
-    fontSize: 16,
-    fontFamily: 'Inter_600SemiBold',
-    color: '#FFFFFF',
-    marginBottom: 4,
-  },
-  optionDescription: {
+  optionLabel: {
     fontSize: 13,
-    fontFamily: 'Inter_400Regular',
-    color: '#7A89FF',
+    fontFamily: 'Inter_500Medium',
+    color: colors.textSecondary,
   },
-}); 
+});

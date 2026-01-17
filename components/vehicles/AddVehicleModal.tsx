@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, Pressable, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
 import { X } from 'lucide-react-native';
+import { TextInput as PaperTextInput } from 'react-native-paper';
+import { ThemedButton } from '@/components/ui/ThemedButton';
 
 interface AddVehicleModalProps {
   onClose: () => void;
@@ -69,83 +71,79 @@ export default function AddVehicleModal({ onClose, onSubmit }: AddVehicleModalPr
             </View>
           )}
 
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Vehicle Name</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="e.g., My Daily Driver"
-              placeholderTextColor="#7A89FF"
-              value={formData.vehicleName}
-              onChangeText={(text) => setFormData({ ...formData, vehicleName: text })}
-            />
-          </View>
+          <PaperTextInput
+            label="Vehicle Name"
+            value={formData.vehicleName}
+            onChangeText={(text) => setFormData({ ...formData, vehicleName: text })}
+            mode="outlined"
+            placeholder="e.g., My Daily Driver"
+            style={styles.input}
+          />
 
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>VIN</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Vehicle Identification Number"
-              placeholderTextColor="#7A89FF"
-              value={formData.vin}
-              onChangeText={(text) => setFormData({ ...formData, vin: text })}
-              autoCapitalize="characters"
-            />
-          </View>
+          <PaperTextInput
+            label="VIN"
+            value={formData.vin}
+            onChangeText={(text) => setFormData({ ...formData, vin: text })}
+            mode="outlined"
+            placeholder="Vehicle Identification Number"
+            autoCapitalize="characters"
+            style={styles.input}
+          />
 
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Make</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="e.g., Honda"
-              placeholderTextColor="#7A89FF"
-              value={formData.make}
-              onChangeText={(text) => setFormData({ ...formData, make: text })}
-            />
-          </View>
+          <PaperTextInput
+            label="Make"
+            value={formData.make}
+            onChangeText={(text) => setFormData({ ...formData, make: text })}
+            mode="outlined"
+            placeholder="e.g., Honda"
+            style={styles.input}
+          />
 
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Model</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="e.g., Accord"
-              placeholderTextColor="#7A89FF"
-              value={formData.model}
-              onChangeText={(text) => setFormData({ ...formData, model: text })}
-            />
-          </View>
+          <PaperTextInput
+            label="Model"
+            value={formData.model}
+            onChangeText={(text) => setFormData({ ...formData, model: text })}
+            mode="outlined"
+            placeholder="e.g., Accord"
+            style={styles.input}
+          />
 
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Year</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="e.g., 2020"
-              placeholderTextColor="#7A89FF"
-              value={formData.year}
-              onChangeText={(text) => setFormData({ ...formData, year: text })}
-              keyboardType="numeric"
-              maxLength={4}
-            />
-          </View>
+          <PaperTextInput
+            label="Year"
+            value={formData.year}
+            onChangeText={(text) => setFormData({ ...formData, year: text })}
+            mode="outlined"
+            placeholder="e.g., 2020"
+            keyboardType="numeric"
+            maxLength={4}
+            style={styles.input}
+          />
 
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Current Mileage</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="e.g., 50000"
-              placeholderTextColor="#7A89FF"
-              value={formData.miles}
-              onChangeText={(text) => setFormData({ ...formData, miles: text })}
-              keyboardType="numeric"
-            />
-          </View>
+          <PaperTextInput
+            label="Current Mileage"
+            value={formData.miles}
+            onChangeText={(text) => setFormData({ ...formData, miles: text })}
+            mode="outlined"
+            placeholder="e.g., 50000"
+            keyboardType="numeric"
+            style={styles.input}
+          />
 
           <View style={styles.actions}>
-            <Pressable style={styles.cancelButton} onPress={onClose}>
-              <Text style={styles.cancelButtonText}>Cancel</Text>
-            </Pressable>
-            <Pressable style={styles.submitButton} onPress={handleSubmit}>
-              <Text style={styles.submitButtonText}>Add Vehicle</Text>
-            </Pressable>
+            <ThemedButton
+              variant="outlined"
+              onPress={onClose}
+              style={styles.actionButtonFlex}
+            >
+              Cancel
+            </ThemedButton>
+            <ThemedButton
+              variant="primary"
+              onPress={handleSubmit}
+              style={styles.actionButtonFlex}
+            >
+              Add Vehicle
+            </ThemedButton>
           </View>
         </ScrollView>
       </View>
@@ -226,6 +224,10 @@ const styles = StyleSheet.create({
     color: '#00F0FF',
     fontSize: 16,
     fontFamily: 'Inter_400Regular',
+  },
+  actionButtonFlex: {
+    flex: 1,
+    marginHorizontal: 4,
   },
   actions: {
     flexDirection: 'row',

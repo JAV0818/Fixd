@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Pressable, ScrollView, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '@/navigation/AppNavigator';
@@ -8,6 +8,8 @@ import { getFunctions, httpsCallable } from 'firebase/functions';
 import { auth, firestore } from '@/lib/firebase';
 import { doc, updateDoc } from 'firebase/firestore';
 import { XCircle, CheckCircle, Wrench, ChevronLeft } from 'lucide-react-native';
+import { ThemedButton } from '@/components/ui/ThemedButton';
+import { Card } from 'react-native-paper';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CustomQuoteDetail'>;
 
@@ -125,7 +127,8 @@ const CustomQuoteDetailScreen = ({ route, navigation }: Props) => {
       </View>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <Text style={styles.mechanic}>Quote from: {charge.mechanicName}</Text>
-        <View style={styles.card}>
+        <Card style={styles.card}>
+          <Card.Content>
             <Text style={styles.vehicle}>{charge.vehicleDisplay || 'Vehicle Not Specified'}</Text>
             
             {charge.locationDetails && (
@@ -169,38 +172,31 @@ const CustomQuoteDetailScreen = ({ route, navigation }: Props) => {
                 <Text style={styles.totalLabel}>Quote Total</Text>
                 <Text style={styles.totalPrice}>${charge.totalPrice.toFixed(2)}</Text>
             </View>
-        </View>
+          </Card.Content>
+        </Card>
       </ScrollView>
 
       <View style={styles.footer}>
-        <Pressable 
-          style={[styles.actionButton, styles.approveButton, (loading || denying) && styles.disabledButton]} 
+        <ThemedButton
+          variant="primary"
           onPress={onCheckout}
           disabled={loading || denying}
+          loading={loading}
+          icon="check-circle"
+          style={styles.actionButtonFlex}
         >
-          {loading ? (
-            <ActivityIndicator color="#0A0F1E" />
-          ) : (
-            <>
-              <CheckCircle size={20} color="#0A0F1E" />
-              <Text style={[styles.actionButtonText, styles.approveButtonText]}>Approve & Pay</Text>
-            </>
-          )}
-        </Pressable>
-         <Pressable 
-          style={[styles.actionButton, styles.denyButton, (loading || denying) && styles.disabledButton]} 
+          Approve & Pay
+        </ThemedButton>
+        <ThemedButton
+          variant="danger"
           onPress={handleDenyQuote}
           disabled={loading || denying}
+          loading={denying}
+          icon="close-circle"
+          style={styles.actionButtonFlex}
         >
-          {denying ? (
-            <ActivityIndicator color="#FFF" />
-          ) : (
-            <>
-                <XCircle size={20} color="#FFD0D0" />
-                <Text style={[styles.actionButtonText, styles.denyButtonText]}>Deny Quote</Text>
-            </>
-          )}
-        </Pressable>
+          Deny Quote
+        </ThemedButton>
       </View>
     </SafeAreaView>
   );

@@ -29,8 +29,8 @@ export default function OrdersScreen() {
     }
 
     setLoading(true);
-    // NOTE: We use the camelCase collection name to match current rules
-    const ordersRef = collection(firestore, 'repairOrders');
+    // Use repair-orders collection
+    const ordersRef = collection(firestore, 'repair-orders');
     const q = query(
       ordersRef,
       where('customerId', '==', user.uid),

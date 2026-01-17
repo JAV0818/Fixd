@@ -138,7 +138,7 @@ export default function InspectionChecklistScreen({ navigation, route }: Props) 
     const fetchReport = async () => {
       setLoading(true);
       try {
-        const reportRef = doc(firestore, 'repairOrders', orderId, 'inspectionReport', 'initial');
+        const reportRef = doc(firestore, 'repair-orders', orderId, 'inspectionReport', 'initial');
         const reportSnap = await getDoc(reportRef);
         if (reportSnap.exists()) {
           const data = reportSnap.data();
@@ -271,7 +271,7 @@ export default function InspectionChecklistScreen({ navigation, route }: Props) 
 
     const finalImageUrls = Array.from(new Set([...uploadedImageUrls, ...newImageUrls]));
 
-    const reportRef = doc(firestore, 'repairOrders', orderId, 'inspectionReport', 'initial');
+    const reportRef = doc(firestore, 'repair-orders', orderId, 'inspectionReport', 'initial');
     
     const reportData: any = {
       technicianUid: auth.currentUser.uid,

@@ -10,6 +10,7 @@ import { StripeProvider } from '@stripe/stripe-react-native';
 
 import AppNavigator from './navigation/AppNavigator';
 import { CartProvider } from './contexts/CartContext';
+import { PaperThemeProvider } from './contexts/PaperThemeProvider';
 
 // Ignore specific VirtualizedList warning
 LogBox.ignoreLogs([
@@ -49,12 +50,14 @@ export default function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <CartProvider>
-          <NavigationContainer>
-            <AppNavigator />
-            <StatusBar style="light" />
-          </NavigationContainer>
-        </CartProvider>
+        <PaperThemeProvider>
+          <CartProvider>
+            <NavigationContainer>
+              <AppNavigator />
+              <StatusBar style="light" />
+            </NavigationContainer>
+          </CartProvider>
+        </PaperThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

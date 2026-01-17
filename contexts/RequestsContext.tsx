@@ -2,6 +2,13 @@ import React, { createContext, useContext, useState, ReactNode } from 'react';
 
 type ViewMode = 'request' | 'view';
 
+// Media item with base64 for upload
+export interface MediaItem {
+  uri: string;
+  base64: string;
+  mimeType: string;
+}
+
 interface RequestsContextType {
   activeMode: ViewMode;
   setActiveMode: (mode: ViewMode) => void;
@@ -17,8 +24,8 @@ interface RequestsContextType {
   setServiceDescription: (description: string) => void;
   location: string;
   setLocation: (location: string) => void;
-  media: string[];
-  setMedia: (media: string[]) => void;
+  media: MediaItem[];
+  setMedia: (media: MediaItem[]) => void;
   
   // Reset function
   resetForm: () => void;
@@ -35,7 +42,7 @@ export const RequestsProvider = ({ children }: { children: ReactNode }) => {
   const [vehicle, setVehicle] = useState('');
   const [serviceDescription, setServiceDescription] = useState('');
   const [location, setLocation] = useState('');
-  const [media, setMedia] = useState<string[]>([]);
+  const [media, setMedia] = useState<MediaItem[]>([]);
   
   const resetForm = () => {
     setProgress(0);

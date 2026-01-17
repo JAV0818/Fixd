@@ -75,9 +75,9 @@ function useAuthNavigation() {
       }
 
       const resolveRole = async () => {
-        try {
-          const userDocRef = doc(firestore, 'users', currentUser.uid);
-          const userDoc = await getDoc(userDocRef);
+          try {
+            const userDocRef = doc(firestore, 'users', currentUser.uid);
+            const userDoc = await getDoc(userDocRef);
           const existingData = userDoc.exists() ? userDoc.data() : undefined;
 
           // Only set a default role if none exists; do not overwrite an existing role
@@ -100,17 +100,17 @@ function useAuthNavigation() {
           const userDocFinal = userDoc.exists() ? userDoc : await getDoc(userDocRef);
           if (userDocFinal.exists()) {
             const userData = userDocFinal.data();
-            const r = (userData.role as string) || (userData.isAdmin ? 'admin' : 'customer');
-            setRole(r === 'admin' || r === 'provider' ? (r as any) : 'customer');
-          } else {
-            setRole('customer');
-          }
-        } catch (error) {
+              const r = (userData.role as string) || (userData.isAdmin ? 'admin' : 'customer');
+              setRole(r === 'admin' || r === 'provider' ? (r as any) : 'customer');
+            } else {
+              setRole('customer');
+            }
+          } catch (error) {
           console.error('Error fetching user role:', error);
           setRole('customer');
-        } finally {
-          setLoading(false);
-        }
+          } finally {
+        setLoading(false);
+      }
       };
 
       resolveRole();
@@ -138,6 +138,9 @@ export default function AppNavigator() {
             <Stack.Screen name="ProviderApp" component={AdminTabNavigator} />
             <Stack.Screen name="CreateCustomCharge" component={CreateCustomChargeScreen} />
             <Stack.Screen name="RequestDetail" component={RequestDetailScreen} />
+            <Stack.Screen name="RequestContact" component={RequestContactScreen} />
+            <Stack.Screen name="RequestStart" component={RequestStartScreen} />
+            <Stack.Screen name="UpdateStatus" component={UpdateStatusScreen} />
           </>
         ) : role === 'provider' ? (
           <>

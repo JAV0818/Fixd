@@ -1,5 +1,7 @@
 import * as admin from "firebase-admin";
-import * as functions from "firebase-functions/v1";
+import {beforeUserCreated, AuthBlockingEvent} from "firebase-functions/v2/identity";
+import {onSchedule} from "firebase-functions/v2/scheduler";
+
 // import {https as v1https} from "firebase-functions/v1"; // Specific import for v1 https services
 // import Stripe from "stripe";
 
@@ -8,8 +10,66 @@ if (!admin.apps.length) { // Ensure Firebase is initialized only once
 }
 const db = admin.firestore(); // Ensure db is initialized
 
-// Create a Firestore user profile document for every new auth user.
-export const onAuthUserCreate = functions.auth.user().onCreate(async (user: functions.auth.UserRecord) => {
+// =====================================================================
+// AUTO-EXPIRE CLAIMED ORDERS
+// Runs every 10 minutes to release expired claims back to the pool
+// =====================================================================
+export const autoExpireClaims = onSchedule("every 10 minutes", async () => {
+  const now = admin.firestore.Timestamp.now();
+
+  console.log("Running autoExpireClaims check at:", now.toDate().toISOString());
+
+  try {
+    // Query for claimed orders where the claim has expired
+    const expiredClaimsQuery = await db
+      .collection("repair-orders")
+      .where("status", "==", "Claimed")
+      .where("claimExpiresAt", "<", now)
+      .get();
+
+    if (expiredClaimsQuery.empty) {
+      console.log("No expired claims found.");
+      return;
+    }
+
+    console.log(`Found ${expiredClaimsQuery.size} expired claim(s). Releasing...`);
+
+    // Batch update all expired claims
+    const batch = db.batch();
+
+    expiredClaimsQuery.docs.forEach((doc) => {
+      const data = doc.data();
+      console.log(`Releasing expired claim for order ${doc.id}, was claimed by provider ${data.providerId}`);
+      batch.update(doc.ref, {
+        status: "Pending",
+        providerId: null,
+        providerName: null,
+        claimedAt: null,
+        claimExpiresAt: null,
+        // Keep a record of who had it claimed
+        lastExpiredClaimBy: data.providerId,
+        lastExpiredClaimAt: now,
+      });
+    });
+
+    await batch.commit();
+    console.log(`Successfully released ${expiredClaimsQuery.size} expired claim(s).`);
+  } catch (error) {
+    console.error("Error in autoExpireClaims:", error);
+    throw error;
+  }
+});
+
+// Create a Firestore user profile document before a new auth user is created.
+export const onAuthUserCreate = beforeUserCreated(
+  {region: "us-central1"},
+  async (event: AuthBlockingEvent) => {
+    const user = event.data;
+    if (!user) {
+      console.error("onAuthUserCreate called without user data");
+      return;
+    }
+
   const userDocRef = db.collection("users").doc(user.uid);
   const existing = await userDocRef.get();
   const existingRole = existing.exists ? existing.data()?.role : undefined;
@@ -26,7 +86,8 @@ export const onAuthUserCreate = functions.auth.user().onCreate(async (user: func
   };
 
   await userDocRef.set(profile, {merge: true});
-});
+  }
+);
 
 // Initialize Stripe with secret key and API version
 // const stripeClient = new Stripe(functions.config().stripe.secret, {

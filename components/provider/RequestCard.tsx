@@ -45,10 +45,17 @@ const RequestCard: React.FC<RequestCardProps> = ({ item, navigation }) => {
     fetchCustomerDetails();
   }, [item.customerId]);
 
-  // Format data for display (copied from RequestsScreen)
-  const displayAddress = `${item.locationDetails.city}, ${item.locationDetails.state}`;
-  const displayService = item.items.length > 0 ? item.items[0].name : 'Unknown Service';
-  const displayDate = item.createdAt?.toDate().toLocaleDateString() || 'N/A';
+  // Format data for display - handle both old and new schema
+  const displayAddress = item.locationDetails?.address || 
+    (item.locationDetails?.city && item.locationDetails?.state 
+      ? `${item.locationDetails.city}, ${item.locationDetails.state}` 
+      : 'Location not specified');
+  const displayService = item.categories?.length > 0 
+    ? item.categories[0] 
+    : (item.items?.length > 0 ? item.items[0].name : 'Service Request');
+  const displayDate = item.createdAt?.toDate?.() 
+    ? item.createdAt.toDate().toLocaleDateString() 
+    : 'N/A';
 
   return (
     <TouchableOpacity 

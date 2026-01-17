@@ -73,7 +73,7 @@ export default function UpdateStatusScreen({ navigation, route }: Props) {
       setLoading(true);
       setError(null);
 
-      const orderRef = doc(firestore, 'repairOrders', orderId);
+      const orderRef = doc(firestore, 'repair-orders', orderId);
       const orderSnap = await getDoc(orderRef);
 
       if (!orderSnap.exists()) {
@@ -190,7 +190,7 @@ export default function UpdateStatusScreen({ navigation, route }: Props) {
 
     setUpdating(true);
     try {
-      const orderRef = doc(firestore, 'repairOrders', orderId);
+      const orderRef = doc(firestore, 'repair-orders', orderId);
       const updateData: any = {
         status: selectedStatus,
         updatedAt: serverTimestamp()

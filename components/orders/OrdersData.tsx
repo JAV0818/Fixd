@@ -35,7 +35,7 @@ const OrdersData: React.FC<OrdersDataProps> = ({
     }
 
     // Query Firestore for orders belonging to the current user
-    const ordersRef = collection(firestore, 'repairOrders');
+    const ordersRef = collection(firestore, 'repair-orders');
     const q = query(
       ordersRef,
       where('customerId', '==', user.uid),

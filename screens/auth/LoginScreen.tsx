@@ -1,15 +1,17 @@
 import { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, Pressable, KeyboardAvoidingView, Platform, SafeAreaView, ImageBackground } from 'react-native';
+import { View, Text, StyleSheet, KeyboardAvoidingView, Platform, SafeAreaView, ImageBackground } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Mail, Lock } from 'lucide-react-native';
+import { TextInput as PaperTextInput, Card, Button } from 'react-native-paper';
 
 import { auth, firestore } from '@/lib/firebase';
 import { AuthStackParamList } from '@/navigation/AuthNavigator';
 import { colors, spacing, radius, typography } from '@/styles/theme';
+import { ThemedButton } from '@/components/ui/ThemedButton';
 
 export default function LoginScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<AuthStackParamList>>();
@@ -51,7 +53,7 @@ export default function LoginScreen() {
   };
 
   return (
-    <ImageBackground
+    <ImageBackground 
       source={{ uri: 'https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?w=1200&auto=format&fit=crop&q=60' }}
       style={styles.background}
       resizeMode="cover"
@@ -66,53 +68,58 @@ export default function LoginScreen() {
               <Text style={styles.brand}>Fixd</Text>
               <Text style={styles.title}>Welcome back</Text>
               <Text style={styles.subtitle}>Sign in to continue</Text>
-            </View>
+        </View>
 
-            <View style={styles.card}>
-              {error ? (
-                <View style={styles.errorContainer}>
-                  <Text style={styles.errorText}>{error}</Text>
-                </View>
-              ) : null}
+            <Card style={styles.card}>
+              <Card.Content>
+                {error ? (
+                  <View style={styles.errorContainer}>
+                    <Text style={styles.errorText}>{error}</Text>
+                  </View>
+                ) : null}
 
-              <View style={styles.inputContainer}>
-                <Mail size={18} color={colors.textTertiary} />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Email"
-                  placeholderTextColor={colors.textLight}
+                <PaperTextInput
+                  label="Email"
                   value={email}
                   onChangeText={setEmail}
-                  autoCapitalize="none"
+                  mode="outlined"
                   keyboardType="email-address"
-                  selectionColor={colors.primary}
-                />
-              </View>
-
-              <View style={styles.inputContainer}>
-                <Lock size={18} color={colors.textTertiary} />
-                <TextInput
+                  autoCapitalize="none"
+                  left={<PaperTextInput.Icon icon="email" />}
                   style={styles.input}
-                  placeholder="Password"
-                  placeholderTextColor={colors.textLight}
+                />
+
+                <PaperTextInput
+                  label="Password"
                   value={password}
                   onChangeText={setPassword}
+                  mode="outlined"
                   secureTextEntry
-                  selectionColor={colors.primary}
+                  left={<PaperTextInput.Icon icon="lock" />}
+                  style={styles.input}
                 />
-              </View>
 
-              <Pressable style={[styles.button, loading && styles.buttonDisabled]} onPress={handleLogin} disabled={loading}>
-                <Text style={styles.buttonText}>{loading ? 'Logging in...' : 'Log in'}</Text>
-              </Pressable>
+                <ThemedButton
+                  variant="primary"
+                  onPress={handleLogin}
+                  disabled={loading}
+                  loading={loading}
+                  style={styles.button}
+                >
+                  {loading ? 'Logging in...' : 'Log in'}
+                </ThemedButton>
 
-              <Pressable style={styles.signupButton} onPress={() => navigation.navigate('Signup')}>
-                <Text style={styles.signupText}>
-                  Don’t have an account? <Text style={styles.signupHighlight}>Sign up</Text>
-                </Text>
-              </Pressable>
-            </View>
-          </KeyboardAvoidingView>
+                <Button
+                  mode="text"
+                  onPress={() => navigation.navigate('Signup')}
+                  style={styles.signupButton}
+                  labelStyle={styles.signupText}
+                >
+                  Don't have an account? <Text style={styles.signupHighlight}>Sign up</Text>
+                </Button>
+              </Card.Content>
+            </Card>
+      </KeyboardAvoidingView>
         </SafeAreaView>
       </LinearGradient>
     </ImageBackground>
@@ -157,15 +164,8 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   card: {
-    backgroundColor: colors.surface,
     borderRadius: radius.xl,
-    padding: spacing.xl,
-    gap: spacing.md,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 12,
-    elevation: 3,
+    marginTop: spacing.lg,
   },
   errorContainer: {
     backgroundColor: colors.dangerLight,
@@ -173,52 +173,23 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: radius.md,
     padding: spacing.md,
+    marginBottom: spacing.md,
   },
   errorText: {
     ...typography.body,
     color: colors.danger,
     textAlign: 'center',
   },
-  inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: spacing.md,
-    backgroundColor: colors.surfaceAlt,
-    height: 52,
-  },
   input: {
-    flex: 1,
-    marginLeft: spacing.sm,
-    color: colors.textPrimary,
-    fontFamily: 'Inter_500Medium',
-    fontSize: 15,
+    marginBottom: spacing.md,
+    backgroundColor: 'transparent',
   },
   button: {
-    backgroundColor: colors.primary,
-    borderRadius: radius.lg,
-    height: 52,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 10,
-    elevation: 4,
-  },
-  buttonDisabled: {
-    opacity: 0.6,
-  },
-  buttonText: {
-    color: '#fff',
-    fontFamily: 'Inter_700Bold',
-    fontSize: 16,
+    marginTop: spacing.sm,
+    marginBottom: spacing.xs,
   },
   signupButton: {
-    alignItems: 'center',
-    marginTop: spacing.sm,
+    marginTop: spacing.xs,
   },
   signupText: {
     ...typography.body,

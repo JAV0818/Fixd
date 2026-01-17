@@ -9,7 +9,7 @@ import { firestore, auth } from '@/lib/firebase';
 import { doc, getDoc, Timestamp, collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 
 // Define a more specific Order type based on what's stored and needed
-// This should align with the structure in `repairOrders` collection
+// This should align with the structure in `repair-orders` collection
 export type Order = {
   id: string;
   customerId: string;
@@ -82,7 +82,7 @@ export default function OrderDetailScreen() {
       setLoading(true);
       setError(null);
       try {
-        const orderDocRef = doc(firestore, 'repairOrders', orderId);
+        const orderDocRef = doc(firestore, 'repair-orders', orderId);
         const orderDocSnap = await getDoc(orderDocRef);
 
         if (orderDocSnap.exists()) {
@@ -112,7 +112,7 @@ export default function OrderDetailScreen() {
             // If pending and no provider, fetch pre-acceptance messages
             if (orderData.status === 'Pending') {
               setLoadingPreAcceptanceMessages(true);
-              const preAcceptChatRef = collection(firestore, 'repairOrders', orderId, 'preAcceptanceChats');
+              const preAcceptChatRef = collection(firestore, 'repair-orders', orderId, 'preAcceptanceChats');
               const q = query(preAcceptChatRef, orderBy('createdAt', 'asc'));
               // Assign to the outer scope variable
               unsubscribePreAcceptance = onSnapshot(q, (snapshot) => {

@@ -46,7 +46,7 @@ export default function InspectionScreen({ navigation, route }: Props) {
 
   const handleSubmit = async () => {
     try {
-      await updateDoc(doc(firestore, 'repairOrders', orderId), {
+      await updateDoc(doc(firestore, 'repair-orders', orderId), {
         inspectionRatings: ratings,
         status: 'InProgress',
         inspectionTimestamp: Timestamp.now(),

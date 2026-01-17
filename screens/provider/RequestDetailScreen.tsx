@@ -1,16 +1,19 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { ProviderStackParamList } from '../../navigation/ProviderNavigator';
-import { ArrowLeft, Check, X, MessageCircle, Play, Ban, CalendarClock, UserCircle } from 'lucide-react-native';
+import { ArrowLeft, Check, X, MessageCircle, Play, Ban, Clock, Lock } from 'lucide-react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { firestore, auth } from '@/lib/firebase';
-import { doc, onSnapshot, updateDoc, serverTimestamp, increment, getDoc } from 'firebase/firestore';
+import { doc, onSnapshot, updateDoc, serverTimestamp, increment, getDoc, Timestamp, collection, query, where, getDocs } from 'firebase/firestore';
 import { RepairOrder } from '@/types/orders';
-import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { colors } from '@/styles/theme';
+import { ThemedButton } from '@/components/ui/ThemedButton';
+import { Card } from 'react-native-paper';
 
-type Props = NativeStackScreenProps<ProviderStackParamList, 'RequestDetail'>;
+type Props = NativeStackScreenProps<any, 'RequestDetail'>;
+
+const CLAIM_DURATION_MS = 60 * 60 * 1000; // 1 hour in milliseconds
+const MAX_CLAIMS_PER_PROVIDER = 2;
 
 export default function RequestDetailScreen({ navigation, route }: Props) {
   const { orderId } = route.params;
@@ -19,8 +22,47 @@ export default function RequestDetailScreen({ navigation, route }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
-  const tabBarHeight = useBottomTabBarHeight();
+  const [timeRemaining, setTimeRemaining] = useState<string>('');
+  const [claimExpired, setClaimExpired] = useState(false);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
   const insets = useSafeAreaInsets();
+  
+  const currentUser = auth.currentUser;
+  const isMyClaimedOrder = order?.status === 'Claimed' && order?.providerId === currentUser?.uid;
+  const isClaimedByOther = order?.status === 'Claimed' && order?.providerId !== currentUser?.uid;
+  const isPending = order?.status === 'Pending';
+  const isAccepted = order?.status === 'Accepted';
+  const isInProgress = order?.status === 'InProgress';
+
+  // Timer effect for claimed orders
+  useEffect(() => {
+    if (isMyClaimedOrder && order?.claimExpiresAt) {
+      const updateTimer = () => {
+        const expiresAt = order.claimExpiresAt?.toDate?.() || new Date(order.claimExpiresAt as any);
+        const now = new Date();
+        const diff = expiresAt.getTime() - now.getTime();
+        
+        if (diff <= 0) {
+          setTimeRemaining('Expired');
+          setClaimExpired(true);
+          if (timerRef.current) clearInterval(timerRef.current);
+          return;
+        }
+        
+        const minutes = Math.floor(diff / 60000);
+        const seconds = Math.floor((diff % 60000) / 1000);
+        setTimeRemaining(`${minutes}:${seconds.toString().padStart(2, '0')}`);
+        setClaimExpired(false);
+      };
+      
+      updateTimer();
+      timerRef.current = setInterval(updateTimer, 1000);
+      
+      return () => {
+        if (timerRef.current) clearInterval(timerRef.current);
+      };
+    }
+  }, [isMyClaimedOrder, order?.claimExpiresAt]);
 
   useEffect(() => {
     setLoading(true);
@@ -76,8 +118,112 @@ export default function RequestDetailScreen({ navigation, route }: Props) {
     return () => unsubscribe();
   }, [orderId]);
 
+  // Check how many orders this provider has claimed
+  const checkClaimLimit = async (): Promise<boolean> => {
+    if (!currentUser) return false;
+    
+    const claimedQuery = query(
+      collection(firestore, 'repair-orders'),
+      where('providerId', '==', currentUser.uid),
+      where('status', '==', 'Claimed')
+    );
+    
+    const snapshot = await getDocs(claimedQuery);
+    return snapshot.size < MAX_CLAIMS_PER_PROVIDER;
+  };
+
+  const handleClaimOrder = async () => {
+    if (!currentUser) {
+      Alert.alert("Error", "You must be logged in to claim orders.");
+      return;
+    }
+    if (!order) {
+      Alert.alert("Error", "Order data is not available.");
+      return;
+    }
+
+    setIsUpdating(true);
+    
+    try {
+      // Check claim limit
+      const canClaim = await checkClaimLimit();
+      if (!canClaim) {
+        Alert.alert(
+          "Claim Limit Reached", 
+          `You can only claim up to ${MAX_CLAIMS_PER_PROVIDER} orders at a time. Please accept or release your current claims first.`
+        );
+        setIsUpdating(false);
+        return;
+      }
+
+      const orderDocRef = doc(firestore, 'repair-orders', orderId);
+      const claimExpiresAt = Timestamp.fromDate(new Date(Date.now() + CLAIM_DURATION_MS));
+      
+      // Get provider name from user doc
+      const userDoc = await getDoc(doc(firestore, 'users', currentUser.uid));
+      const providerName = userDoc.exists() 
+        ? `${userDoc.data().firstName || ''} ${userDoc.data().lastName || ''}`.trim() || 'Mechanic'
+        : currentUser.displayName || 'Mechanic';
+      
+      console.log('Attempting to claim order:', orderId);
+      console.log('Current user:', currentUser.uid);
+      console.log('Setting status to Claimed, providerId to:', currentUser.uid);
+      
+      await updateDoc(orderDocRef, {
+        providerId: currentUser.uid,
+        providerName,
+        status: 'Claimed',
+        claimedAt: serverTimestamp(),
+        claimExpiresAt,
+      });
+      
+      console.log('Order claimed successfully!');
+      Alert.alert("Order Claimed", "You have 1 hour to chat with the customer and decide. You can accept or release the order anytime.");
+    } catch (err) {
+      console.error("Error claiming order:", err);
+      Alert.alert("Error", "Could not claim the order. It may have been claimed by another mechanic.");
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleReleaseClaim = async () => {
+    if (!order) return;
+
+    Alert.alert(
+      "Release Order",
+      "Are you sure you want to release this order? It will be available for other mechanics to claim.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Release",
+          style: "destructive",
+          onPress: async () => {
+            setIsUpdating(true);
+            try {
+              const orderDocRef = doc(firestore, 'repair-orders', orderId);
+              await updateDoc(orderDocRef, {
+                providerId: null,
+                providerName: null,
+                status: 'Pending',
+                claimedAt: null,
+                claimExpiresAt: null,
+              });
+              Alert.alert("Released", "The order is now available for other mechanics.");
+              navigation.goBack();
+            } catch (err) {
+              console.error("Error releasing claim:", err);
+              Alert.alert("Error", "Could not release the order. Please try again.");
+            } finally {
+              setIsUpdating(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const handleAccept = async () => {
-    const currentUser = auth.currentUser;
     if (!currentUser) {
       Alert.alert("Error", "You must be logged in to accept requests.");
       return;
@@ -87,24 +233,29 @@ export default function RequestDetailScreen({ navigation, route }: Props) {
       return;
     }
 
+    // Only allow accepting if you have claimed the order
+    if (order.status === 'Claimed' && order.providerId !== currentUser.uid) {
+      Alert.alert("Error", "You must claim this order first before accepting.");
+      return;
+    }
+
     setIsUpdating(true);
     const orderDocRef = doc(firestore, 'repair-orders', orderId);
     const providerDocRef = doc(firestore, 'users', currentUser.uid);
 
     try {
       await updateDoc(orderDocRef, {
-        providerId: currentUser.uid,
-        providerName: currentUser.displayName || 'Mechanic',
         status: 'Accepted',
-        acceptedAt: serverTimestamp()
+        acceptedAt: serverTimestamp(),
+        claimedAt: null, // Clear claim fields
+        claimExpiresAt: null,
       });
 
       await updateDoc(providerDocRef, {
         numberOfAcceptedJobs: increment(1)
       });
       
-      Alert.alert("Success", "Request accepted!");
-      navigation.goBack();
+      Alert.alert("Success", "Request accepted! You're now committed to this job.");
     } catch (err) {
       console.error("Error accepting request:", err);
       Alert.alert("Error", "Could not accept the request. Please try again.");
@@ -237,110 +388,194 @@ export default function RequestDetailScreen({ navigation, route }: Props) {
           style={styles.scrollView}
           contentContainerStyle={styles.scrollViewContent}
         >
-          <View style={styles.card}>
-            <Text style={styles.sectionTitle}>Service Information</Text>
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Service:</Text>
-              <Text style={styles.detailValue}>{order.items[0]?.name || 'N/A'}</Text>
-            </View>
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>{scheduleInfo.label}</Text>
-              <Text style={styles.detailValue}>{scheduleInfo.dateTime}</Text>
-            </View>
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Total Price:</Text>
-              <Text style={styles.detailValue}>${order.totalPrice?.toFixed(2) ?? 'N/A'}</Text>
-            </View>
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Vehicle:</Text>
-              <Text style={styles.detailValue}>{order.items[0]?.vehicleDisplay || 'N/A'}</Text>
-            </View>
-          </View>
+          <Card style={styles.card}>
+            <Card.Content>
+              <Text style={styles.sectionTitle}>Service Information</Text>
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Service:</Text>
+                <Text style={styles.detailValue}>
+                  {(order as any).categories?.join(', ') || order.items?.[0]?.name || 'N/A'}
+                </Text>
+              </View>
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>{scheduleInfo.label}</Text>
+                <Text style={styles.detailValue}>{scheduleInfo.dateTime}</Text>
+              </View>
+              {order.totalPrice != null && (
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Total Price:</Text>
+                  <Text style={styles.detailValue}>${order.totalPrice?.toFixed(2)}</Text>
+                </View>
+              )}
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Vehicle:</Text>
+                <Text style={styles.detailValue}>
+                  {(order as any).vehicleInfo || order.items?.[0]?.vehicleDisplay || 'N/A'}
+                </Text>
+              </View>
+            </Card.Content>
+          </Card>
           
-          <View style={styles.card}>
-            <Text style={styles.sectionTitle}>Customer & Location</Text>
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Customer:</Text>
-              <Text style={styles.detailValue}>{customerDisplayName}</Text>
-            </View>
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Address:</Text>
-              <Text style={styles.detailValue}>
-                {`${order.locationDetails.address}, ${order.locationDetails.city}, ${order.locationDetails.state} ${order.locationDetails.zipCode}`}
+          <Card style={styles.card}>
+            <Card.Content>
+              <Text style={styles.sectionTitle}>Customer & Location</Text>
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Customer:</Text>
+                <Text style={styles.detailValue}>{customerDisplayName}</Text>
+              </View>
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Address:</Text>
+                <Text style={styles.detailValue}>
+                  {order.locationDetails?.address || 
+                    (order.locationDetails?.city 
+                      ? `${order.locationDetails.address || ''}, ${order.locationDetails.city}, ${order.locationDetails.state} ${order.locationDetails.zipCode || ''}`.trim()
+                      : 'Address not provided')}
+                </Text>
+              </View>
+              {order.locationDetails?.phoneNumber && (
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Phone:</Text>
+                  <Text style={styles.detailValue}>{order.locationDetails.phoneNumber}</Text>
+                </View>
+              )}
+            </Card.Content>
+          </Card>
+          
+          <Card style={styles.card}>
+            <Card.Content>
+              <Text style={styles.sectionTitle}>Description</Text>
+              <Text style={styles.description}>
+                {(order as any).description || order.locationDetails?.additionalNotes || 'No description provided.'}
               </Text>
-            </View>
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Phone:</Text>
-              <Text style={styles.detailValue}>{order.locationDetails.phoneNumber}</Text>
-            </View>
-          </View>
-          
-          <View style={styles.card}>
-            <Text style={styles.sectionTitle}>Additional Notes</Text>
-            <Text style={styles.description}>{order.locationDetails.additionalNotes || 'No additional notes provided.'}</Text>
-          </View>
+            </Card.Content>
+          </Card>
         </ScrollView>
         
-        <View style={[styles.actionButtonsContainer, { paddingBottom: insets.bottom + 12 }]}>
-          {order.status === 'Pending' && (
-            <>
-              <TouchableOpacity 
-                style={[styles.actionButton, styles.contactButton]} 
-                onPress={handleContact} 
-                disabled={isUpdating}
-              >
-                <MessageCircle size={20} color={colors.primary} />
-                <Text style={styles.contactButtonText}>Contact</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={[styles.actionButton, styles.declineButton]} 
-                onPress={handleDecline} 
-                disabled={isUpdating}
-              >
-                <X size={20} color={colors.danger} />
-                <Text style={styles.declineButtonText}>{isUpdating ? 'Declining...' : 'Decline'}</Text>
-              </TouchableOpacity>
+        {/* Timer Banner for Claimed Orders */}
+        {isMyClaimedOrder && (
+          <View style={styles.timerBanner}>
+            <Clock size={18} color={claimExpired ? colors.danger : colors.warning} />
+            <Text style={[styles.timerText, claimExpired && styles.timerExpired]}>
+              {claimExpired ? 'Claim Expired' : `Time Remaining: ${timeRemaining}`}
+            </Text>
+          </View>
+        )}
 
-              <TouchableOpacity 
-                style={[styles.actionButton, styles.acceptButton]} 
-                onPress={handleAccept} 
+        {/* Claimed by Another Mechanic Banner */}
+        {isClaimedByOther && (
+          <View style={styles.claimedBanner}>
+            <Lock size={18} color={colors.textTertiary} />
+            <Text style={styles.claimedText}>
+              Being reviewed by another mechanic
+            </Text>
+          </View>
+        )}
+
+        <View style={[styles.actionButtonsContainer, { paddingBottom: insets.bottom + 12 }]}>
+          {/* PENDING: Show Claim button */}
+          {isPending && (
+            <ThemedButton
+              variant="primary"
+              onPress={handleClaimOrder}
+              disabled={isUpdating}
+              loading={isUpdating}
+              icon="lock"
+              style={styles.actionButtonFlex}
+            >
+              {isUpdating ? 'Claiming...' : 'Claim Order'}
+            </ThemedButton>
+          )}
+
+          {/* CLAIMED BY ME: Show Chat, Release, Accept */}
+          {isMyClaimedOrder && !claimExpired && (
+            <>
+              <ThemedButton
+                variant="outlined"
+                onPress={handleContact}
                 disabled={isUpdating}
+                icon="message"
+                style={styles.actionButtonFlex}
               >
-                <Check size={20} color="#FFFFFF" />
-                <Text style={styles.acceptButtonText}>{isUpdating ? 'Accepting...' : 'Accept'}</Text>
-              </TouchableOpacity>
+                Chat
+              </ThemedButton>
+              
+              <ThemedButton
+                variant="outlined"
+                onPress={handleReleaseClaim}
+                disabled={isUpdating}
+                icon="close"
+                style={styles.actionButtonFlex}
+              >
+                Release
+              </ThemedButton>
+
+              <ThemedButton
+                variant="primary"
+                onPress={handleAccept}
+                disabled={isUpdating}
+                loading={isUpdating}
+                icon="check"
+                style={styles.actionButtonFlex}
+              >
+                {isUpdating ? 'Accepting...' : 'Accept'}
+              </ThemedButton>
             </>
           )}
 
-          {(order.status === 'Accepted' || order.status === 'InProgress') && (
+          {/* CLAIMED BY ME BUT EXPIRED: Show Release only */}
+          {isMyClaimedOrder && claimExpired && (
+            <ThemedButton
+              variant="outlined"
+              onPress={handleReleaseClaim}
+              disabled={isUpdating}
+              icon="close"
+              style={styles.actionButtonFlex}
+            >
+              Release Expired Claim
+            </ThemedButton>
+          )}
+
+          {/* CLAIMED BY ANOTHER: Show nothing actionable */}
+          {isClaimedByOther && (
+            <View style={styles.unavailableContainer}>
+              <Text style={styles.unavailableText}>
+                This order is currently being reviewed. Check back later.
+              </Text>
+            </View>
+          )}
+
+          {/* ACCEPTED or IN PROGRESS: Show service actions */}
+          {(isAccepted || isInProgress) && (
             <>
-              <TouchableOpacity
-                style={[styles.actionButton, styles.contactButton]}
+              <ThemedButton
+                variant="outlined"
                 onPress={handleContact}
-                 disabled={isUpdating}
+                disabled={isUpdating}
+                icon="message"
+                style={styles.actionButtonFlex}
               >
-                <MessageCircle size={20} color={colors.primary} />
-                <Text style={styles.contactButtonText}>Contact</Text>
-              </TouchableOpacity>
+                Contact
+              </ThemedButton>
 
-              <TouchableOpacity
-                style={[styles.actionButton, styles.cancelServiceButton]} 
+              <ThemedButton
+                variant="danger"
                 onPress={handleCancelService}
-                disabled={isUpdating} 
+                disabled={isUpdating}
+                icon="ban"
+                style={styles.actionButtonFlex}
               >
-                <Ban size={20} color={colors.danger} />
-                <Text style={styles.cancelServiceButtonText}>Cancel Service</Text>
-              </TouchableOpacity>
+                Cancel
+              </ThemedButton>
 
-              <TouchableOpacity
-                style={[styles.actionButton, styles.startServiceButton]} 
+              <ThemedButton
+                variant="primary"
                 onPress={handleStartService}
-                disabled={isUpdating} 
+                disabled={isUpdating}
+                icon="play"
+                style={styles.actionButtonFlex}
               >
-                <Play size={20} color="#FFFFFF" />
-                <Text style={styles.startServiceButtonText}>Start Service</Text>
-              </TouchableOpacity>
+                {isInProgress ? 'Continue' : 'Start'}
+              </ThemedButton>
             </>
           )}
         </View>
@@ -499,6 +734,10 @@ const styles = StyleSheet.create({
     minHeight: 44,
     gap: 6,
   },
+  actionButtonFlex: {
+    flex: 1,
+    marginHorizontal: 4,
+  },
   contactButton: {
     backgroundColor: colors.primaryLight,
     borderColor: colors.primary,
@@ -543,5 +782,72 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     fontFamily: 'Inter_600SemiBold',
+  },
+  // Claim system styles
+  timerBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.warningLight || '#FFF8E1',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    gap: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.warning || '#FFA000',
+  },
+  timerText: {
+    fontSize: 15,
+    fontFamily: 'Inter_600SemiBold',
+    color: colors.warning || '#FFA000',
+  },
+  timerExpired: {
+    color: colors.danger,
+  },
+  claimedBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surfaceAlt,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    gap: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  claimedText: {
+    fontSize: 14,
+    fontFamily: 'Inter_500Medium',
+    color: colors.textTertiary,
+  },
+  claimButton: {
+    flex: 1,
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  claimButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontFamily: 'Inter_600SemiBold',
+  },
+  releaseButton: {
+    backgroundColor: colors.warningLight || '#FFF8E1',
+    borderColor: colors.warning || '#FFA000',
+  },
+  releaseButtonText: {
+    color: colors.warning || '#FFA000',
+    fontSize: 14,
+    fontFamily: 'Inter_600SemiBold',
+  },
+  unavailableContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+  },
+  unavailableText: {
+    fontSize: 14,
+    fontFamily: 'Inter_400Regular',
+    color: colors.textTertiary,
+    textAlign: 'center',
   },
 }); 

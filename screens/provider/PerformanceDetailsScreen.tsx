@@ -90,7 +90,7 @@ const PerformanceDetailsScreen = () => {
   }
 
   // Placeholder for On-Time Arrival - will be N/A until logic is defined
-  // Based on user feedback, we might calculate this using acceptedAt vs startedAt from repairOrders,
+  // Based on user feedback, we might calculate this using acceptedAt vs startedAt from repair-orders,
   // or use onTimeArrivals/totalTrackedArrivals if these are populated elsewhere.
   let onTimeArrivalRateDisplay = 'N/A'; 
   // Example if using onTimeArrivals fields:

@@ -5,7 +5,10 @@ import { ProviderStackParamList } from '../../navigation/ProviderNavigator';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, Calendar, Clock, MapPin, CheckCircle, Briefcase, User, LogOut, AlertCircle } from 'lucide-react-native';
 import { firestore, auth } from '@/lib/firebase';
-import { doc, updateDoc, increment, getDoc, Timestamp } from 'firebase/firestore';
+import { doc, updateDoc, increment, getDoc, Timestamp, serverTimestamp } from 'firebase/firestore';
+import { colors } from '@/styles/theme';
+import { ThemedButton } from '@/components/ui/ThemedButton';
+import { Card } from 'react-native-paper';
 
 type Props = NativeStackScreenProps<ProviderStackParamList, 'RequestStart'>;
 
@@ -36,7 +39,7 @@ export default function RequestStartScreen({ navigation, route }: Props) {
   const fetchOrderAndCustomerDetails = useCallback(async () => {
     setInitialLoading(true);
     try {
-      const orderRef = doc(firestore, 'repairOrders', orderId);
+      const orderRef = doc(firestore, 'repair-orders', orderId);
       const orderSnap = await getDoc(orderRef);
 
       if (orderSnap.exists()) {
@@ -130,12 +133,12 @@ export default function RequestStartScreen({ navigation, route }: Props) {
 
     try {
       if (requestDetails.status === 'Accepted') {
-        const orderRef = doc(firestore, 'repairOrders', orderId);
+        const orderRef = doc(firestore, 'repair-orders', orderId);
         await updateDoc(orderRef, {
-          status: 'In Progress',
-          startedAt: new Date(),
+          status: 'InProgress',
+          startedAt: serverTimestamp(),
         });
-        setRequestDetails(prev => prev ? { ...prev, status: 'In Progress' } : null);
+        setRequestDetails(prev => prev ? { ...prev, status: 'InProgress' } : null);
         navigation.navigate('InspectionChecklist', { orderId });
       } else if (requestDetails.status === 'InProgress') {
         if (inspectionCompleted) {
@@ -161,10 +164,10 @@ export default function RequestStartScreen({ navigation, route }: Props) {
     }
     setIsActionButtonLoading(true);
     try {
-      const orderRef = doc(firestore, 'repairOrders', orderId);
+      const orderRef = doc(firestore, 'repair-orders', orderId);
       await updateDoc(orderRef, {
         status: 'Completed',
-        completedAt: new Date(),
+        completedAt: serverTimestamp(),
       });
 
       const providerRef = doc(firestore, 'users', auth.currentUser.uid);
@@ -190,7 +193,7 @@ export default function RequestStartScreen({ navigation, route }: Props) {
   };
 
   let buttonTextToDisplay = "Loading...";
-  let buttonIconToDisplay: React.ReactNode = <ActivityIndicator size="small" color="#0A0F1E" />;
+  let buttonIconToDisplay: React.ReactNode = <ActivityIndicator size="small" color={colors.primary} />;
   let currentActionHandler = () => {};
   let isButtonDisabled = true;
   let headerTitleText = "Service Details";
@@ -201,27 +204,27 @@ export default function RequestStartScreen({ navigation, route }: Props) {
 
     if (serviceEnded || requestDetails.status === 'Completed') {
       buttonTextToDisplay = "SERVICE COMPLETED";
-      buttonIconToDisplay = <CheckCircle size={20} color="#0A0F1E" />;
+      buttonIconToDisplay = <CheckCircle size={20} color={colors.surface} />;
       isButtonDisabled = true;
       currentActionHandler = () => {};
       headerTitleText = "SERVICE COMPLETED";
     } else if (requestDetails.status === 'InProgress') {
       if (inspectionCompleted) {
         buttonTextToDisplay = "END SERVICE NOW";
-        buttonIconToDisplay = <LogOut size={20} color="#0A0F1E" />;
+        buttonIconToDisplay = <LogOut size={20} color={colors.surface} />;
         headerTitleText = "COMPLETE SERVICE";
       } else {
         buttonTextToDisplay = "PROCEED TO INSPECTION";
-        buttonIconToDisplay = <CheckCircle size={20} color="#0A0F1E" />;
+        buttonIconToDisplay = <CheckCircle size={20} color={colors.surface} />;
         headerTitleText = "SERVICE IN PROGRESS";
       }
     } else if (requestDetails.status === 'Accepted') {
       buttonTextToDisplay = "START SERVICE & INSPECTION";
-      buttonIconToDisplay = <CheckCircle size={20} color="#0A0F1E" />;
+      buttonIconToDisplay = <CheckCircle size={20} color={colors.surface} />;
       headerTitleText = "START SERVICE";
     } else {
       buttonTextToDisplay = requestDetails.status.toUpperCase();
-      buttonIconToDisplay = <AlertCircle size={20} color="#0A0F1E" />;
+      buttonIconToDisplay = <AlertCircle size={20} color={colors.surface} />;
       isButtonDisabled = true;
       currentActionHandler = () => {};
       headerTitleText = `SERVICE ${requestDetails.status.toUpperCase()}`;
@@ -238,7 +241,7 @@ export default function RequestStartScreen({ navigation, route }: Props) {
   if (initialLoading) {
     return (
       <SafeAreaView style={[styles.container, {justifyContent: 'center', alignItems: 'center'}]}>
-        <ActivityIndicator size="large" color="#00F0FF" />
+        <ActivityIndicator size="large" color={colors.primary} />
         <Text style={styles.loadingText}>Loading service details...</Text>
       </SafeAreaView>
     );
@@ -247,7 +250,7 @@ export default function RequestStartScreen({ navigation, route }: Props) {
   if (!requestDetails) {
     return (
       <SafeAreaView style={[styles.container, {justifyContent: 'center', alignItems: 'center'}]}>
-         <AlertCircle size={48} color="#FF6B6B" />
+         <AlertCircle size={48} color={colors.danger} />
         <Text style={styles.errorText}>Could not load service details.</Text>
         <TouchableOpacity onPress={fetchOrderAndCustomerDetails} style={styles.retryButton}>
             <Text style={styles.retryButtonText}>Try Again</Text>
@@ -264,20 +267,29 @@ export default function RequestStartScreen({ navigation, route }: Props) {
     borderRadius: 12,
     alignSelf: 'flex-start',
     backgroundColor: 
-      status === 'Completed' ? '#28A745' :
-      status === 'InProgress' ? '#FFC107' :
-      status === 'Accepted' ? '#00F0FF' :
-      status === 'Pending' ? '#6C757D' :
-      '#FD7E14',
+      status === 'Completed' ? colors.successLight :
+      status === 'InProgress' ? colors.warningLight :
+      status === 'Accepted' ? colors.primaryLight :
+      status === 'Pending' ? colors.surfaceAlt :
+      colors.warningLight,
   });
+
+  const getStatusBadgeTextColor = (status: string): string => {
+    return status === 'Completed' ? colors.success :
+           status === 'InProgress' ? colors.warning :
+           status === 'Accepted' ? colors.primary :
+           status === 'Pending' ? colors.textSecondary :
+           colors.warning;
+  };
   
   const statusBadgeStyle = getStatusBadgeStyle(displayStatus);
+  const statusBadgeTextColor = getStatusBadgeTextColor(displayStatus);
 
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <ArrowLeft size={24} color="#00F0FF" />
+          <ArrowLeft size={24} color={colors.primary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{headerTitleText}</Text>
         <View style={{ width: 24 }} />
@@ -289,14 +301,14 @@ export default function RequestStartScreen({ navigation, route }: Props) {
           <View style={styles.customerInfo}>
             <Text style={styles.customerName}>{requestDetails.customerName.toUpperCase()}</Text>
             <View style={statusBadgeStyle}>
-                <Text style={styles.statusBadgeText}>{displayStatus.toUpperCase()}</Text>
+                <Text style={[styles.statusBadgeText, { color: statusBadgeTextColor }]}>{displayStatus.toUpperCase()}</Text>
             </View>
           </View>
         </View>
         
         <View style={styles.card}>
             <View style={styles.sectionHeader}>
-                <Briefcase size={20} color="#00F0FF" />
+                <Briefcase size={20} color={colors.primary} />
                 <Text style={styles.sectionTitle}>SERVICE & VEHICLE</Text>
             </View>
             <View style={styles.detailRow}><Text style={styles.detailLabel}>Service:</Text><Text style={styles.detailValue}>{requestDetails.serviceName}</Text></View>
@@ -305,7 +317,7 @@ export default function RequestStartScreen({ navigation, route }: Props) {
 
         <View style={styles.card}>
           <View style={styles.sectionHeader}>
-            <Calendar size={20} color="#00F0FF" />
+            <Calendar size={20} color={colors.primary} />
             <Text style={styles.sectionTitle}>SCHEDULE & LOCATION</Text>
           </View>
           <View style={styles.detailRow}><Text style={styles.detailLabel}>Date:</Text><Text style={styles.detailValue}>{requestDetails.date}</Text></View>
@@ -325,7 +337,7 @@ export default function RequestStartScreen({ navigation, route }: Props) {
         
         <View style={styles.card}>
           <View style={styles.sectionHeader}>
-            <User size={20} color="#00F0FF" />
+            <User size={20} color={colors.primary} />
             <Text style={styles.sectionTitle}>CLIENT INSTRUCTIONS</Text>
           </View>
           <Text style={styles.descriptionText}>{requestDetails.description}</Text>
@@ -343,31 +355,29 @@ export default function RequestStartScreen({ navigation, route }: Props) {
       
       {(requestDetails.status !== 'Cancelled' && requestDetails.status !== 'Pending' && requestDetails.status !== 'Completed') && (
         <View style={styles.footer}>
-            <TouchableOpacity 
-            style={[
-                styles.startButton,
-                (isButtonDisabled || isActionButtonLoading) && styles.loadingButton, 
-            ]}
-            onPress={currentActionHandler}
-            disabled={isButtonDisabled || isActionButtonLoading}
+            <ThemedButton
+              variant="primary"
+              onPress={currentActionHandler}
+              disabled={isButtonDisabled || isActionButtonLoading}
+              loading={isActionButtonLoading}
+              style={styles.startButton}
             >
-            {isActionButtonLoading ? (
-                <Text style={styles.buttonText}>{ (requestDetails.status === 'InProgress' && inspectionCompleted) ? "ENDING..." : "PROCESSING..." }</Text>
-            ) : (
-                <>
-                {buttonIconToDisplay}
-                <Text style={styles.buttonText}>{buttonTextToDisplay}</Text>
-                </>
-            )}
-            </TouchableOpacity>
+              {isActionButtonLoading 
+                ? (requestDetails.status === 'InProgress' && inspectionCompleted) ? "ENDING..." : "PROCESSING..."
+                : buttonTextToDisplay}
+            </ThemedButton>
         </View>
       )}
       {(requestDetails.status === 'Completed') &&
          <View style={styles.footer}>
-            <View style={[styles.startButton, styles.completedButton]}>
-                <CheckCircle size={20} color="#0A0F1E" />
-                <Text style={styles.buttonText}>SERVICE COMPLETED</Text>
-            </View>
+            <ThemedButton
+              variant="secondary"
+              disabled
+              icon="check-circle"
+              style={styles.startButton}
+            >
+              SERVICE COMPLETED
+            </ThemedButton>
          </View>
       }
 
@@ -378,29 +388,29 @@ export default function RequestStartScreen({ navigation, route }: Props) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0A0F1E',
+    backgroundColor: colors.background,
   },
   loadingText: {
     marginTop:10,
     fontSize: 16,
-    color: '#7A89FF',
+    color: colors.primary,
     fontFamily: 'Inter_500Medium',
   },
   errorText: {
     fontSize: 18,
-    color: '#FF6B6B',
+    color: colors.danger,
     fontFamily: 'Inter_600SemiBold',
     marginBottom: 20,
     textAlign: 'center',
   },
   retryButton: {
-    backgroundColor: '#00F0FF',
+    backgroundColor: colors.primary,
     paddingVertical: 12,
     paddingHorizontal: 30,
     borderRadius: 8,
   },
   retryButtonText: {
-    color: '#0A0F1E',
+    color: colors.surface,
     fontSize: 16,
     fontFamily: 'Inter_600SemiBold',
   },
@@ -411,7 +421,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#2A3555',
+    borderBottomColor: colors.border,
+    backgroundColor: colors.surface,
   },
   backButton: {
     padding: 8,
@@ -419,7 +430,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 18,
     fontFamily: 'Inter_700Bold',
-    color: '#00F0FF',
+    color: colors.primary,
     letterSpacing: 2,
   },
   content: {
@@ -429,20 +440,25 @@ const styles = StyleSheet.create({
   customerCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(122, 137, 255, 0.1)',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 16,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#2A3555',
+    borderColor: colors.border,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
   avatar: {
     width: 64,
     height: 64,
     borderRadius: 32,
     borderWidth: 2,
-    borderColor: '#00F0FF',
-    backgroundColor: '#2A3555'
+    borderColor: colors.primary,
+    backgroundColor: colors.surfaceAlt
   },
   customerInfo: {
     marginLeft: 16,
@@ -451,29 +467,33 @@ const styles = StyleSheet.create({
   customerName: {
     fontSize: 18,
     fontFamily: 'Inter_600SemiBold',
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     marginBottom: 8,
     letterSpacing: 1,
   },
   statusBadgeText: {
       fontSize: 10,
       fontFamily: 'Inter_700Bold',
-      color: '#0A0F1E',
       letterSpacing: 0.5,
   },
   priceText: {
     fontSize: 20,
     fontFamily: 'Inter_700Bold',
-    color: '#00F0FF',
+    color: colors.primary,
     marginBottom: 8,
   },
   card: {
-    backgroundColor: 'rgba(122, 137, 255, 0.1)',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 16,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#2A3555',
+    borderColor: colors.border,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -483,7 +503,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 16,
     fontFamily: 'Inter_600SemiBold',
-    color: '#00F0FF',
+    color: colors.primary,
     marginLeft: 8,
     letterSpacing: 1,
   },
@@ -496,58 +516,60 @@ const styles = StyleSheet.create({
     width: 100,
     fontSize: 14,
     fontFamily: 'Inter_500Medium',
-    color: '#7A89FF',
+    color: colors.textSecondary,
   },
   detailValue: {
     flex: 1,
     fontSize: 14,
     fontFamily: 'Inter_400Regular',
-    color: '#FFFFFF',
+    color: colors.textPrimary,
   },
   descriptionText: {
     fontSize: 14,
     fontFamily: 'Inter_400Regular',
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     lineHeight: 20,
   },
   infoCard: {
-    backgroundColor: 'rgba(0, 240, 255, 0.1)',
+    backgroundColor: colors.primaryLight,
     borderRadius: 12,
     padding: 16,
     marginBottom: 24,
     borderWidth: 1,
-    borderColor: '#00F0FF',
+    borderColor: colors.primary,
   },
   infoText: {
     fontSize: 14,
     fontFamily: 'Inter_400Regular',
-    color: '#00F0FF',
+    color: colors.primary,
     textAlign: 'center',
     lineHeight: 20,
   },
   footer: {
     padding: 16,
     borderTopWidth: 1,
-    borderTopColor: '#2A3555',
+    borderTopColor: colors.border,
+    backgroundColor: colors.surface,
   },
   startButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#00F0FF',
+    backgroundColor: colors.primary,
     borderRadius: 8,
     paddingVertical: 16,
   },
   loadingButton: {
-    backgroundColor: 'rgba(0, 240, 255, 0.5)',
+    backgroundColor: colors.primaryLight,
+    opacity: 0.7,
   },
   completedButton: {
-    backgroundColor: '#3D4A78',
+    backgroundColor: colors.surfaceAlt,
   },
   buttonText: {
     fontSize: 16,
     fontFamily: 'Inter_700Bold',
-    color: '#0A0F1E',
+    color: colors.surface,
     marginLeft: 8,
     letterSpacing: 1,
   },

@@ -22,8 +22,15 @@ service cloud.firestore {
         USERS
        ===================================================================== */
     match /users/{userId} {
-      // Allow users to read their own doc, admins to read all, and providers to read customers for search
-      allow read:  if request.auth != null && (request.auth.uid == userId || isAdmin() || isProvider());
+      // Allow users to read their own doc, admins/providers to read all
+      // Also allow any authenticated user to read provider/admin profiles (for chat display)
+      allow read:  if request.auth != null && (
+        request.auth.uid == userId || 
+        isAdmin() || 
+        isProvider() ||
+        // Allow customers to read provider profiles (needed for chat)
+        (resource.data.role == 'provider' || resource.data.role == 'admin')
+      );
 
       // Prevent users from elevating their own role. Only admins can change 'role'.
       allow create: if request.auth != null && request.auth.uid == userId && (
@@ -46,6 +53,12 @@ service cloud.firestore {
 
     /* =====================================================================
         REPAIR ORDERS (Unified Collection for Standard & Custom Quotes)
+        
+        CLAIM SYSTEM:
+        - Pending: No provider assigned, anyone can claim
+        - Claimed: Provider assigned, only they can chat/accept/release
+        - Accepted: Provider committed to job
+        - Admin can override anything
        ===================================================================== */
     match /repair-orders/{orderId} {
       function isOrderCustomer() {
@@ -55,29 +68,91 @@ service cloud.firestore {
       function isOrderProvider() {
         return resource.data.providerId != null && request.auth.uid == resource.data.providerId;
       }
+      
+      function isClaimingOrder() {
+        // Provider is claiming an unclaimed Pending order
+        // Check providerId doesn't exist OR is null
+        return (isProvider() || isAdmin()) && 
+               resource.data.status == 'Pending' && 
+               (!('providerId' in resource.data) || resource.data.providerId == null) &&
+               request.resource.data.status == 'Claimed' &&
+               request.resource.data.providerId == request.auth.uid;
+      }
+      
+      function isReleasingClaim() {
+        // Provider is releasing their own claimed order back to Pending
+        return (isOrderProvider() || isAdmin()) && 
+               resource.data.status == 'Claimed' &&
+               request.resource.data.status == 'Pending' &&
+               request.resource.data.providerId == null;
+      }
+      
+      function isAcceptingClaim() {
+        // Provider is accepting their claimed order
+        return (isOrderProvider() || isAdmin()) && 
+               resource.data.status == 'Claimed' &&
+               request.resource.data.status == 'Accepted';
+      }
 
-      // GET: Allow if customer, assigned provider, or an admin/provider viewing an unassigned order.
-      allow get: if isOrderCustomer() || isOrderProvider() || ((isAdmin() || isProvider()) && resource.data.providerId == null);
+      // GET: Allow if customer, assigned provider, or an admin/provider viewing orders
+      allow get: if isOrderCustomer() || isOrderProvider() || isAdmin() || isProvider();
 
-      // LIST: Allow customers to list their own, and admins/providers to list for admin/provider views.
+      // LIST: Allow customers to list their own, and admins/providers to list all
       allow list: if request.auth.uid == resource.data.customerId || isAdmin() || isProvider();
 
-      // CREATE: Allow customer to create standard orders, or provider to create custom quotes.
+      // CREATE: Allow customer to create standard orders, or provider to create custom quotes
       allow create: if request.auth != null &&
         ( (request.auth.uid == request.resource.data.customerId && request.resource.data.orderType == 'standard') ||
           ((isProvider() || isAdmin()) && request.auth.uid == request.resource.data.providerId && request.resource.data.orderType == 'custom_quote')
         );
 
-      // UPDATE: Allow if customer or assigned provider.
-      allow update: if (isOrderCustomer() && (resource.data.status == 'Pending' || resource.data.status == 'PendingApproval')) || isOrderProvider();
+      // UPDATE: Complex rules for claim system
+      allow update: if 
+        // Admin can do anything
+        isAdmin() ||
+        // Customer can update pending/approval orders (accept/decline quotes)
+        (isOrderCustomer() && (resource.data.status == 'Pending' || resource.data.status == 'PendingApproval')) ||
+        // Assigned provider can update their orders
+        isOrderProvider() ||
+        // Provider can claim unclaimed pending orders
+        isClaimingOrder() ||
+        // Provider can release their claimed order
+        isReleasingClaim() ||
+        // Provider can accept their claimed order
+        isAcceptingClaim();
 
-      // DELETE: Only assigned provider or admin can delete.
+      // DELETE: Only assigned provider or admin can delete
       allow delete: if isOrderProvider() || isAdmin();
 
-      /* Sub-collections */
-      match /inspectionReport/{reportId} { allow read, write: if isOrderCustomer() || isOrderProvider(); }
-      match /preAcceptanceChats/{messageId} { allow read, write: if request.auth != null; }
-      match /activeChat/{messageId} { allow read, write: if isOrderCustomer() || isOrderProvider(); }
+      /* Sub-collections - need to get parent document data */
+      function getOrderData() {
+        return get(/databases/$(database)/documents/repair-orders/$(orderId)).data;
+      }
+      
+      function isOrderCustomerSub() {
+        return request.auth.uid == getOrderData().customerId;
+      }
+      
+      function isOrderProviderSub() {
+        let orderData = getOrderData();
+        return orderData.providerId != null && request.auth.uid == orderData.providerId;
+      }
+      
+      match /inspectionReport/{reportId} { 
+        allow read, write: if request.auth != null && (isOrderCustomerSub() || isOrderProviderSub() || isAdmin()); 
+      }
+      
+      // Pre-acceptance chat: Customer + claiming/assigned provider can chat
+      match /preAcceptanceChats/{messageId} { 
+        allow read: if request.auth != null && (isOrderCustomerSub() || isOrderProviderSub() || isAdmin());
+        allow create: if request.auth != null && (isOrderCustomerSub() || isOrderProviderSub());
+        allow update, delete: if false;
+      }
+      
+      // Active chat: Only after order is accepted
+      match /activeChat/{messageId} { 
+        allow read, write: if request.auth != null && (isOrderCustomerSub() || isOrderProviderSub() || isAdmin()); 
+      }
     }
 
     /* =====================================================================
