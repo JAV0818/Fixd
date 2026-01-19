@@ -4,82 +4,126 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  Pressable,
   ActivityIndicator,
   Alert,
 } from 'react-native';
 import { auth, firestore } from '@/lib/firebase';
-import { collection, onSnapshot, query, where, updateDoc, doc, getDoc } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, updateDoc, doc, Timestamp } from 'firebase/firestore';
+import { OrderCard, OrderCardData } from '@/components/orders/OrderCard';
+import { colors, spacing, typography } from '@/styles/theme';
+import { useNavigation } from '@react-navigation/native';
 
-type MechanicQuote = {
+type PendingOrder = {
   id: string;
-  requestId: string;
   customerId: string;
-  mechanicId: string;
-  amount: number;
-  message?: string;
-  approved?: boolean;
-  accepted?: boolean;
-  status?: 'pending' | 'declined' | 'accepted';
+  providerId?: string | null;
+  providerName?: string;
+  description?: string;
+  vehicleInfo?: string;
+  categories?: string[];
+  items?: { name: string; price: number; quantity: number }[];
+  totalPrice?: number;
+  status?: string;
+  orderType?: string;
+  createdAt?: any;
+  expiresAt?: Timestamp;
+  locationDetails?: { address?: string };
 };
 
 export default function CustomerQuotesView() {
-  const [quotes, setQuotes] = useState<MechanicQuote[]>([]);
+  const navigation = useNavigation<any>();
+  const [pendingOrders, setPendingOrders] = useState<PendingOrder[]>([]);
   const [loading, setLoading] = useState(true);
-  const [requestStatusById, setRequestStatusById] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    if (!auth.currentUser) return;
+    if (!auth.currentUser) {
+      setLoading(false);
+      return;
+    }
+
+    // Fetch pending orders (both standard and custom quotes) for this customer
     const q = query(
-      collection(firestore, 'mechanicQuotes'),
+      collection(firestore, 'repair-orders'),
       where('customerId', '==', auth.currentUser.uid)
     );
+
     const unsub = onSnapshot(
       q,
       (snap) => {
-        const rows: MechanicQuote[] = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
-        setQuotes(rows);
+        const now = new Date();
+        const orders: PendingOrder[] = snap.docs
+          .map((d) => ({ id: d.id, ...(d.data() as any) }))
+          .filter((order) => {
+            const status = (order.status || '').toLowerCase();
+            // Only show pending orders
+            if (status !== 'pending' && status !== 'pendingapproval') {
+              return false;
+            }
+            // Check expiration for custom quotes
+            if (order.orderType === 'custom_quote' && order.expiresAt) {
+              const expiresAt = order.expiresAt.toDate();
+              if (expiresAt < now) {
+                return false; // Expired
+              }
+            }
+            return true;
+          });
+        
+        // Sort by createdAt descending
+        orders.sort((a, b) => {
+          const aTime = a.createdAt?.toMillis?.() || a.createdAt?.seconds * 1000 || 0;
+          const bTime = b.createdAt?.toMillis?.() || b.createdAt?.seconds * 1000 || 0;
+          return bTime - aTime;
+        });
+        
+        setPendingOrders(orders);
         setLoading(false);
       },
       (err) => {
-        console.error(err);
+        console.error('Error fetching pending orders:', err);
         setLoading(false);
       }
     );
     return () => unsub();
   }, []);
 
-  // Load related request statuses to hide closed ones
-  useEffect(() => {
-    (async () => {
-      const uniqueIds = Array.from(new Set(quotes.map((q) => q.requestId).filter(Boolean)));
-      const entries: [string, string][] = [];
-      for (const rid of uniqueIds) {
-        try {
-          const reqDoc = await getDoc(doc(firestore, 'quoteRequests', rid));
-          const status = (reqDoc.exists() && (reqDoc.data() as any)?.status) || 'unknown';
-          entries.push([rid, status]);
-        } catch {}
-      }
-      if (entries.length) setRequestStatusById(Object.fromEntries(entries));
-    })();
-  }, [quotes]);
-
-  const acceptQuote = async (q: MechanicQuote) => {
-    Alert.alert('Temporarily Disabled', 'Payment functionality is currently unavailable. Please check back later.');
+  const acceptOrder = async (orderId: string) => {
+    try {
+      await updateDoc(doc(firestore, 'repair-orders', orderId), {
+        status: 'Accepted',
+      });
+      Alert.alert('Quote Accepted', 'You have accepted this quote.');
+    } catch (e: any) {
+      console.error('Failed to accept order:', e);
+      Alert.alert('Error', 'Could not accept the quote. Please try again.');
+    }
   };
 
-  const declineQuote = async (quoteId: string) => {
+  const declineOrder = async (orderId: string) => {
     try {
-      await updateDoc(doc(firestore, 'mechanicQuotes', quoteId), {
-        status: 'declined',
+      await updateDoc(doc(firestore, 'repair-orders', orderId), {
+        status: 'DeclinedByCustomer',
       });
       Alert.alert('Quote Declined', 'You have declined this quote.');
     } catch (e: any) {
-      console.error('Failed to decline quote:', e);
+      console.error('Failed to decline order:', e);
       Alert.alert('Error', 'Could not decline the quote. Please try again.');
     }
   };
+
+  // Check if chat is available for this order (when claimed or accepted)
+  const canChat = (order: PendingOrder) => {
+    const status = (order.status || '').toLowerCase();
+    return (status === 'claimed' || status === 'accepted' || status === 'inprogress') && order.providerId;
+  };
+
+  const handleOpenChat = (orderId: string) => {
+    navigation.navigate('PreAcceptanceChat', { orderId });
+  };
+
+  // Separate custom quotes (from mechanics) from standard orders (customer's own)
+  const customQuotes = pendingOrders.filter(o => o.orderType === 'custom_quote');
+  const standardOrders = pendingOrders.filter(o => o.orderType === 'standard' || !o.orderType);
 
   if (loading) {
     return (
@@ -89,53 +133,76 @@ export default function CustomerQuotesView() {
     );
   }
 
-  const approvedQuotes = quotes.filter(
-    (q) =>
-      !q.accepted &&
-      requestStatusById[q.requestId] !== 'closed' &&
-      requestStatusById[q.requestId] !== 'cancelled' &&
-      q.status !== 'declined'
-  );
-
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
-      {approvedQuotes.length === 0 ? (
+      {/* Custom Quotes Section - Show accept/decline buttons */}
+      {customQuotes.length > 0 && (
+        <>
+          {customQuotes.map((order) => {
+            const orderCardData: OrderCardData = {
+              id: order.id,
+              vehicleInfo: order.vehicleInfo,
+              description: order.description,
+              locationDetails: order.locationDetails,
+              status: order.status,
+              providerName: order.providerName,
+              orderType: order.orderType,
+              totalPrice: order.totalPrice,
+              items: order.items,
+            };
+
+            return (
+              <OrderCard
+                key={order.id}
+                order={orderCardData}
+                onPress={() => {}}
+                showMessageButton={false}
+                showAcceptDecline={true}
+                onAccept={() => acceptOrder(order.id)}
+                onDecline={() => declineOrder(order.id)}
+              />
+            );
+          })}
+          
+        </>
+      )}
+
+      {/* Standard Orders Section - Only show details and message button */}
+      {standardOrders.length > 0 && (
+        <>
+          {standardOrders.map((order) => {
+            const orderCardData: OrderCardData = {
+              id: order.id,
+              vehicleInfo: order.vehicleInfo,
+              description: order.description,
+              serviceType: order.categories?.[0] || undefined,
+              locationDetails: order.locationDetails,
+              status: order.status,
+              providerName: order.providerName,
+              orderType: order.orderType,
+            };
+
+            return (
+              <OrderCard
+                key={order.id}
+                order={orderCardData}
+                onPress={() => handleOpenChat(order.id)}
+                onMessagePress={() => handleOpenChat(order.id)}
+                showMessageButton={canChat(order)}
+              />
+            );
+          })}
+        </>
+      )}
+
+      {/* Empty State */}
+      {pendingOrders.length === 0 && (
         <View style={styles.emptyContainer}>
-          <Text style={styles.emptyTitle}>No Quotes Yet</Text>
+          <Text style={styles.emptyTitle}>No Pending Quotes</Text>
           <Text style={styles.emptyText}>
-            When mechanics submit quotes for your requests, they'll appear here.
+            Pending quotes from mechanics will appear here.
           </Text>
         </View>
-      ) : (
-        approvedQuotes.map((q) => (
-          <View key={q.id} style={styles.quoteCard}>
-            <View style={styles.quoteHeader}>
-              <Text style={styles.quoteAmount}>${(Number(q.amount || 0) + 25).toFixed(2)}</Text>
-              <View style={styles.statusBadge}>
-                <Text style={styles.statusText}>{q.accepted ? 'ACCEPTED' : 'PENDING'}</Text>
-              </View>
-            </View>
-            {!!q.message && <Text style={styles.quoteMessage}>{q.message}</Text>}
-            
-            <View style={styles.buttonRow}>
-              <Pressable
-                style={[styles.button, styles.declineButton]}
-                onPress={() => declineQuote(q.id)}
-              >
-                <Text style={styles.declineButtonText}>Decline</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.button, styles.acceptButton, q.accepted && styles.buttonDisabled]}
-                onPress={() => acceptQuote(q)}
-                disabled={!!q.accepted}
-              >
-                <Text style={styles.acceptButtonText}>
-                  {q.accepted ? 'Accepted' : 'Accept'}
-                </Text>
-              </Pressable>
-            </View>
-          </View>
-        ))
       )}
     </ScrollView>
   );
@@ -144,110 +211,32 @@ export default function CustomerQuotesView() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#E8E9F3',
+    backgroundColor: colors.background,
   },
   contentContainer: {
-    padding: 20,
+    padding: spacing.xl,
   },
   loadingContainer: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 40,
+    padding: spacing.xl * 2,
   },
   emptyContainer: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 16,
-    padding: 32,
+    padding: spacing.xxl,
     alignItems: 'center',
-    marginTop: 40,
+    marginTop: spacing.xl * 2,
   },
   emptyTitle: {
-    fontSize: 20,
-    fontFamily: 'Inter_600SemiBold',
-    color: '#14142B',
-    marginBottom: 8,
+    ...typography.h3,
+    marginBottom: spacing.sm,
   },
   emptyText: {
-    fontSize: 14,
-    fontFamily: 'Inter_400Regular',
-    color: '#6E7191',
+    ...typography.body,
+    color: colors.textTertiary,
     textAlign: 'center',
-    lineHeight: 20,
-  },
-  quoteCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  quoteHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  quoteAmount: {
-    fontSize: 24,
-    fontFamily: 'Inter_700Bold',
-    color: '#14142B',
-  },
-  statusBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-    backgroundColor: '#F0F0FF',
-  },
-  statusText: {
-    fontSize: 12,
-    fontFamily: 'Inter_600SemiBold',
-    color: '#5B57F5',
-  },
-  quoteMessage: {
-    fontSize: 14,
-    fontFamily: 'Inter_400Regular',
-    color: '#4E4B66',
-    lineHeight: 20,
-    marginBottom: 16,
-  },
-  buttonRow: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  button: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  declineButton: {
-    backgroundColor: '#FFF0F0',
-    borderWidth: 1,
-    borderColor: '#FFD6D6',
-  },
-  declineButtonText: {
-    fontSize: 15,
-    fontFamily: 'Inter_600SemiBold',
-    color: '#EF4444',
-  },
-  acceptButton: {
-    backgroundColor: '#F0FFF4',
-    borderWidth: 1,
-    borderColor: '#C6F6D5',
-  },
-  acceptButtonText: {
-    fontSize: 15,
-    fontFamily: 'Inter_600SemiBold',
-    color: '#34C759',
-  },
-  buttonDisabled: {
-    opacity: 0.5,
   },
 });
 

@@ -1,11 +1,13 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, Alert } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { ArrowLeft, FileText, Clock, CheckCircle, Filter, Package, Wrench, MessageCircle } from 'lucide-react-native';
+import { Clock } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Card } from 'react-native-paper';
 import { auth, firestore } from '@/lib/firebase';
 import { collection, onSnapshot, query, where, updateDoc, doc } from 'firebase/firestore';
-import { colors } from '@/styles/theme';
+import { colors, spacing, typography } from '@/styles/theme';
+import { OrderCard, OrderCardData } from '@/components/orders/OrderCard';
 
 type RepairOrder = {
   id: string;
@@ -25,7 +27,7 @@ type RepairOrder = {
   claimedAt?: any;
 };
 
-type FilterType = 'all' | 'pending' | 'active' | 'completed' | 'cancelled';
+type FilterType = 'all' | 'active' | 'completed' | 'cancelled';
 
 export default function CustomerQuotesScreen() {
   const navigation = useNavigation<any>();
@@ -71,28 +73,33 @@ export default function CustomerQuotesScreen() {
     return () => unsub();
   }, []);
 
-  // Filter orders based on selected filter
+  // Filter orders based on selected filter (excluding pending - they're in View My Quotes)
   const filteredOrders = useMemo(() => {
     return orders.filter(order => {
       const status = (order.status || '').toLowerCase();
+      // Always exclude pending orders from this screen
+      if (status === 'pending' || status === 'pendingapproval') {
+        return false;
+      }
       switch (filter) {
-        case 'pending':
-          return status === 'pending' || status === 'pendingapproval' || status === 'claimed';
         case 'active':
-          return status === 'accepted' || status === 'inprogress' || status === 'scheduled';
+          return status === 'accepted' || status === 'inprogress' || status === 'scheduled' || status === 'claimed';
         case 'completed':
           return status === 'completed';
         case 'cancelled':
-          return status === 'cancelled' || status === 'declined';
+          return status === 'cancelled' || status === 'declined' || status === 'declinedbycustomer' || status === 'cancelledbymechanic';
         default:
           return true;
       }
     });
   }, [orders, filter]);
 
-  // Separate custom quotes from standard orders
-  const customQuotes = filteredOrders.filter(o => o.orderType === 'custom_quote');
-  const standardOrders = filteredOrders.filter(o => o.orderType !== 'custom_quote');
+  // Filter out pending orders (they should be in View My Quotes section)
+  // Only show non-pending orders in My Requests section
+  const nonPendingOrders = filteredOrders.filter(o => {
+    const status = (o.status || '').toLowerCase();
+    return status !== 'pending' && status !== 'pendingapproval';
+  });
 
   const acceptOrder = async (orderId: string) => {
         try {
@@ -118,25 +125,6 @@ export default function CustomerQuotesScreen() {
     }
   };
 
-  const getStatusColor = (status?: string) => {
-    switch (status?.toLowerCase()) {
-      case 'pending':
-      case 'pendingapproval':
-        return colors.warning;
-      case 'claimed':
-        return colors.warning;
-      case 'accepted':
-      case 'inprogress':
-        return colors.success;
-      case 'completed':
-        return colors.primary;
-      case 'declined':
-      case 'cancelled':
-        return colors.danger;
-      default:
-        return colors.textTertiary;
-    }
-  };
 
   // Check if chat is available for this order (when claimed or accepted)
   const canChat = (order: RepairOrder) => {
@@ -151,15 +139,17 @@ export default function CustomerQuotesScreen() {
   const getFilterCount = (f: FilterType) => {
     return orders.filter(order => {
       const status = (order.status || '').toLowerCase();
+      // Exclude pending from all counts
+      if (status === 'pending' || status === 'pendingapproval') {
+        return false;
+      }
       switch (f) {
-        case 'pending':
-          return status === 'pending' || status === 'pendingapproval' || status === 'claimed';
         case 'active':
-          return status === 'accepted' || status === 'inprogress' || status === 'scheduled';
+          return status === 'accepted' || status === 'inprogress' || status === 'scheduled' || status === 'claimed';
         case 'completed':
           return status === 'completed';
         case 'cancelled':
-          return status === 'cancelled' || status === 'declined';
+          return status === 'cancelled' || status === 'declined' || status === 'declinedbycustomer' || status === 'cancelledbymechanic';
         default:
           return true;
       }
@@ -191,7 +181,7 @@ export default function CustomerQuotesScreen() {
           style={styles.filterScroll}
           contentContainerStyle={styles.filterContainer}
         >
-          {(['all', 'pending', 'active', 'completed', 'cancelled'] as FilterType[]).map((f) => (
+          {(['all', 'active', 'completed', 'cancelled'] as FilterType[]).map((f) => (
             <Pressable 
               key={f} 
               style={[styles.filterBtn, filter === f && styles.filterBtnActive]} 
@@ -205,9 +195,8 @@ export default function CustomerQuotesScreen() {
         </ScrollView>
 
         {/* Empty State */}
-        {filteredOrders.length === 0 && (
+        {nonPendingOrders.length === 0 && (
           <View style={styles.emptyState}>
-            <Package size={48} color={colors.textTertiary} />
             <Text style={styles.emptyTitle}>No orders found</Text>
             <Text style={styles.emptySubtext}>
               {filter === 'all' 
@@ -217,108 +206,7 @@ export default function CustomerQuotesScreen() {
           </View>
         )}
 
-        {/* Custom Quotes Section */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <FileText size={20} color={colors.primary} />
-            <Text style={styles.sectionTitle}>Custom Quotes</Text>
-          </View>
-          <Text style={styles.sectionSubtitle}>Quotes created by mechanics for you</Text>
-          
-          {customQuotes.length === 0 ? (
-            <Card style={styles.emptyCard}>
-              <Card.Content>
-                <Text style={styles.empty}>No custom quotes yet.</Text>
-              </Card.Content>
-            </Card>
-          ) : (
-            customQuotes.map(order => (
-              <Card key={order.id} style={styles.card}>
-                <Card.Content>
-                  <View style={styles.cardHeader}>
-                    <Text style={styles.cardTitle}>{order.vehicleInfo || 'Vehicle Service'}</Text>
-                    <View style={[styles.statusBadge, { backgroundColor: getStatusColor(order.status) + '20' }]}>
-                      <Text style={[styles.statusText, { color: getStatusColor(order.status) }]}>
-                        {order.status?.toUpperCase() || 'PENDING'}
-                      </Text>
-                    </View>
-                  </View>
-
-                {order.providerName && (
-                  <Text style={styles.cardSubtext}>From: {order.providerName}</Text>
-                )}
-                
-                {order.description && (
-                  <Text style={styles.cardDescription}>{order.description}</Text>
-                )}
-                
-                {order.items && order.items.length > 0 && (
-                  <View style={styles.itemsList}>
-                    {order.items.map((item, idx) => (
-                      <View key={idx} style={styles.itemRow}>
-                        <Text style={styles.itemName}>{item.name}</Text>
-                        <Text style={styles.itemPrice}>${item.price?.toFixed(2)}</Text>
-                      </View>
-                    ))}
-                  </View>
-                )}
-                
-                {order.totalPrice != null && (
-                  <View style={styles.totalRow}>
-                    <Text style={styles.totalLabel}>Total</Text>
-                    <Text style={styles.totalPrice}>${order.totalPrice.toFixed(2)}</Text>
-                  </View>
-                )}
-                
-                {/* Accept/Decline buttons for pending quotes */}
-                {(order.status?.toLowerCase() === 'pendingapproval' || order.status?.toLowerCase() === 'pending') && (
-                  <View style={styles.buttonRow}>
-                    <ThemedButton
-                      variant="danger"
-                      onPress={() => declineOrder(order.id)}
-                      style={styles.buttonFlex}
-                    >
-                      Decline
-                    </ThemedButton>
-                    <ThemedButton
-                      variant="primary"
-                      onPress={() => acceptOrder(order.id)}
-                      style={styles.buttonFlex}
-                    >
-                      Accept Quote
-                    </ThemedButton>
-                  </View>
-                )}
-                
-                {/* Chat button for claimed/accepted orders */}
-                {canChat(order) && (
-                  <View style={styles.buttonRow}>
-                    <ThemedButton
-                      variant="outlined"
-                      onPress={() => handleOpenChat(order.id)}
-                      icon="message"
-                      style={styles.buttonFlex}
-                    >
-                      {order.status?.toLowerCase() === 'claimed' 
-                        ? 'Chat with Mechanic' 
-                        : 'Message Mechanic'}
-                    </ThemedButton>
-                  </View>
-                )}
-                
-                {/* Show provider info for claimed orders */}
-                {order.status?.toLowerCase() === 'claimed' && order.providerName && (
-                  <Text style={styles.claimedNote}>
-                    🔧 {order.providerName} is reviewing your request
-                  </Text>
-                )}
-                </Card.Content>
-              </Card>
-            ))
-          )}
-        </View>
-
-        {/* Standard Orders Section */}
+        {/* My Requests Section */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Clock size={20} color={colors.primary} />
@@ -326,62 +214,37 @@ export default function CustomerQuotesScreen() {
           </View>
           <Text style={styles.sectionSubtitle}>Repair orders you've submitted</Text>
           
-          {standardOrders.length === 0 ? (
+          {nonPendingOrders.length === 0 ? (
             <Card style={styles.emptyCard}>
               <Card.Content>
                 <Text style={styles.empty}>No repair requests yet.</Text>
               </Card.Content>
             </Card>
           ) : (
-            standardOrders.map(order => (
-              <Card key={order.id} style={styles.card}>
-                <Card.Content>
-                  <View style={styles.cardHeader}>
-                    <Text style={styles.cardTitle}>{order.vehicleInfo || 'Vehicle Service'}</Text>
-                    <View style={[styles.statusBadge, { backgroundColor: getStatusColor(order.status) + '20' }]}>
-                      <Text style={[styles.statusText, { color: getStatusColor(order.status) }]}>
-                        {order.status?.toUpperCase() || 'PENDING'}
-                      </Text>
-                    </View>
-                  </View>
-                  
-                  {order.categories && order.categories.length > 0 && (
-                    <Text style={styles.cardSubtext}>{order.categories.join(', ')}</Text>
-                  )}
-                  
-                  {order.description && (
-                    <Text style={styles.cardDescription} numberOfLines={2}>{order.description}</Text>
-                  )}
-                  
-                  {order.locationDetails?.address && (
-                    <Text style={styles.cardLocation}>📍 {order.locationDetails.address}</Text>
-                  )}
-                  
-                  {/* Chat button for claimed/accepted orders */}
-                  {canChat(order) && (
-                    <View style={styles.buttonRow}>
-                      <ThemedButton
-                        variant="outlined"
-                        onPress={() => handleOpenChat(order.id)}
-                        icon="message"
-                        style={styles.buttonFlex}
-                      >
-                        {order.status?.toLowerCase() === 'claimed' 
-                          ? 'Chat with Mechanic' 
-                          : 'Message Mechanic'}
-                      </ThemedButton>
-                    </View>
-                  )}
-                  
-                  {/* Show provider info for claimed orders */}
-                  {order.status?.toLowerCase() === 'claimed' && order.providerName && (
-                    <Text style={styles.claimedNote}>
-                      🔧 {order.providerName} is reviewing your request
-                    </Text>
-                  )}
-                </Card.Content>
-              </Card>
-            ))
+            nonPendingOrders.map(order => {
+              const orderCardData: OrderCardData = {
+                id: order.id,
+                vehicleInfo: order.vehicleInfo,
+                description: order.description,
+                serviceType: order.categories?.[0] || undefined,
+                locationDetails: order.locationDetails,
+                status: order.status,
+                providerName: order.providerName,
+                orderType: order.orderType,
+                totalPrice: order.totalPrice,
+                items: order.items,
+              };
+
+              return (
+                <OrderCard
+                  key={order.id}
+                  order={orderCardData}
+                  onPress={() => handleOpenChat(order.id)}
+                  onMessagePress={() => handleOpenChat(order.id)}
+                  showMessageButton={canChat(order)}
+                />
+              );
+            })
           )}
         </View>
       </ScrollView>
@@ -502,120 +365,6 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_500Medium',
   },
   
-  card: { 
-    borderWidth: 1.5, 
-    borderColor: colors.border, 
-    borderRadius: 16, 
-    padding: 16, 
-    backgroundColor: colors.surface, 
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 8,
-  },
-  cardTitle: { 
-    color: colors.textPrimary, 
-    fontFamily: 'Inter_600SemiBold', 
-    fontSize: 16,
-    flex: 1,
-    marginRight: 8,
-  },
-  cardSubtext: {
-    color: colors.textTertiary,
-    fontFamily: 'Inter_500Medium',
-    fontSize: 13,
-    marginBottom: 6,
-  },
-  cardDescription: { 
-    color: colors.textSecondary,
-    fontFamily: 'Inter_400Regular',
-    fontSize: 14,
-    marginBottom: 8,
-  },
-  cardLocation: {
-    color: colors.textTertiary,
-    fontFamily: 'Inter_400Regular',
-    fontSize: 13,
-    marginTop: 4,
-  },
-  
-  statusBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  statusText: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 11,
-  },
-  
-  itemsList: {
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  itemRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 6,
-  },
-  itemName: {
-    color: colors.textSecondary,
-    fontFamily: 'Inter_400Regular',
-    fontSize: 14,
-  },
-  itemPrice: {
-    color: colors.textPrimary,
-    fontFamily: 'Inter_500Medium',
-    fontSize: 14,
-  },
-  
-  totalRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  totalLabel: {
-    color: colors.textPrimary,
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 15,
-  },
-  totalPrice: {
-    color: colors.primary,
-    fontFamily: 'Inter_700Bold',
-    fontSize: 18,
-  },
-  
-  buttonRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 16,
-    gap: 10,
-  },
-  buttonFlex: {
-    flex: 1,
-  },
-  claimedNote: {
-    color: colors.warning,
-    fontFamily: 'Inter_500Medium',
-    fontSize: 13,
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
 });
 
 

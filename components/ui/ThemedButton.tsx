@@ -42,11 +42,15 @@ export function ThemedButton({
     ? '#FFFFFF'
     : '#FFFFFF';
   
+  // Extract iconColor from props if provided, otherwise use textColor for icons
+  const iconColor = (props as any).iconColor || textColor;
+  
   return (
     <Button 
       mode={mode}
       buttonColor={buttonColor}
       textColor={textColor}
+      iconColor={iconColor}
       disabled={disabled || loading}
       loading={loading}
       style={[

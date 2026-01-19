@@ -114,12 +114,12 @@ const RequestCard: React.FC<RequestCardProps> = ({ item, navigation }) => {
 // Styles (copied and slightly adjusted from RequestsScreen)
 const styles = StyleSheet.create({
   requestCard: {
-    backgroundColor: 'rgba(122, 137, 255, 0.1)',
+    backgroundColor: '#7A89FF', // Solid blue background
     borderRadius: 12,
     padding: 16,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#2A3555',
+    borderColor: '#5B6AE8',
     position: 'relative', // Needed for cardLine
     overflow: 'hidden', // Ensure content stays within rounded corners
   },

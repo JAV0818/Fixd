@@ -6,6 +6,8 @@ import ServiceOrderList from '@/components/orders/ServiceOrderList';
 import { RepairOrder } from '@/types/orders';
 import { Order as DisplayOrder } from '@/components/orders/OrderCard';
 import { globalStyles, colors } from '@/styles/theme';
+import { useReview } from '@/contexts/ReviewContext';
+import { RepairOrder } from '@/types/orders';
 
 // Types for filter options
 type FilterType = 'All' | 'Active' | 'PendingApproval' | 'Scheduled' | 'Completed' | 'Cancelled';
@@ -17,6 +19,8 @@ export default function OrdersScreen() {
   const [error, setError] = useState('');
   const [pageSize, setPageSize] = useState<number>(10);
   const [currentPage, setCurrentPage] = useState<number>(1);
+  const { showReviewForOrder } = useReview();
+  const [previousOrderStatuses, setPreviousOrderStatuses] = useState<Record<string, string>>({});
 
   const filterOptions: FilterType[] = ['All', 'Active', 'PendingApproval', 'Scheduled', 'Completed', 'Cancelled'];
 
@@ -44,12 +48,32 @@ export default function OrdersScreen() {
         const createdAt = data.createdAt?.toDate ? data.createdAt.toDate() : new Date();
         const scheduledAt = data.scheduledAt?.toDate ? data.scheduledAt.toDate() : null;
         
+        const orderId = doc.id;
+        const currentStatus = data.status;
+        const previousStatus = previousOrderStatuses[orderId];
+        
+        // Check if order just changed to Completed
+        if (previousStatus && previousStatus !== 'Completed' && currentStatus === 'Completed') {
+          // Order just completed - trigger review modal
+          const repairOrder: RepairOrder = {
+            id: orderId,
+            ...data,
+          } as RepairOrder;
+          
+          // Only show if customer hasn't rated yet
+          if (!repairOrder.customerRating) {
+            setTimeout(() => {
+              showReviewForOrder(repairOrder, 'customer');
+            }, 1000); // Small delay to let UI update
+          }
+        }
+        
         // Map RepairOrder to DisplayOrder format
         const displayOrder: DisplayOrder = {
-          id: doc.id,
+          id: orderId,
           items: data.items || [],
           totalPrice: data.totalPrice || 0,
-          status: data.status,
+          status: currentStatus,
           createdAt,
           customerId: data.customerId,
           locationDetails: data.locationDetails || { address: '' },
@@ -59,6 +83,14 @@ export default function OrdersScreen() {
         
         return displayOrder;
       });
+      
+      // Update previous statuses
+      const newStatuses: Record<string, string> = {};
+      fetchedOrders.forEach(order => {
+        newStatuses[order.id] = order.status;
+      });
+      setPreviousOrderStatuses(prev => ({ ...prev, ...newStatuses }));
+      
       setOrders(fetchedOrders);
       setLoading(false);
     }, (err) => {

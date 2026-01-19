@@ -241,7 +241,9 @@ export default function CreateCustomChargeScreen({ navigation }: Props) {
                 mode="outlined"
                 left={<PaperTextInput.Icon icon="account-search" />}
                 autoCapitalize="none"
-                style={styles.input}
+                style={styles.searchInput}
+                contentStyle={styles.searchInputContent}
+                dense={false}
               />
               {isSearching && <ActivityIndicator style={styles.loader} color={colors.primary} />}
               <View style={styles.resultsList}>
@@ -311,7 +313,7 @@ export default function CreateCustomChargeScreen({ navigation }: Props) {
                   label="Additional Notes (e.g., Apt #, gate code)"
                   value={locationDetails.additionalNotes}
                   onChangeText={val => setLocationDetails(p => ({...p, additionalNotes: val}))}
-                  mode="outlined"
+                  mode="flat"
                   multiline
                   numberOfLines={3}
                   style={styles.textArea}
@@ -382,7 +384,9 @@ export default function CreateCustomChargeScreen({ navigation }: Props) {
                     value={currentItemDesc}
                     onChangeText={setCurrentItemDesc}
                     mode="outlined"
-                    style={[styles.input, {flex: 1, marginRight: 8}]}
+                    style={[styles.inputMUI, {flex: 1, marginRight: 8, marginBottom: 0}]}
+                    contentStyle={styles.serviceItemInputContent}
+                    dense={true}
                   />
                   <PaperTextInput
                     label="Price"
@@ -390,7 +394,9 @@ export default function CreateCustomChargeScreen({ navigation }: Props) {
                     onChangeText={setCurrentItemPrice}
                     mode="outlined"
                     keyboardType="numeric"
-                    style={[styles.input, {width: 100, marginRight: 8}]}
+                    style={[styles.inputMUI, {width: 100, marginRight: 8, marginBottom: 0}]}
+                    contentStyle={styles.serviceItemInputContent}
+                    dense={true}
                   />
                   <TouchableOpacity style={styles.addItemButton} onPress={handleAddLineItem}>
                     <PlusCircle size={24} color={colors.primary} />
@@ -423,6 +429,8 @@ export default function CreateCustomChargeScreen({ navigation }: Props) {
                 disabled={isSubmitting || lineItems.length === 0}
                 loading={isSubmitting}
                 icon="send"
+                iconColor="#FFFFFF"
+                textColor="#FFFFFF"
                 style={styles.sendButton}
               >
                 Create Custom Quote
@@ -473,17 +481,21 @@ const styles = StyleSheet.create({
   },
   inputIcon: { marginRight: 8 },
   input: { flex: 1, height: '100%', color: colors.textPrimary, fontFamily: 'Inter_400Regular', fontSize: 15 },
-  inputMUI: { 
-    height: 52, 
-    color: colors.textPrimary, 
-    fontFamily: 'Inter_400Regular', 
-    fontSize: 15, 
-    backgroundColor: colors.surfaceAlt, 
-    borderRadius: 12, 
-    paddingHorizontal: 14, 
-    borderWidth: 1, 
-    borderColor: colors.primary, 
+  searchInput: {
+    backgroundColor: colors.surfaceAlt,
     marginBottom: 12,
+  },
+  searchInputContent: {
+    paddingHorizontal: 12,
+    paddingVertical: 0,
+  },
+  inputMUI: { 
+    backgroundColor: colors.surfaceAlt, 
+    marginBottom: 12,
+  },
+  serviceItemInputContent: {
+    minHeight: 40,
+    paddingVertical: 8,
   },
   textArea: { 
     minHeight: 100, 
@@ -492,8 +504,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceAlt, 
     borderRadius: 12, 
     paddingHorizontal: 14, 
-    borderWidth: 1, 
-    borderColor: colors.primary, 
     color: colors.textPrimary, 
     fontFamily: 'Inter_400Regular', 
     fontSize: 15,
@@ -511,16 +521,11 @@ const styles = StyleSheet.create({
   customerEmail: { color: colors.textTertiary, fontFamily: 'Inter_400Regular', fontSize: 13, marginTop: 2 },
   selectedCustomerContainer: { 
     padding: 16, 
-    backgroundColor: colors.surface, 
-    borderRadius: 16, 
+    backgroundColor: colors.surfaceAlt, 
+    borderRadius: 12, 
     borderColor: colors.primary, 
-    borderWidth: 1.5, 
+    borderWidth: 1, 
     marginBottom: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
   },
   selectedCustomerInfo: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   selectedCustomerName: { fontSize: 16, fontFamily: 'Inter_600SemiBold', color: colors.textPrimary },

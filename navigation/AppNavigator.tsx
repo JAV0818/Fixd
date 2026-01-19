@@ -7,9 +7,9 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { auth, firestore } from '@/lib/firebase'; 
 import LoginScreen from '@/screens/auth/LoginScreen';
 import SignupScreen from '@/screens/auth/SignupScreen';
-import CustomerNavigator from './CustomerNavigator'; // Your Bottom Tab Navigator
-import ProviderTabNavigator from './ProviderTabNavigator'; // Your Provider Tab Navigator
-import AdminTabNavigator from './AdminTabNavigator';
+import CustomerNavigator, { CustomerTabParamList } from './CustomerNavigator'; // Your Bottom Tab Navigator
+import ProviderTabNavigator, { ProviderTabParamList } from './ProviderTabNavigator'; // Your Provider Tab Navigator
+// import AdminTabNavigator from './AdminTabNavigator'; // TODO: Admin flow - disabled for now
 import ProviderDashboardScreen from '@/screens/provider/ProviderDashboardScreen'; // Assuming this exists
 import RequestDetailScreen from '@/screens/provider/RequestDetailScreen';
 import RequestStartScreen from '@/screens/provider/RequestStartScreen';
@@ -18,6 +18,7 @@ import RequestContactScreen from '@/screens/provider/RequestContactScreen';
 import PerformanceDetailsScreen from '@/screens/provider/PerformanceDetailsScreen';
 import AccountSettingsScreen from '@/screens/provider/AccountSettingsScreen';
 import UpdateStatusScreen from '@/screens/provider/UpdateStatusScreen'; // Import the new screen
+import InspectionChecklistScreen from '@/screens/provider/InspectionChecklistScreen';
 import ServiceDetailScreen from '@/screens/customer/ServiceDetailScreen'; // Generic Detail Screen
 import BatteryJumpStartScreen from '@/screens/customer/BatteryJumpStartScreen'; // Import the new screen
 import ServiceScheduleScreen from '@/screens/customer/ServiceScheduleScreen';
@@ -31,7 +32,7 @@ import UpdateEmailScreen from '@/screens/customer/UpdateEmailScreen'; // Import 
 import CustomQuoteDetailScreen from '@/screens/customer/CustomQuoteDetailScreen'; // Import the new quote detail screen
 import HelpMeChooseScreen from '@/screens/customer/HelpMeChooseScreen';
 import CustomQuoteRequestScreen from '@/screens/customer/CustomQuoteRequestScreen';
-import AdminRequestsScreen from '@/screens/admin/AdminRequestsScreen';
+// import AdminRequestsScreen from '@/screens/admin/AdminRequestsScreen'; // TODO: Admin flow - disabled for now
 import CustomerQuotesScreen from '@/screens/customer/CustomerQuotesScreen';
 // import SupportChatScreen from '@/screens/shared/SupportChatScreen';
 import SplashScreen from '../components/ui/SplashScreen';
@@ -46,7 +47,7 @@ export type RootStackParamList = {
   Auth: undefined;
   Customer: NavigatorScreenParams<CustomerTabParamList>;
   Provider: NavigatorScreenParams<ProviderTabParamList>;
-  Admin: NavigatorScreenParams<AdminTabParamList>;
+  // Admin: NavigatorScreenParams<AdminTabParamList>; // TODO: Admin flow - disabled for now
   // Add other screens here that are not part of the tab navigators
   ServiceDetail: { id: string, vehicleId?: string | null };
   AddVehicle: undefined;
@@ -55,6 +56,13 @@ export type RootStackParamList = {
   RequestQuote: undefined;
   CustomerQuotes: undefined;
   Support: { chatId?: string, customerId?: string };
+  CreateCustomCharge: undefined;
+  RequestDetail: { orderId: string };
+  RequestStart: { orderId: string; inspectionCompleted?: boolean };
+  RequestCancel: { orderId: string };
+  RequestContact: { orderId: string };
+  UpdateStatus: { orderId: string };
+  InspectionChecklist: { orderId: string; readOnly?: boolean };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -134,26 +142,31 @@ export default function AppNavigator() {
       {user ? (
         // User is signed in
         role === 'admin' ? (
+          // TODO: Admin flow - temporarily using provider navigator
+          // Admin screens have been removed to avoid confusion
           <>
-            <Stack.Screen name="ProviderApp" component={AdminTabNavigator} />
+            <Stack.Screen name="ProviderApp" component={ProviderTabNavigator} />
             <Stack.Screen name="CreateCustomCharge" component={CreateCustomChargeScreen} />
             <Stack.Screen name="RequestDetail" component={RequestDetailScreen} />
             <Stack.Screen name="RequestContact" component={RequestContactScreen} />
             <Stack.Screen name="RequestStart" component={RequestStartScreen} />
             <Stack.Screen name="UpdateStatus" component={UpdateStatusScreen} />
+            <Stack.Screen name="InspectionChecklist" component={InspectionChecklistScreen} />
           </>
         ) : role === 'provider' ? (
           <>
             <Stack.Screen name="ProviderApp" component={ProviderTabNavigator} />
-            {/* Provider screens - REMOVE THESE - Handled by ProviderNavigator */}
-            {/* 
+            <Stack.Screen name="CreateCustomCharge" component={CreateCustomChargeScreen} />
             <Stack.Screen name="RequestDetail" component={RequestDetailScreen} />
             <Stack.Screen name="RequestStart" component={RequestStartScreen} />
             <Stack.Screen name="RequestCancel" component={RequestCancelScreen} />
             <Stack.Screen name="RequestContact" component={RequestContactScreen} />
+            <Stack.Screen name="UpdateStatus" component={UpdateStatusScreen} />
+            <Stack.Screen name="InspectionChecklist" component={InspectionChecklistScreen} />
+            {/* Provider screens - REMOVE THESE - Handled by ProviderNavigator */}
+            {/* 
             <Stack.Screen name="PerformanceDetails" component={PerformanceDetailsScreen} />
             <Stack.Screen name="AccountSettings" component={AccountSettingsScreen} />
-            <Stack.Screen name="UpdateStatus" component={UpdateStatusScreen} />
             */}
           </>
         ) : (
@@ -176,7 +189,7 @@ export default function AppNavigator() {
             <Stack.Screen name="RequestQuote" component={CustomQuoteRequestScreen} />
             <Stack.Screen name="CustomerQuotes" component={CustomerQuotesScreen} />
             {/* <Stack.Screen name="Support" component={SupportChatScreen} /> */}
-            <Stack.Screen name="AdminRequests" component={AdminRequestsScreen} />
+            {/* <Stack.Screen name="AdminRequests" component={AdminRequestsScreen} /> TODO: Admin flow - disabled for now */}
           </>
         )
       ) : (

@@ -1,277 +1,279 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, Alert, TextInput } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { auth, firestore } from '@/lib/firebase';
-import { collection, onSnapshot, query, where, addDoc, serverTimestamp } from 'firebase/firestore';
-import { componentStyles, colors, globalStyles } from '@/styles/theme';
-
-type QuoteRequest = {
-  id: string;
-  customerId: string;
-  vehicleInfo?: string;
-  description: string;
-  preferredTime?: string;
-  status: 'draft' | 'submitted' | 'published' | 'assigned' | 'closed';
-};
-
-type MechanicQuote = {
-  id: string;
-  requestId: string;
-  mechanicId: string;
-};
+import React, { useEffect, useMemo, useState, useRef } from 'react';
+import { View, Text, StyleSheet, FlatList, Pressable, ActivityIndicator, TouchableOpacity, RefreshControl } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { firestore } from '@/lib/firebase';
+import { collection, query, where, onSnapshot, Timestamp, orderBy } from 'firebase/firestore';
+import { colors, globalStyles, componentStyles } from '@/styles/theme';
+import { RepairOrder } from '@/types/orders';
+import RequestCard from '@/components/provider/RequestCard';
+import { PlusCircle, ChevronLeft, ChevronRight } from 'lucide-react-native';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '@/navigation/AppNavigator';
 
 export default function QuoteMarketplaceScreen() {
-  const [requests, setRequests] = useState<QuoteRequest[]>([]);
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const insets = useSafeAreaInsets();
+  const [requests, setRequests] = useState<RepairOrder[]>([]);
   const [loading, setLoading] = useState(true);
-  const [openFormFor, setOpenFormFor] = useState<string | null>(null);
-  const [amountText, setAmountText] = useState('');
-  const [messageText, setMessageText] = useState('');
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
-  const [myQuotes, setMyQuotes] = useState<Record<string, boolean>>({});
-
-  useEffect(() => {
-    const q = query(collection(firestore, 'quoteRequests'), where('status', '==', 'published'));
-    const unsub = onSnapshot(q, (snap) => {
-      const rows: QuoteRequest[] = snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
-      setRequests(rows);
-      setLoading(false);
-    }, (err) => {
-      console.error(err);
-      setLoading(false);
-    });
-    return () => unsub();
-  }, []);
-
-  useEffect(() => {
-    if (!auth.currentUser) return;
-    // Listen to quotes submitted by the current mechanic
-    const quotesQuery = query(
-      collection(firestore, 'mechanicQuotes'),
-      where('mechanicId', '==', auth.currentUser.uid)
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const flatListRef = useRef<FlatList>(null);
+  const [pageSize, setPageSize] = useState<number>(10);
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  
+  // Tab bar height (from CustomTabBar: 85px total)
+  const TAB_BAR_HEIGHT = 85;
+  
+  // Fetch pending requests
+  const fetchRequests = () => {
+    const ordersRef = collection(firestore, 'repair-orders');
+    // Fetch pending requests; filter unassigned and sort client-side to avoid index/null issues
+    const q = query(
+      ordersRef,
+      where('status', '==', 'Pending')
     );
-    const unsub = onSnapshot(quotesQuery, (snap) => {
-      const submittedQuotes: Record<string, boolean> = {};
-      snap.docs.forEach(doc => {
-        const data = doc.data() as MechanicQuote;
-        if (data.requestId) {
-          submittedQuotes[data.requestId] = true;
-        }
-      });
-      setMyQuotes(submittedQuotes);
-    });
-    return () => unsub();
-  }, []);
 
-  const handleSubmitQuote = async (request: QuoteRequest) => {
-    if (!auth.currentUser) return;
-    try {
-      const amount = parseFloat(amountText);
-      if (!openFormFor || openFormFor !== request.id) {
-        setOpenFormFor(request.id);
-        return;
+    return onSnapshot(q, 
+      (querySnapshot) => {
+        const fetched = querySnapshot.docs.map(d => ({ id: d.id, ...d.data() } as RepairOrder));
+        // Only unassigned requests (no provider yet)
+        const unassigned = fetched.filter(r => !(r as any).providerId);
+        // Sort newest first by createdAt if available
+        const sorted = unassigned.sort((a: any, b: any) => {
+          const aDate = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : 0;
+          const bDate = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : 0;
+          return bDate - aDate;
+        });
+        setRequests(sorted);
+        setLoading(false);
+        setRefreshing(false);
+      },
+      (err) => {
+        console.error("Error fetching requests:", err);
+        setError("Failed to load requests. Please try again later.");
+        setLoading(false);
+        setRefreshing(false);
       }
-      if (isNaN(amount) || amount <= 0) {
-        Alert.alert('Enter price', 'Please enter a valid quote amount.');
-        return;
-      }
-      await addDoc(collection(firestore, 'mechanicQuotes'), {
-        requestId: request.id,
-        customerId: request.customerId,
-        mechanicId: auth.currentUser.uid,
-        amount,
-        message: messageText.trim() || null,
-        approved: false,
-        accepted: false,
-        createdAt: serverTimestamp(),
-      });
-      Alert.alert('Submitted', 'Your quote was submitted. Awaiting admin approval.');
-      setOpenFormFor(null);
-      setAmountText('');
-      setMessageText('');
-    } catch (e: any) {
-      Alert.alert('Error', e?.message || 'Could not submit quote');
-    }
+    );
   };
 
+  useEffect(() => {
+    setLoading(true);
+    setError(null);
+    const unsubscribe = fetchRequests();
+    // Cleanup listener on unmount
+    return () => unsubscribe();
+  }, []);
+
+  // Handle pull-to-refresh
+  const onRefresh = () => {
+    setRefreshing(true);
+    setCurrentPage(1); // Reset to first page on refresh
+    // The onSnapshot listener will automatically update the data
+    // We just need to wait a moment for it to sync
+    setTimeout(() => {
+      setRefreshing(false);
+    }, 500);
+  };
+
+  // Derived pagination values
+  const totalPages = useMemo(() => {
+    return Math.max(1, Math.ceil(requests.length / pageSize));
+  }, [requests, pageSize]);
+
+  const pagedRequests = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    const end = start + pageSize;
+    return requests.slice(start, end);
+  }, [requests, currentPage, pageSize]);
+
+  const goPrev = () => setCurrentPage(p => Math.max(1, p - 1));
+  const goNext = () => setCurrentPage(p => Math.min(totalPages, p + 1));
+
+  // Reset to first page when data size changes and currentPage is out of range
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(1);
+    }
+  }, [totalPages]);
+
+  // Loading State
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.center}> 
-          <ActivityIndicator color={colors.accent} />
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>Loading Requests...</Text>
         </View>
       </SafeAreaView>
     );
   }
 
+  // Error State
+  if (error) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.center}> 
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // If no requests after loading
+  if (requests.length === 0) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}> 
+          <Text style={styles.title}>Requests</Text>
+          <TouchableOpacity 
+            style={styles.addButton}
+            onPress={() => navigation.navigate('CreateCustomCharge' as never)}
+          >
+            <PlusCircle size={28} color={colors.primary} />
+          </TouchableOpacity>
+        </View>
+        <View style={styles.center}>
+          <Text style={styles.emptyText}>NO PENDING REQUESTS</Text>
+          <Text style={styles.emptySubtext}>New requests will appear here when available.</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Main content with requests
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.title}>Open Requests</Text>
-        {requests.length === 0 ? (
-          <Text style={styles.empty}>No published requests.</Text>
-        ) : (
-          requests.map(req => (
-            <View key={req.id} style={[globalStyles?.card, styles.card]}> 
-              <Text style={styles.cardTitle}>{req.vehicleInfo || 'Vehicle'}</Text>
-              <Text style={styles.cardText}>{req.description}</Text>
-              {!!req.preferredTime && (
-                <Text style={styles.cardHint}>
-                  Preferred: {(() => {
-                    try {
-                      const d = new Date(req.preferredTime);
-                      return d.toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
-                    } catch { return String(req.preferredTime); }
-                  })()}
-                </Text>
-              )}
-
+      <View style={styles.header}>
+        <Text style={styles.title}>Requests</Text>
+        <TouchableOpacity 
+          style={styles.addButton}
+          onPress={() => navigation.navigate('CreateCustomCharge' as never)}
+        >
+          <PlusCircle size={28} color={colors.primary} />
+        </TouchableOpacity>
+      </View>
+      <FlatList
+        ref={flatListRef}
+        data={pagedRequests}
+        renderItem={({ item }) => <RequestCard item={item} navigation={navigation as any} />}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={styles.listContent}
+        showsVerticalScrollIndicator={false}
+        contentInsetAdjustmentBehavior="automatic"
+        contentInset={{ bottom: TAB_BAR_HEIGHT }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+            progressViewOffset={20}
+          />
+        }
+        ListFooterComponent={
+          <View style={styles.paginationContainer}>
+            <View style={styles.pagerRow}>
               <Pressable
-                style={[componentStyles.tealButton, { alignItems: 'center', marginTop: 10 }]}
-                onPress={() => setExpanded(prev => ({ ...prev, [req.id]: !prev[req.id] }))}
+                accessibilityLabel="Previous page"
+                onPress={goPrev}
+                disabled={currentPage === 1}
+                style={({ pressed }) => [
+                  componentStyles.tealIconButton,
+                  pressed && componentStyles.tealButtonPressed,
+                  currentPage === 1 && componentStyles.tealButtonDisabled,
+                ]}
               >
-                <Text style={{ color: colors.accent, fontFamily: 'Inter_600SemiBold' }}>
-                  {expanded[req.id] ? 'Hide Details' : 'View Details'}
-                </Text>
+                <ChevronLeft size={18} color={currentPage === 1 ? colors.textLight : colors.primary} />
               </Pressable>
-
-              {expanded[req.id] && (
-                <View style={styles.detailsBox}>
-                  {!!(req as any).issueCategory && (
-                    <View style={styles.detailRow}>
-                      <Text style={styles.detailLabel}>Category</Text>
-                      <Text style={styles.detailValue}>{String((req as any).issueCategory)}</Text>
-                    </View>
-                  )}
-                  {!!(req as any).vin && (
-                    <View style={styles.detailRow}>
-                      <Text style={styles.detailLabel}>VIN</Text>
-                      <Text style={styles.detailValue}>{String((req as any).vin)}</Text>
-                    </View>
-                  )}
-                  {!!(req as any).mileage && (
-                    <View style={styles.detailRow}>
-                      <Text style={styles.detailLabel}>Mileage</Text>
-                      <Text style={styles.detailValue}>{String((req as any).mileage)}</Text>
-                    </View>
-                  )}
-                  {!!(req as any).driveable && (
-                    <View style={styles.detailRow}>
-                      <Text style={styles.detailLabel}>Driveable</Text>
-                      <Text style={styles.detailValue}>{String((req as any).driveable)}</Text>
-                    </View>
-                  )}
-                  {!!(req as any).hasWarningLights && (
-                    <View style={styles.detailRow}>
-                      <Text style={styles.detailLabel}>Warning Lights</Text>
-                      <Text style={styles.detailValue}>{String((req as any).hasWarningLights)}</Text>
-                    </View>
-                  )}
-                  {!!(req as any).serviceLocation && (
-                    <View style={styles.detailRow}>
-                      <Text style={styles.detailLabel}>Location</Text>
-                      <Text style={styles.detailValue}>{String((req as any).serviceLocation)}</Text>
-                    </View>
-                  )}
-                </View>
-              )}
-              {openFormFor === req.id ? (
-                <View style={{ marginTop: 10 }}>
-                  <Text style={styles.formLabel}>Quote amount (USD)</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="e.g., 125.00"
-                    placeholderTextColor="#6E7191"
-                    keyboardType="numeric"
-                    value={amountText}
-                    onChangeText={setAmountText}
-                  />
-                  <Text style={styles.formLabel}>Message (optional)</Text>
-                  <TextInput
-                    style={[styles.input, { minHeight: 80, textAlignVertical: 'top' }]}
-                    placeholder="Notes for admin/customer"
-                    placeholderTextColor="#6E7191"
-                    multiline
-                    value={messageText}
-                    onChangeText={setMessageText}
-                  />
-                  <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
-                    <Pressable style={[componentStyles.tealButton, { flex: 1, alignItems: 'center' }]} onPress={() => handleSubmitQuote(req)}>
-                      <Text style={{ color: colors.accent, fontFamily: 'Inter_600SemiBold' }}>Submit</Text>
-                    </Pressable>
-                    <Pressable style={[componentStyles.tealButton, { flex: 1, alignItems: 'center' }]} onPress={() => { setOpenFormFor(null); setAmountText(''); setMessageText(''); }}>
-                      <Text style={{ color: colors.accent, fontFamily: 'Inter_600SemiBold' }}>Cancel</Text>
-                    </Pressable>
-                  </View>
-                </View>
-              ) : myQuotes[req.id] ? (
-                <View style={styles.submittedContainer}>
-                  <Text style={styles.submittedText}>You have already submitted a quote for this request.</Text>
-                </View>
-              ) : (
-                <Pressable style={[componentStyles.tealButton, { alignItems: 'center', marginTop: 10 }]} onPress={() => setOpenFormFor(req.id)}>
-                  <Text style={{ color: colors.accent, fontFamily: 'Inter_600SemiBold' }}>Submit Quote</Text>
-                </Pressable>
-              )}
+              <Text style={styles.pagerLabel}>Page {currentPage} of {totalPages}</Text>
+              <Pressable
+                accessibilityLabel="Next page"
+                onPress={goNext}
+                disabled={currentPage === totalPages}
+                style={({ pressed }) => [
+                  componentStyles.tealIconButton,
+                  pressed && componentStyles.tealButtonPressed,
+                  currentPage === totalPages && componentStyles.tealButtonDisabled,
+                ]}
+              >
+                <ChevronRight size={18} color={currentPage === totalPages ? colors.textLight : colors.primary} />
+              </Pressable>
             </View>
-          ))
-        )}
-      </ScrollView>
+          </View>
+        }
+      />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  content: { padding: 16 },
-  title: { color: colors.textPrimary, fontFamily: 'Inter_700Bold', fontSize: 22, marginBottom: 8 },
-  empty: { color: colors.textSecondary, fontFamily: 'Inter_500Medium' },
-  card: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 12,
-    padding: 12,
-    backgroundColor: colors.surface,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
+  container: { 
+    flex: 1, 
+    backgroundColor: colors.background 
   },
-  cardTitle: { color: colors.textPrimary, fontFamily: 'Inter_600SemiBold', marginBottom: 6 },
-  cardText: { color: colors.textSecondary },
-  cardHint: { color: colors.textTertiary, marginTop: 4 },
-  formLabel: { color: colors.textSecondary, marginTop: 8, marginBottom: 4, fontFamily: 'Inter_600SemiBold' },
-  input: {
-    backgroundColor: colors.surfaceAlt,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+  center: { 
+    flex: 1, 
+    alignItems: 'center', 
+    justifyContent: 'center' 
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    paddingBottom: 8,
+  },
+  title: { 
+    color: colors.textPrimary, 
+    fontFamily: 'Inter_700Bold', 
+    fontSize: 22 
+  },
+  addButton: {
+    padding: 8,
+  },
+  loadingText: {
+    color: colors.primary,
+    fontFamily: 'Inter_600SemiBold',
+    marginTop: 12,
+  },
+  errorText: {
+    color: colors.danger,
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 16,
+  },
+  emptyText: {
     color: colors.textPrimary,
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 18,
+    marginBottom: 8,
   },
-  detailsBox: {
-    marginTop: 10,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 8,
-    padding: 10,
-    backgroundColor: colors.surfaceAlt,
+  emptySubtext: {
+    color: colors.textTertiary,
+    fontFamily: 'Inter_400Regular',
+    fontSize: 14,
+    textAlign: 'center',
   },
-  detailRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
-  detailLabel: { color: colors.textSecondary, fontFamily: 'Inter_600SemiBold' },
-  detailValue: { color: colors.textPrimary },
-  submittedContainer: {
-    marginTop: 10,
-    padding: 12,
-    backgroundColor: colors.surfaceAlt,
-    borderRadius: 8,
+  listContent: {
+    padding: 16,
+    paddingBottom: 105, // TAB_BAR_HEIGHT (85) + extra padding (20)
+    flexGrow: 1,
+  },
+  paginationContainer: {
+    paddingVertical: 24,
+    paddingHorizontal: 16,
     alignItems: 'center',
   },
-  submittedText: {
-    color: colors.textPrimary,
+  pagerRow: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 0,
+  },
+  pagerLabel: {
+    color: colors.textSecondary,
     fontFamily: 'Inter_500Medium',
   },
 });

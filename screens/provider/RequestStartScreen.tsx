@@ -1,21 +1,26 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image, ScrollView, Alert, ActivityIndicator, ViewStyle } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { ProviderStackParamList } from '../../navigation/ProviderNavigator';
+import { CommonActions } from '@react-navigation/native';
+import { RootStackParamList } from '@/navigation/AppNavigator';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, Calendar, Clock, MapPin, CheckCircle, Briefcase, User, LogOut, AlertCircle } from 'lucide-react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { firestore, auth } from '@/lib/firebase';
 import { doc, updateDoc, increment, getDoc, Timestamp, serverTimestamp } from 'firebase/firestore';
 import { colors } from '@/styles/theme';
 import { ThemedButton } from '@/components/ui/ThemedButton';
 import { Card } from 'react-native-paper';
+import { useReview } from '@/contexts/ReviewContext';
+import { RepairOrder } from '@/types/orders';
 
-type Props = NativeStackScreenProps<ProviderStackParamList, 'RequestStart'>;
+type Props = NativeStackScreenProps<RootStackParamList, 'RequestStart'>;
 
 interface OrderDetails {
   id: string;
   customerName: string;
   customerAvatar?: string;
+  customerInitials?: string;
   serviceName: string;
   date: string;
   time: string;
@@ -30,6 +35,7 @@ interface OrderDetails {
 
 export default function RequestStartScreen({ navigation, route }: Props) {
   const { orderId, inspectionCompleted } = route.params;
+  const { showReviewForOrder } = useReview();
   const [initialLoading, setInitialLoading] = useState(true);
   const [serviceEnded, setServiceEnded] = useState(false);
   const [isActionButtonLoading, setIsActionButtonLoading] = useState(false);
@@ -46,25 +52,33 @@ export default function RequestStartScreen({ navigation, route }: Props) {
         const orderData = orderSnap.data();
         let customerName = 'Anonymous User';
         let customerAvatar = undefined;
+        let customerInitials = 'AU';
 
         if (orderData.customerId) {
           const userRef = doc(firestore, 'users', orderData.customerId);
           const userSnap = await getDoc(userRef);
           if (userSnap.exists()) {
             const userData = userSnap.data();
-            if (userData.firstName && userData.lastName) {
-              customerName = `${userData.firstName} ${userData.lastName}`;
+            const firstName = userData.firstName || '';
+            const lastName = userData.lastName || '';
+            if (firstName && lastName) {
+              customerName = `${firstName} ${lastName}`;
+              customerInitials = `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
             } else if (userData.displayName) {
               customerName = userData.displayName;
+              customerInitials = userData.displayName.substring(0, 2).toUpperCase();
             } else if (orderData.customerName) {
               customerName = orderData.customerName;
+              customerInitials = orderData.customerName.substring(0, 2).toUpperCase();
             }
-            customerAvatar = userData.photoURL;
+            customerAvatar = userData.photoURL || userData.profilePictureUrl;
           } else if (orderData.customerName) {
             customerName = orderData.customerName;
+            customerInitials = orderData.customerName.substring(0, 2).toUpperCase();
           }
         } else if (orderData.customerName) {
           customerName = orderData.customerName;
+          customerInitials = orderData.customerName.substring(0, 2).toUpperCase();
         }
         
         let scheduleDate: Date | null = null;
@@ -88,6 +102,7 @@ export default function RequestStartScreen({ navigation, route }: Props) {
           id: orderId,
           customerName: customerName,
           customerAvatar: customerAvatar,
+          customerInitials: customerInitials,
           serviceName: orderData.items?.[0]?.name || 'Service details not available',
           date: formattedDate,
           time: formattedTime,
@@ -175,14 +190,34 @@ export default function RequestStartScreen({ navigation, route }: Props) {
         numberOfJobsCompleted: increment(1),
       });
       
-      console.log(`TODO: Send push notification to customer ${requestDetails.customerId} to rate the service for order ${orderId}`);
-      Alert.alert(
-        "Service Ended", 
-        "The service has been marked as completed. The customer will be notified to rate the service."
+      // Get updated order data for review modal
+      const updatedOrderDoc = await getDoc(orderRef);
+      const updatedOrder = { id: orderId, ...updatedOrderDoc.data() } as RepairOrder;
+      
+      // Reset navigation stack first
+      navigation.dispatch(
+        CommonActions.reset({
+          index: 0,
+          routes: [
+            {
+              name: 'ProviderApp',
+              state: {
+                routes: [
+                  { name: 'RepairOrders' }, // Navigate to Queue tab
+                ],
+                index: 0,
+              },
+            },
+          ],
+        })
       );
+
+      // Show review modal for provider to rate customer
+      setTimeout(() => {
+        showReviewForOrder(updatedOrder, 'provider');
+      }, 500);
       setServiceEnded(true);
       setRequestDetails(prev => prev ? { ...prev, status: 'Completed' } : null);
-      navigation.navigate('Requests');
 
     } catch (error) {
       console.error("Error ending service:", error);
@@ -297,7 +332,16 @@ export default function RequestStartScreen({ navigation, route }: Props) {
       
       <ScrollView style={styles.content}>
         <View style={styles.customerCard}>
-          <Image source={{ uri: requestDetails.customerAvatar || 'https://via.placeholder.com/150/0A0F1E/00F0FF?text=User' }} style={styles.avatar} />
+          {requestDetails.customerAvatar ? (
+            <Image source={{ uri: requestDetails.customerAvatar }} style={styles.avatar} />
+          ) : (
+            <LinearGradient
+              colors={['#7A89FF', '#5B6AE8']}
+              style={styles.avatar}
+            >
+              <Text style={styles.avatarInitials}>{requestDetails.customerInitials || 'AU'}</Text>
+            </LinearGradient>
+          )}
           <View style={styles.customerInfo}>
             <Text style={styles.customerName}>{requestDetails.customerName.toUpperCase()}</Text>
             <View style={statusBadgeStyle}>
@@ -357,8 +401,8 @@ export default function RequestStartScreen({ navigation, route }: Props) {
         <View style={styles.footer}>
             <ThemedButton
               variant="primary"
-              onPress={currentActionHandler}
-              disabled={isButtonDisabled || isActionButtonLoading}
+            onPress={currentActionHandler}
+            disabled={isButtonDisabled || isActionButtonLoading}
               loading={isActionButtonLoading}
               style={styles.startButton}
             >

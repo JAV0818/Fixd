@@ -9,6 +9,7 @@ import { auth, firestore } from '@/lib/firebase';
 import { doc, getDoc, updateDoc, serverTimestamp, increment } from 'firebase/firestore';
 import { CommonActions } from '@react-navigation/native';
 import { ProviderTabParamList } from '@/navigation/ProviderTabNavigator';
+import { useReview } from '@/contexts/ReviewContext';
 
 type Props = NativeStackScreenProps<ProviderStackParamList, 'UpdateStatus'>;
 
@@ -58,6 +59,7 @@ interface OrderDetails {
 
 export default function UpdateStatusScreen({ navigation, route }: Props) {
   const { orderId } = route.params;
+  const { showReviewForOrder } = useReview();
   const [orderDetails, setOrderDetails] = useState<OrderDetails | null>(null);
   const [selectedStatus, setSelectedStatus] = useState<RepairOrder['status'] | null>(null);
   const [updating, setUpdating] = useState(false);
@@ -215,18 +217,46 @@ export default function UpdateStatusScreen({ navigation, route }: Props) {
 
       await updateDoc(orderRef, updateData);
 
-      Alert.alert(
-        "Status Updated", 
-        `Order status has been changed to ${selectedStatus}.`,
-        [
-          {
-            text: "OK",
-            onPress: () => {
-              if (selectedStatus === 'Completed' || selectedStatus === 'Cancelled') {
-                // Reset the ProviderNavigator stack (associated with 'Requests' tab) to its initial route
+      // If status changed to Completed, get updated order and show review modal
+      if (selectedStatus === 'Completed' && orderDetails.status !== 'Completed') {
+        const updatedOrderDoc = await getDoc(orderRef);
+        const updatedOrder = { id: orderId, ...updatedOrderDoc.data() } as RepairOrder;
+        
+        Alert.alert(
+          "Status Updated", 
+          `Order status has been changed to ${selectedStatus}.`,
+          [
+            {
+              text: "OK",
+              onPress: () => {
+                // Reset navigation
                 navigation.dispatch(
                   CommonActions.reset({
                     index: 0,
+                    routes: [{ name: 'ProviderApp' }],
+                  })
+                );
+                // Show review modal after navigation
+                setTimeout(() => {
+                  showReviewForOrder(updatedOrder, 'provider');
+                }, 500);
+              }
+            }
+          ]
+        );
+      } else {
+        Alert.alert(
+          "Status Updated", 
+          `Order status has been changed to ${selectedStatus}.`,
+          [
+            {
+              text: "OK",
+              onPress: () => {
+                if (selectedStatus === 'Cancelled') {
+                  // Reset the ProviderNavigator stack (associated with 'Requests' tab) to its initial route
+                  navigation.dispatch(
+                    CommonActions.reset({
+                      index: 0,
                     routes: [{ name: 'Requests' }], // 'Requests' is initial route of ProviderNavigator
                   })
                 );

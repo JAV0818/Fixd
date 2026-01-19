@@ -55,7 +55,14 @@ export default function RequestCancelScreen({ navigation, route }: Props) {
         [
           { 
             text: "OK", 
-            onPress: () => navigation.navigate('Requests')
+            onPress: () => {
+              // Navigate back to provider app
+              if (navigation.canGoBack()) {
+                navigation.goBack();
+              } else {
+                navigation.navigate('ProviderApp');
+              }
+            }
           }
         ]
       );

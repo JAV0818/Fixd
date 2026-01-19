@@ -30,7 +30,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
-import { colors } from '@/styles/theme';
+import { colors, spacing, radius, typography } from '@/styles/theme';
 
 interface UserProfile {
   displayName?: string;
@@ -109,8 +109,9 @@ export default function RequestContactScreen({ navigation, route }: Props) {
   useEffect(() => {
     if (!order) return;
 
+    // For completed orders, fetch from both collections to show all messages
     let chatCollectionPath = 'preAcceptanceChats';
-    if (order.status === 'Accepted' || order.status === 'InProgress') {
+    if (order.status === 'Accepted' || order.status === 'InProgress' || order.status === 'Completed') {
       chatCollectionPath = 'activeChat';
     }
 
@@ -141,6 +142,12 @@ export default function RequestContactScreen({ navigation, route }: Props) {
   }, [messages]);
 
   const handlePickImage = async () => {
+    // Disable attachments for completed orders
+    if (order?.status === 'Completed') {
+      Alert.alert("Order Completed", "You cannot send attachments for completed orders.");
+      return;
+    }
+
     const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permissionResult.granted) {
       Alert.alert("Permission Denied", "Permission to access camera roll is required!");
@@ -162,6 +169,12 @@ export default function RequestContactScreen({ navigation, route }: Props) {
   };
 
   const handlePickDocument = async () => {
+    // Disable attachments for completed orders
+    if (order?.status === 'Completed') {
+      Alert.alert("Order Completed", "You cannot send attachments for completed orders.");
+      return;
+    }
+
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain'],
@@ -222,6 +235,12 @@ export default function RequestContactScreen({ navigation, route }: Props) {
   };
 
   const handleSendMessage = async () => {
+    // Disable sending messages for completed orders
+    if (order?.status === 'Completed') {
+      Alert.alert("Order Completed", "You cannot send messages for completed orders. You can only view previous messages.");
+      return;
+    }
+
     if ((!message.trim() && !uploadingAttachment) || !currentUser || !order || !order.customerId) {
       return;
     }
@@ -427,7 +446,10 @@ export default function RequestContactScreen({ navigation, route }: Props) {
   const displayCustomerName = customer?.firstName && customer?.lastName 
     ? `${customer.firstName} ${customer.lastName}` 
     : customer?.displayName || 'Customer';
-  const displayAvatar = customer?.profileImageUrl || 'https://via.placeholder.com/48?text=User';
+  const displayAvatar = customer?.profileImageUrl || customer?.photoURL;
+  const customerInitials = customer?.firstName && customer?.lastName
+    ? `${customer.firstName.charAt(0)}${customer.lastName.charAt(0)}`.toUpperCase()
+    : customer?.displayName ? customer.displayName.substring(0, 2).toUpperCase() : 'CU';
   const displayService = (order as any).categories?.join(', ') || order.items?.[0]?.name || 'Service';
   const displayDate = order.createdAt?.toDate?.().toLocaleDateString() || 'N/A';
 
@@ -446,7 +468,13 @@ export default function RequestContactScreen({ navigation, route }: Props) {
       
       {/* Customer Card */}
       <View style={styles.customerCard}>
-        <Image source={{ uri: displayAvatar }} style={styles.avatar} />
+        {displayAvatar ? (
+          <Image source={{ uri: displayAvatar }} style={styles.avatar} />
+        ) : (
+          <View style={[styles.avatar, styles.avatarInitialsContainer]}>
+            <Text style={styles.avatarInitials}>{customerInitials}</Text>
+          </View>
+        )}
         <View style={styles.customerInfo}>
           <Text style={styles.customerName}>{displayCustomerName}</Text>
           <Text style={styles.serviceInfo}>{displayService}</Text>
@@ -482,36 +510,44 @@ export default function RequestContactScreen({ navigation, route }: Props) {
           </View>
         )}
 
-        {/* Input Area */}
-        <View style={[styles.inputContainer, { paddingBottom: Platform.OS === 'ios' ? Math.max(insets.bottom, 10) : 10 }]}>
-          <Pressable 
-            style={styles.attachButton} 
-            onPress={() => setShowAttachmentModal(true)} 
-            disabled={uploadingAttachment || sending}
-          >
-            <Paperclip size={22} color={uploadingAttachment || sending ? colors.textLight : colors.primary} />
-          </Pressable>
-          
-          <View style={styles.textInputWrapper}> 
-            <TextInput
-              style={styles.textInput}
-              placeholder="Type a message..."
-              placeholderTextColor={colors.textLight}
-              value={message}
-              onChangeText={setMessage}
-              multiline
+        {/* Input Area - disabled for completed orders */}
+        {order?.status !== 'Completed' ? (
+          <View style={[styles.inputContainer, { paddingBottom: Platform.OS === 'ios' ? Math.max(insets.bottom, 10) : 10 }]}>
+            <Pressable 
+              style={styles.attachButton} 
+              onPress={() => setShowAttachmentModal(true)} 
+              disabled={uploadingAttachment || sending}
+            >
+              <Paperclip size={22} color={uploadingAttachment || sending ? colors.textLight : colors.primary} />
+            </Pressable>
+            
+            <View style={styles.textInputWrapper}> 
+              <TextInput
+                style={styles.textInput}
+                placeholder="Type a message..."
+                placeholderTextColor={colors.textLight}
+                value={message}
+                onChangeText={setMessage}
+                multiline
+              />
+            </View>
+            
+            <IconButton
+              icon="send"
+              size={24}
+              iconColor="#FFFFFF"
+              style={[styles.sendButton, (!message.trim() || sending) && styles.sendButtonDisabled]}
+              onPress={handleSendMessage}
+              disabled={sending || uploadingAttachment || !message.trim()}
             />
           </View>
-          
-          <IconButton
-            icon="send"
-            size={24}
-            iconColor="#FFFFFF"
-            style={[styles.sendButton, (!message.trim() || sending) && styles.sendButtonDisabled]}
-            onPress={handleSendMessage}
-            disabled={sending || uploadingAttachment || !message.trim()}
-          />
-        </View>
+        ) : (
+          <View style={styles.completedMessageContainer}>
+            <Text style={styles.completedMessageText}>
+              This order is completed. You can view previous messages but cannot send new ones.
+            </Text>
+          </View>
+        )}
       </KeyboardAvoidingView>
 
       {/* Attachment Modal */}
@@ -630,6 +666,18 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     borderWidth: 2,
     borderColor: colors.primary,
+    backgroundColor: colors.surfaceAlt,
+  },
+  avatarInitialsContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+  },
+  avatarInitials: {
+    fontSize: 18,
+    fontFamily: 'Inter_700Bold',
+    color: '#FFFFFF',
+    letterSpacing: 1,
   },
   customerInfo: {
     marginLeft: 12,
@@ -837,6 +885,19 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     paddingVertical: Platform.OS === 'ios' ? 12 : 8,
     maxHeight: 100,
+  },
+  completedMessageContainer: {
+    padding: spacing.md,
+    backgroundColor: colors.warningLight,
+    borderRadius: radius.md,
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.md,
+  },
+  completedMessageText: {
+    fontSize: 13,
+    fontFamily: 'Inter_500Medium',
+    color: colors.warning,
+    textAlign: 'center',
   },
   sendButton: {
     width: 44,

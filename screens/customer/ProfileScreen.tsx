@@ -17,7 +17,8 @@ interface CustomerProfile {
   lastName?: string;
   createdAt?: Timestamp; // Use Firestore Timestamp
   ordersPlaced?: number;
-  // averageRating?: number; // Decide if needed
+  averageRating?: number;
+  totalRatingsCount?: number;
 }
 
 // Insert helper to safely convert various timestamp representations to a JS Date
@@ -165,16 +166,16 @@ export default function ProfileScreen() {
           </View>
           <View style={styles.statDivider} />
           <View style={styles.statItem}>
-            <Text style={styles.statValue}>3.0</Text>
             <View style={styles.starsContainer}>
               <StarRatingDisplay 
-                rating={3}
+                rating={profileData?.averageRating || 0}
                 starSize={14}
                 showRatingNumber={false}
                 starColorFilled={colors.warning}
                 starColorEmpty="#D9DBE9"
               />
             </View>
+            <Text style={styles.statLabel}>Rating</Text>
           </View>
           <View style={styles.statDivider} />
           <View style={styles.statItem}>

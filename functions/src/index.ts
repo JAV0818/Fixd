@@ -1,6 +1,7 @@
 import * as admin from "firebase-admin";
 import {beforeUserCreated, AuthBlockingEvent} from "firebase-functions/v2/identity";
 import {onSchedule} from "firebase-functions/v2/scheduler";
+import {onDocumentUpdated} from "firebase-functions/v2/firestore";
 
 // import {https as v1https} from "firebase-functions/v1"; // Specific import for v1 https services
 // import Stripe from "stripe";
@@ -88,6 +89,113 @@ export const onAuthUserCreate = beforeUserCreated(
   await userDocRef.set(profile, {merge: true});
   }
 );
+
+// =====================================================================
+// RECALCULATE USER RATINGS WHEN ORDER IS RATED
+// Triggers when a repair-order document is updated with a rating
+// =====================================================================
+export const onRatingSubmit = onDocumentUpdated(
+  {
+    document: "repair-orders/{orderId}",
+    region: "us-central1",
+  },
+  async (event) => {
+    const beforeData = event.data?.before.data();
+    const afterData = event.data?.after.data();
+    const orderId = event.params.orderId;
+
+    if (!beforeData || !afterData) {
+      console.log("Missing before/after data for order:", orderId);
+      return;
+    }
+
+    // Check if customer rating was added
+    const customerRatingAdded = !beforeData.customerRating && afterData.customerRating;
+    // Check if provider rating was added
+    const providerRatingAdded = !beforeData.providerRating && afterData.providerRating;
+
+    if (!customerRatingAdded && !providerRatingAdded) {
+      // No rating was added, skip
+      return;
+    }
+
+    try {
+      // Recalculate provider's average rating if customer rated
+      if (customerRatingAdded && afterData.providerId) {
+        await recalculateUserRating(afterData.providerId, "provider");
+      }
+
+      // Recalculate customer's average rating if provider rated
+      if (providerRatingAdded && afterData.customerId) {
+        await recalculateUserRating(afterData.customerId, "customer");
+      }
+
+      console.log(`Successfully recalculated ratings for order ${orderId}`);
+    } catch (error) {
+      console.error(`Error recalculating ratings for order ${orderId}:`, error);
+      throw error;
+    }
+  }
+);
+
+/**
+ * Helper function to recalculate a user's average rating
+ */
+async function recalculateUserRating(userId: string, role: "customer" | "provider"): Promise<void> {
+  const userRef = db.collection("users").doc(userId);
+  const userDoc = await userRef.get();
+
+  if (!userDoc.exists) {
+    console.warn(`User ${userId} does not exist`);
+    return;
+  }
+
+  // Query all completed orders where this user was rated
+  const ratingField = role === "customer" ? "providerRating" : "customerRating";
+  const userIdField = role === "customer" ? "customerId" : "providerId";
+
+  const completedOrdersQuery = await db
+    .collection("repair-orders")
+    .where(userIdField, "==", userId)
+    .where("status", "==", "Completed")
+    .where(ratingField, ">", 0) // Only orders with ratings
+    .get();
+
+  if (completedOrdersQuery.empty) {
+    // No ratings yet, set to 0
+    await userRef.update({
+      averageRating: 0,
+      totalRatingsCount: 0,
+    });
+    return;
+  }
+
+  // Calculate average rating
+  let totalRating = 0;
+  let ratingCount = 0;
+
+  completedOrdersQuery.docs.forEach((doc) => {
+    const data = doc.data();
+    const rating = data[ratingField];
+    if (rating && typeof rating === "number" && rating > 0) {
+      totalRating += rating;
+      ratingCount++;
+    }
+  });
+
+  const averageRating = ratingCount > 0 ? totalRating / ratingCount : 0;
+
+  // Update user document
+  await userRef.update({
+    averageRating: Math.round(averageRating * 10) / 10, // Round to 1 decimal place
+    totalRatingsCount: ratingCount,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  console.log(
+    `Updated ${role} ${userId}: averageRating=${averageRating.toFixed(1)}, count=${ratingCount}`
+  );
+}
 
 // Initialize Stripe with secret key and API version
 // const stripeClient = new Stripe(functions.config().stripe.secret, {

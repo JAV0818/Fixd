@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { ArrowLeft, Check, X, MessageCircle, Play, Ban, Clock, Lock } from 'lucide-react-native';
+import { Check, X, MessageCircle, Play, Ban, Clock, Lock } from 'lucide-react-native';
+import { BackButton } from '@/components/ui/BackButton';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { firestore, auth } from '@/lib/firebase';
 import { doc, onSnapshot, updateDoc, serverTimestamp, increment, getDoc, Timestamp, collection, query, where, getDocs } from 'firebase/firestore';
@@ -16,7 +17,7 @@ const CLAIM_DURATION_MS = 60 * 60 * 1000; // 1 hour in milliseconds
 const MAX_CLAIMS_PER_PROVIDER = 2;
 
 export default function RequestDetailScreen({ navigation, route }: Props) {
-  const { orderId } = route.params;
+  const { orderId } = route.params || {};
   const [order, setOrder] = useState<RepairOrder | null>(null);
   const [customerDisplayName, setCustomerDisplayName] = useState<string>('Anonymous User');
   const [loading, setLoading] = useState(true);
@@ -24,7 +25,7 @@ export default function RequestDetailScreen({ navigation, route }: Props) {
   const [isUpdating, setIsUpdating] = useState(false);
   const [timeRemaining, setTimeRemaining] = useState<string>('');
   const [claimExpired, setClaimExpired] = useState(false);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const insets = useSafeAreaInsets();
   
   const currentUser = auth.currentUser;
@@ -33,6 +34,7 @@ export default function RequestDetailScreen({ navigation, route }: Props) {
   const isPending = order?.status === 'Pending';
   const isAccepted = order?.status === 'Accepted';
   const isInProgress = order?.status === 'InProgress';
+  const isCompleted = order?.status === 'Completed';
 
   // Timer effect for claimed orders
   useEffect(() => {
@@ -298,6 +300,12 @@ export default function RequestDetailScreen({ navigation, route }: Props) {
     }
   };
 
+  const handleViewInspection = () => {
+    if (order) {
+      navigation.navigate('InspectionChecklist', { orderId: order.id, readOnly: true });
+    }
+  };
+
   const handleCancelService = async () => {
     if (!order) {
       Alert.alert("Error", "Order data is not available.");
@@ -347,9 +355,7 @@ export default function RequestDetailScreen({ navigation, route }: Props) {
     return (
       <SafeAreaView style={styles.errorContainer} edges={['top']}>
         <View style={styles.header_basic}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton_basic}>
-            <ArrowLeft size={24} color={colors.textPrimary} />
-          </TouchableOpacity>
+          <BackButton />
           <Text style={styles.headerTitle_basic}>Error</Text>
           <View style={{ width: 24 }} />
         </View>
@@ -373,13 +379,41 @@ export default function RequestDetailScreen({ navigation, route }: Props) {
 
   const scheduleInfo = getScheduleDateTime();
 
+  const getStatusBadgeColor = (status: string) => {
+    switch (status?.toLowerCase()) {
+      case 'pending':
+        return { bg: colors.warningLight, text: colors.warning };
+      case 'claimed':
+        return { bg: colors.primaryLight, text: colors.primary };
+      case 'accepted':
+        return { bg: colors.successLight, text: colors.success };
+      case 'inprogress':
+        return { bg: colors.primaryLight, text: colors.primary };
+      case 'completed':
+        return { bg: colors.successLight, text: colors.success };
+      case 'cancelled':
+        return { bg: colors.dangerLight, text: colors.danger };
+      default:
+        return { bg: colors.surfaceAlt, text: colors.textTertiary };
+    }
+  };
+
+  const statusColors = getStatusBadgeColor(order.status || '');
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <ArrowLeft size={24} color={colors.textPrimary} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Request Details</Text>
+        <BackButton />
+        <View style={styles.headerTitleContainer}>
+          <Text style={styles.headerTitle}>{customerDisplayName}</Text>
+          {order.status && (
+            <View style={[styles.statusBadge, { backgroundColor: statusColors.bg }]}>
+              <Text style={[styles.statusBadgeText, { color: statusColors.text }]}>
+                {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
+              </Text>
+            </View>
+          )}
+        </View>
         <View style={{ width: 40 }} />
       </View>
 
@@ -471,7 +505,7 @@ export default function RequestDetailScreen({ navigation, route }: Props) {
           </View>
         )}
 
-        <View style={[styles.actionButtonsContainer, { paddingBottom: insets.bottom + 12 }]}>
+        <View style={[styles.actionButtonsContainer, { paddingBottom: insets.bottom  }]}>
           {/* PENDING: Show Claim button */}
           {isPending && (
             <ThemedButton
@@ -494,7 +528,7 @@ export default function RequestDetailScreen({ navigation, route }: Props) {
                 onPress={handleContact}
                 disabled={isUpdating}
                 icon="message"
-                style={styles.actionButtonFlex}
+                style={[styles.actionButtonFlex, styles.outlinedButton]}
               >
                 Chat
               </ThemedButton>
@@ -504,7 +538,7 @@ export default function RequestDetailScreen({ navigation, route }: Props) {
                 onPress={handleReleaseClaim}
                 disabled={isUpdating}
                 icon="close"
-                style={styles.actionButtonFlex}
+                style={[styles.actionButtonFlex, styles.outlinedButton]}
               >
                 Release
               </ThemedButton>
@@ -552,7 +586,7 @@ export default function RequestDetailScreen({ navigation, route }: Props) {
                 onPress={handleContact}
                 disabled={isUpdating}
                 icon="message"
-                style={styles.actionButtonFlex}
+                style={[styles.actionButtonFlex, styles.outlinedButton]}
               >
                 Contact
               </ThemedButton>
@@ -561,7 +595,7 @@ export default function RequestDetailScreen({ navigation, route }: Props) {
                 variant="danger"
                 onPress={handleCancelService}
                 disabled={isUpdating}
-                icon="ban"
+                icon="cancel"
                 style={styles.actionButtonFlex}
               >
                 Cancel
@@ -575,6 +609,31 @@ export default function RequestDetailScreen({ navigation, route }: Props) {
                 style={styles.actionButtonFlex}
               >
                 {isInProgress ? 'Continue' : 'Start'}
+              </ThemedButton>
+            </>
+          )}
+
+          {/* COMPLETED: Show view-only actions */}
+          {isCompleted && (
+            <>
+              <ThemedButton
+                variant="outlined"
+                onPress={handleContact}
+                disabled={isUpdating}
+                icon="message"
+                style={[styles.actionButtonFlex, styles.outlinedButton]}
+              >
+                View Messages
+              </ThemedButton>
+
+              <ThemedButton
+                variant="outlined"
+                onPress={handleViewInspection}
+                disabled={isUpdating}
+                icon="clipboard-check"
+                style={[styles.actionButtonFlex, styles.outlinedButton]}
+              >
+                Inspection
               </ThemedButton>
             </>
           )}
@@ -622,9 +681,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  backButton_basic: {
-    padding: 4,
-  },
   headerTitle_basic: {
     fontSize: 18,
     fontFamily: 'Inter_600SemiBold',
@@ -638,24 +694,40 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.background,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 3,
   },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.surfaceAlt,
+  headerTitleContainer: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
   headerTitle: {
-    fontSize: 18,
-    fontFamily: 'Inter_600SemiBold',
+    fontSize: 20,
+    fontFamily: 'Inter_700Bold',
     color: colors.textPrimary,
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  statusBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginTop: 2,
+  },
+  statusBadgeText: {
+    fontSize: 11,
+    fontFamily: 'Inter_600SemiBold',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   mainContentArea: {
     flex: 1,
@@ -715,11 +787,10 @@ const styles = StyleSheet.create({
   },
   actionButtonsContainer: {
     flexDirection: 'row',
-    paddingVertical: 12,
+    paddingVertical: 16,
     paddingHorizontal: 16,
-    backgroundColor: colors.surface,
-    borderTopColor: colors.border,
-    borderTopWidth: 1,
+    backgroundColor: colors.background,
+    gap: 12,
   },
   actionButton: {
     flex: 1,
@@ -736,7 +807,11 @@ const styles = StyleSheet.create({
   },
   actionButtonFlex: {
     flex: 1,
-    marginHorizontal: 4,
+    minHeight: 52,
+  },
+  outlinedButton: {
+    borderWidth: 2,
+    borderColor: colors.primary,
   },
   contactButton: {
     backgroundColor: colors.primaryLight,
